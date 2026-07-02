@@ -64,3 +64,12 @@ WS-00 is complete pending remote-CI confirmation. Next session: **WS-01a**
 exception), generate `contracts/vectors/`, author `contracts/engine-api.d.ts` and the
 content JSON Schemas. Owner actions still open: register domains, confirm GitHub
 Actions enabled.
+
+## Verifier follow-up — 2026-07-02
+
+Independent verifier verdict: PASS on all executable criteria; criterion 5 failed a
+strict-literal read because the playbook tree omitted the root scaffold files and
+docs/GENRE.md. Resolution: playbook §1 tree amended to enumerate them (scripts/,
+workspace config files, GENRE.md) — the tree now matches `git ls-files` reality.
+Remaining open item: remote CI green (owner: confirm GitHub Actions enabled).
+WS-00 closed.

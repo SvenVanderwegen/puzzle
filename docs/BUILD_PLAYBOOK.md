@@ -35,10 +35,13 @@ burnfront/
 │  ├─ DEPENDENCIES.md         #   dependency allowlist
 │  └─ vectors/                #   ~500 burn cases + generation seeds + deduction certificates
 ├─ tasks/WS-XX/{brief.md,STATUS.md}   # agent ledger (one dir per workstream)
-├─ docs/{BUILD_PLAYBOOK.md,decisions.md,gdpr.md,RUNBOOK.md,adr/,design/}
+├─ docs/{BUILD_PLAYBOOK.md,decisions.md,GENRE.md,gdpr.md,RUNBOOK.md,adr/,design/}
 ├─ e2e/                       # Playwright journeys + Lighthouse budgets
 ├─ reference/                 # frozen prototype: firebreak.py, index.html (read-only)
-└─ README.md  PLAN.md  CLAUDE.md  CODEMAP.md  turbo.json  pnpm-workspace.yaml  .github/workflows/
+├─ scripts/                   # repo tooling (hygiene.sh = gate 9)
+└─ README.md  PLAN.md  CLAUDE.md  CODEMAP.md  .github/workflows/
+   + workspace scaffold: package.json  pnpm-workspace.yaml  pnpm-lock.yaml  turbo.json
+     tsconfig.base.json  eslint.config.js  .prettierrc  .prettierignore  .gitignore
 ```
 
 Import DAG (dependency-cruiser + Pest `arch()` enforced): `apps/web → packages/* → engine`;
