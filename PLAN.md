@@ -72,34 +72,82 @@ knows what you should do next.
   NYT Games) license novel genres with guaranteed-unique solutions. The
   generator plus grading pipeline is the licensable asset.
 
-## 3. Platform & tech recommendation
+## 3. Architecture: one TypeScript core, three surfaces
 
-**Recommendation: native iOS first (SwiftUI + a small Swift engine port),
-web demo kept as the marketing funnel. Android/Steam later via a second
-port or Godot re-base if traction justifies it.**
+End state: **web app + iOS + Android**, one hub product on all three
+(chess.com model). The decisive fact: the engine already exists in
+TypeScript, is ~400 lines of pure logic, and runs unchanged in the
+browser, in React Native, and on the server. So the architecture is
+**"TypeScript everywhere"** — one brain, three bodies, one backend.
 
-Why native over Unity/Godot/React Native for this game:
-* The engine is ~400 lines of pure logic (BFS + two solvers + generator).
-  Porting it to Swift is a day's work; there is no physics/3D need.
-* The game IS its UI feel: haptic ticks as the wave advances, 120 Hz
-  ProMotion animations, Dynamic Type, VoiceOver. Native is where
-  puzzle-game polish lives (see: Good Sudoku, Knotwords).
-* Free platform features replace a backend: Game Center (leaderboards,
-  achievements), CloudKit (sync), StoreKit 2 (IAP), App Clips (try from a
-  link). Zero servers at launch.
+```
+                 ┌───────────────────────────────────────────────┐
+                 │      pipeline/ (Python, offline, exists)      │
+                 │  generate → grade → curate → sign             │
+                 └──────────────────────┬────────────────────────┘
+                                        ▼
+                        content/  (versioned JSON on CDN)
+                 dailies calendar · expedition packs · board
+                 ratings · solution hashes
+                                        │
+   ┌────────────────────────────────────┼───────────────────────────┐
+   ▼                                    ▼                           ▼
+ apps/web  (Next.js PWA)         apps/mobile (Expo/RN)        services/api
+ hub · daily page (SSR for       one codebase → iOS +         auth · profiles ·
+ share links/SEO) · account      Android via EAS builds       streaks · Glicko-2
+ · offline cache                 haptics · widgets · IAP      ratings · duels
+   │                                    │                     (realtime rooms) ·
+   └────────────┬───────────────────────┘                     solve validation
+                ▼                                                   ▲
+     packages/engine  (pure TS, zero deps)  ◄───────────────────────┘
+     rules · BFS · uniqueness oracle · deduction oracle             also runs
+     · generator · grader · puzzle codes · replay               server-side
+     packages/game-core (framework-agnostic state:
+     marks/undo/timer/coach/rush state machines)
+     packages/ui-web (DOM board — exists today) /
+     packages/ui-native (RN Skia board)
+```
 
-Architecture notes:
-* `FirebreakKit` (Swift package): engine port + exhaustive test vectors
-  generated from the Python reference (same seeds → same boards, asserting
-  cross-implementation equality).
-* Content pipeline (offline, Python — already exists): batch-generate,
-  grade, curate. Dailies and Expedition packs ship as JSON in the bundle;
-  a year of dailies ≈ a few hundred KB. On-device generation powers
-  Endless only.
-* **Difficulty grading v2** (needed for curation): run the deduction
-  solver with tiered rule sets — grade = which tier was required plus
-  chain length. Calibrate tiers against human playtest times. This is the
-  main new engineering beyond porting.
+**The five load-bearing decisions:**
+
+1. **`packages/engine` is the single source of truth.** Pure TS, zero
+   dependencies, exhaustive test vectors cross-checked against the Python
+   reference (same seeds → identical boards). Everything imports it: web,
+   mobile, and the server. No rules drift, ever.
+2. **Content is compiled, not computed.** The Python pipeline pre-generates,
+   grades, and curates dailies + packs into signed JSON on a CDN. Clients
+   only *generate* live in Endless mode. A year of dailies is a few
+   hundred KB; apps work fully offline with bundled packs and queued
+   solve-sync.
+3. **Web ships first, from burnfront.com.** Next.js PWA: the daily page is
+   server-rendered so share links unfurl and rank; the whole current
+   prototype's DOM board carries over. Web is both product and the
+   marketing funnel for the apps (chess.com's own growth story).
+4. **Mobile is Expo (React Native), sharing everything but the renderer.**
+   `game-core` state machines and `engine` are shared 1:1; the board gets
+   a native Skia renderer for 120 Hz + haptics. Fallback position if RN
+   feel disappoints in the first two-week spike: Capacitor, reusing the
+   DOM board verbatim — the architecture is renderer-agnostic on purpose.
+   Platform sugar (widgets, App Clips, Play Games) are thin native modules
+   added per platform, never load-bearing.
+5. **Backend: managed Postgres + realtime, near-zero ops.** Supabase (or
+   equivalent): auth (Apple/Google/email), profiles, streaks, solves,
+   Glicko-2 ratings — with *boards as opponents* whose ratings
+   self-calibrate from aggregate solve data, exactly like chess.com
+   puzzles — and realtime channels for Duel rooms. Server-side solve
+   validation is deliberately tiny: checking a submitted solution against
+   the clues is a ~30-line BFS, so it runs in an edge function — or in a
+   Laravel/PHP API instead if that's home turf; nothing binds the backend
+   to Node. Anti-cheat posture: uniqueness means clients can verify
+   locally without ever downloading the answer; rated submissions are
+   re-checked server-side; leaderboards get standard anomaly hygiene.
+
+**Difficulty grading v2** (needed for curation and ratings): run the
+deduction solver with tiered rule sets — the grade is which tier was
+required plus deduction-chain length, calibrated against real playtest
+times, then continuously recalibrated from live solve data. This is the
+main new engineering beyond restructuring; it powers Expeditions ordering,
+the Fire Rating, and Rush escalation all at once.
 
 ## 4. Monetization
 
@@ -167,18 +215,24 @@ web analytics (local, privacy-clean), difficulty telemetry, 20-person
 playtest loop, grading v2 in the Python pipeline. Exit gate: >50% of
 new players finish 3+ puzzles in a session.
 
-**Phase 1 — iOS alpha (5–6 weeks):**
-Swift engine port + cross-checks; core loop UI; Academy; Daily + Endless
-(easy/med/hard); Coach v1; Game Center; CloudKit sync; TestFlight.
+**Phase 1 — web launch on burnfront.com (5–6 weeks):**
+monorepo; extract `engine` + `game-core` packages with Python
+cross-check vectors; Next.js hub (Daily Burn Order with SSR share pages,
+Endless, Academy, Coach v1, local stats); accounts + streaks + solve
+sync (managed backend); PWA offline. Public launch = the marketing
+funnel starts compounding while mobile is built.
 
-**Phase 2 — beta → launch (4–5 weeks):**
-Expeditions (3 regions ≈ 90 curated boards); haptics/audio/themes; share
-cards; StoreKit; localization; accessibility audit; App Store assets;
-editorial pitch; press kit. Launch.
+**Phase 2 — mobile apps (6–8 weeks):**
+two-week RN/Skia board spike (fallback: Capacitor); Expo apps for iOS +
+Android sharing engine/game-core; haptics, audio, themes; Expeditions
+(3 regions ≈ 90 curated boards); Fire Rating v1; IAP (StoreKit/Play
+Billing); localization; accessibility audit; store assets; editorial
+pitch; simultaneous App Store + Play launch.
 
-**Phase 3 — post-launch (quarterly beats):**
-variant season 1 (multi-spark), Big Burn Weekly, puzzle codes + App Clip,
-puzzle book, Android decision (port vs Godot), syndication pitches.
+**Phase 3 — the competitive layer (quarterly beats):**
+Rush + leaderboards; Duel (async first, realtime rooms after); variant
+season 1 (multi-spark); Big Burn Weekly; puzzle codes + App Clip;
+puzzle book; syndication pitches.
 
 **Cash budget (excluding your time):**
 icon/brand $500–1.5k · sound $500–1k · localization $600 · trademark
@@ -217,7 +271,8 @@ comfortable.**
 
 1. Name: approve **Burnfront** (+ "Daily Burn Order") and register the
    six domains now; formal trademark knockout follows.
-2. Platform: confirm iOS-native-first (vs Godot-for-Android-parity).
+2. Architecture: confirm TypeScript-everywhere with web-first launch,
+   then Expo for iOS + Android (§3).
 3. Monetization: confirm one-time Pro unlock (vs subscription). Note the
    Duel/Rush competitive layer may justify a light subscription tier
    later, chess.com-style — decide only after launch data.
