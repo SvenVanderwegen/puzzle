@@ -341,4 +341,8 @@ solution, reachable by deduction alone, with every firebreak witnessed by
 a printed clue. Marks cycle firebreak → clear-ground
 dot → empty; when the last break is placed the board checks itself, and on a
 correct solution the fire replays across the map, minute by minute. Three
-difficulty tiers: 5×5 with 4 breaks, 6×6 with 8, and 7×7 with 12.
+difficulty tiers: 5×5 with 4 breaks, 6×6 with 8, and 7×7 with 12. A built-in
+animated walkthrough teaches the mechanic on a small fixed board — the
+spreading wave, why a clue larger than its straight-line distance proves the
+short routes are walled, and what the player actually sees — next to the
+full rules and a "reading the numbers" deduction primer.

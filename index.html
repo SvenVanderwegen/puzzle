@@ -143,25 +143,68 @@
   }
   @keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
 
-  /* ---------- rules ---------- */
-  .rules{border:1px solid var(--line);border-radius:6px;padding:0 18px}
-  .rules summary{
-    cursor:pointer;padding:14px 0;font:600 12px/1 system-ui,sans-serif;
-    letter-spacing:.12em;text-transform:uppercase;color:var(--ash);list-style:none;
-    display:flex;align-items:center;gap:8px;
+  /* ---------- how it works ---------- */
+  .learn{display:flex;flex-direction:column;gap:16px}
+  .learn h2{
+    margin:0;font-family:'Staatliches',system-ui,sans-serif;font-weight:400;
+    font-size:28px;letter-spacing:.06em;color:var(--paper);
   }
-  .rules summary::before{content:"+";color:var(--ember);font-size:14px;width:12px}
-  .rules[open] summary::before{content:"−"}
-  .rules summary::-webkit-details-marker{display:none}
-  .rules-body{padding:2px 0 18px;display:flex;flex-direction:column;gap:14px}
-  .rules ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:14px}
-  .rules ol li strong{color:var(--paper);font-weight:600}
-  .fieldnote{border-top:1px solid var(--line);padding-top:12px}
-  .fieldnote h3{
-    margin:0 0 8px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  .demo{
+    border:1px solid var(--line);border-radius:6px;padding:18px;
+    display:flex;flex-direction:column;gap:16px;
+  }
+  .demo-cap{
+    margin:0;font-size:14.5px;line-height:1.5;color:var(--paper);
+    min-height:4.6em;max-width:58ch;
+  }
+  .demo-cap .stress{color:var(--ember)}
+  .demo-stage{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+  .demo-grid{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:4px;
+    width:min(100%,300px);flex-shrink:0;
+  }
+  .demo-side{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+  .dcell{
+    aspect-ratio:1;border:1px solid var(--line);border-radius:4px;
+    background:var(--char);position:relative;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Staatliches',system-ui,sans-serif;
+    font-size:clamp(15px,4.6vw,24px);line-height:1;color:var(--paper);
+    transition:background-color .3s ease,color .3s ease;
+  }
+  .dcell.dspark{color:var(--flame);background:var(--char-2);text-shadow:0 0 10px rgba(255,216,107,.5)}
+  .dcell.dclue{background:var(--char-2)}
+  .dcell.dbreak{background:repeating-linear-gradient(135deg,#564b38 0 3px,#241f16 3px 9px);border-color:#6e6146}
+  .dcell.dburn{background:var(--burn-bg,var(--ember));border-color:transparent;color:var(--soot);text-shadow:none}
+  .dcell.dburn.dspark{color:#5a1d00}
+  .dcell{transition:background-color .3s ease,color .3s ease,opacity .3s ease}
+  .dcell.droute{outline:3px solid var(--paper);outline-offset:-1px;z-index:1}
+  .dcell.dblocked{outline:3px dashed var(--danger);outline-offset:-1px;z-index:1}
+  .demo-grid.focus .dcell{opacity:.3}
+  .demo-grid.focus .dcell.droute,
+  .demo-grid.focus .dcell.dblocked,
+  .demo-grid.focus .dcell.dspark{opacity:1}
+  .dcell.dx::before{
+    content:"\2715";position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;color:var(--danger);
+    font:700 1em/1 system-ui,sans-serif;
+  }
+  .dcell.ok::after{
+    content:"\2713";position:absolute;top:1px;right:3px;
+    font:700 11px/1 system-ui,sans-serif;color:var(--soot);opacity:.85;
+  }
+  .rulecols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+  .rulecol{display:flex;flex-direction:column;gap:10px}
+  .rulecol h3{
+    margin:0;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
     color:var(--ash-dim);font-weight:600;
   }
-  .fieldnote ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ash)}
+  .rulecol ol,.rulecol ul{
+    margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px;
+    font-size:14px;color:var(--ash);
+  }
+  .rulecol li strong{color:var(--paper);font-weight:600}
+  @media (prefers-reduced-motion:reduce){.dcell{transition:none}}
 
   footer p{margin:0;font-size:12.5px;color:var(--ash-dim);max-width:58ch}
 
@@ -213,9 +256,9 @@
       <div class="veil" id="veil"><span>Surveying terrain&hellip;</span></div>
     </div>
     <div class="under">
-      <p class="hint" id="hint">Tap a cell to dig a firebreak &middot; tap again to
-      mark clear ground &middot; a third tap erases. Place all the breaks and the
-      map checks itself.</p>
+      <p class="hint" id="hint">Tap a cell to dig a firebreak &middot; tap again for a
+      clear-ground dot &middot; a third tap erases. New here? The walkthrough below
+      shows exactly how the fire moves.</p>
       <div class="banner" id="banner">
         <span class="headline">FIRE MAPPED</span>
         <p>Contained in <span class="v" id="finalTime">0:00</span> — every clue burns on time.</p>
@@ -223,26 +266,40 @@
     </div>
   </section>
 
-  <details class="rules">
-    <summary>Rules &amp; field notes</summary>
-    <div class="rules-body">
-      <ol>
-        <li>Shade exactly <strong>N</strong> cells as firebreaks. The <strong>★</strong> and the numbered cells can never be shaded.</li>
-        <li>Fire starts on the ★ at minute 0. Each minute it spreads from every burning cell to every orthogonally adjacent unshaded cell.</li>
-        <li>Every unshaded cell must eventually burn.</li>
-        <li>Every numbered cell must catch fire at <strong>exactly</strong> the minute shown.</li>
-      </ol>
-      <div class="fieldnote">
-        <h3>Field notes</h3>
+  <section class="learn" aria-label="How Firebreak works">
+    <h2>HOW IT WORKS</h2>
+    <div class="demo">
+      <p class="demo-cap" id="demoCap" aria-live="polite"></p>
+      <div class="demo-stage">
+        <div class="demo-grid" id="demoGrid" aria-hidden="true"></div>
+        <div class="demo-side">
+          <div class="chip"><span class="k">Minute</span><span class="v" id="demoMin">0</span></div>
+          <button type="button" class="btn" id="demoBtn">Pause</button>
+        </div>
+      </div>
+    </div>
+    <div class="rulecols">
+      <div class="rulecol">
+        <h3>The rules</h3>
+        <ol>
+          <li><strong>Shade exactly N firebreaks.</strong> The counter above the board sets N. The ★ and the numbered cells are never breaks.</li>
+          <li><strong>Fire spreads one cell per minute.</strong> It starts on the ★ at minute 0 and moves up, down, left and right — never diagonally, never through a break.</li>
+          <li><strong>Everything else burns.</strong> Every cell that isn&rsquo;t a firebreak must be reached by the fire eventually. No safe pockets.</li>
+          <li><strong>Numbers are exact arrival times.</strong> A cell marked 5 caught fire at minute 5 — not before, not after.</li>
+        </ol>
+      </div>
+      <div class="rulecol">
+        <h3>Reading the numbers</h3>
         <ul>
-          <li>A cell&rsquo;s burn minute is the length of the shortest unshaded route from the ★ — never less than its straight-line distance. A big number means the fire was forced around something.</li>
-          <li>Unshaded neighbors burn within a minute of each other, and a cell burning at minute t has a neighbor that burned at t&minus;1.</li>
-          <li>Every firebreak earns its place: if it were open, the fire would reach at least one numbered cell ahead of schedule. No break has to be found by counting alone.</li>
-          <li>The dot mark is a pencil note for ground you&rsquo;ve proven must stay open. It isn&rsquo;t checked.</li>
+          <li>A cell&rsquo;s minute is the length of the fire&rsquo;s <strong>shortest open route</strong> from the ★ — never less than the straight-line distance.</li>
+          <li><strong>Bigger than the distance? Something is in the way.</strong> A 5 sitting 3 steps from the ★ proves every shorter route is blocked. That is how numbers reveal breaks.</li>
+          <li>Neighboring burnt cells differ by at most 1, and a cell burning at minute t caught it from a neighbor that burned at t&minus;1 — wavefronts, not teleports.</li>
+          <li><strong>Every break earns its place:</strong> open it, and the fire would reach some number too early. None hides in a corner justified by counting alone.</li>
+          <li>Tap cycles firebreak &rarr; dot &rarr; empty. The dot is your own note for &ldquo;proven open&rdquo; — it isn&rsquo;t checked. The moment your Nth break lands, the board checks itself.</li>
         </ul>
       </div>
     </div>
-  </details>
+  </section>
 
   <footer>
     <p>Every fire is generated on the spot and machine-verified: exactly one valid
@@ -812,6 +869,121 @@ undoBtn.addEventListener("click",undo);
 resetBtn.addEventListener("click",reset);
 
 newGame();
+})();
+</script>
+<script>
+/* Animated walkthrough: a fixed 4x5 board, scripted as discrete "beats".
+   Every beat re-renders the whole demo state, so pausing, stepping and
+   looping are all trivially consistent. */
+(function(){
+"use strict";
+var R=4,C=5,SPARK=10,BREAKS=[12,7];
+var TIMES=[2,3,4,5,6, 1,2,-1,6,7, 0,1,-1,5,6, 1,2,3,4,5];
+var MAXT=7;
+var CLUES={17:3,13:5};
+var DIRECT=[11,12],XCELL=12;
+var DETOUR=[15,16,17,18,13];
+
+var CAPS=[
+ 'Fire starts on the \u2605 at minute 0 and spreads one cell per minute \u2014 up, down, left, right. <span class="stress">Firebreaks stop it dead.</span>',
+ 'Now read the 5: it sits only <span class="stress">3 steps</span> from the \u2605, yet it burned at minute 5. Every short route must be blocked.',
+ 'The fire went around instead \u2014 a <span class="stress">5-step route</span>, arriving at minute 5 exactly. The numbers record how the fire really traveled.',
+ 'In a real puzzle the firebreaks are <span class="stress">hidden</span>. The numbers are your only evidence.',
+ 'You shade the breaks that make every number exact. Each board has <span class="stress">exactly one answer</span> \u2014 and pure deduction finds it.'
+];
+
+/* beat: cap, t (wave minute, -1 = unburnt), vb (visible breaks), route/blocked, dur */
+var BEATS=[
+ {cap:0,t:0, vb:2,dur:2600},
+ {cap:0,t:1, vb:2,dur:900},
+ {cap:0,t:2, vb:2,dur:900},
+ {cap:0,t:3, vb:2,dur:900},
+ {cap:0,t:4, vb:2,dur:900},
+ {cap:0,t:5, vb:2,dur:900},
+ {cap:0,t:6, vb:2,dur:900},
+ {cap:0,t:7, vb:2,dur:1600},
+ {cap:1,t:7, vb:2,blocked:1,dur:4200},
+ {cap:2,t:7, vb:2,route:1,dur:4600},
+ {cap:3,t:-1,vb:0,dur:3400},
+ {cap:3,t:-1,vb:1,dur:900},
+ {cap:3,t:-1,vb:2,dur:1200},
+ {cap:4,t:7, vb:2,dur:4800}
+];
+
+var grid=document.getElementById('demoGrid');
+var cap=document.getElementById('demoCap');
+var minEl=document.getElementById('demoMin');
+var btn=document.getElementById('demoBtn');
+var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+var cells=[];
+for(var i=0;i<R*C;i++){
+  var d=document.createElement('div');
+  d.className='dcell';
+  var f=1-(0.25+0.6*(TIMES[i]<0?0:TIMES[i]/MAXT));
+  var mix=function(a,c){return Math.round(c+(a-c)*f);};
+  d.style.setProperty('--burn-bg','rgb('+mix(255,255)+','+mix(216,138)+','+mix(107,61)+')');
+  grid.appendChild(d);
+  cells.push(d);
+}
+
+function render(k){
+  var b=BEATS[k];
+  grid.classList.toggle('focus',!!(b.route||b.blocked));
+  cap.innerHTML=CAPS[b.cap];
+  minEl.textContent=b.t<0?'\u2013':String(Math.min(b.t,MAXT));
+  for(var i=0;i<R*C;i++){
+    var d=cells[i],cls='dcell';
+    var isBreak=BREAKS.indexOf(i)>=0;
+    var shown=isBreak&&BREAKS.indexOf(i)<b.vb;
+    if(i===SPARK)cls+=' dspark';
+    if(CLUES[i]!==undefined)cls+=' dclue';
+    if(shown)cls+=' dbreak';
+    var burnt=!isBreak&&b.t>=0&&TIMES[i]<=b.t;
+    if(burnt)cls+=' dburn';
+    if(burnt&&CLUES[i]!==undefined)cls+=' ok';
+    if(b.blocked&&DIRECT.indexOf(i)>=0)cls+=' dblocked';
+    if(b.blocked&&i===XCELL)cls+=' dx';
+    if(b.route&&DETOUR.indexOf(i)>=0)cls+=' droute';
+    d.className=cls;
+    d.textContent=i===SPARK?'\u2605'
+      :CLUES[i]!==undefined?String(CLUES[i])
+      :burnt?String(TIMES[i]):'';
+  }
+}
+
+var beat=0,timer=null,playing=false;
+function show(k){beat=(k+BEATS.length)%BEATS.length;render(beat);}
+function tickNext(){show(beat+1);schedule();}
+function schedule(){
+  clearTimeout(timer);
+  if(playing)timer=setTimeout(tickNext,BEATS[beat].dur);
+}
+function setPlaying(p){
+  playing=p;
+  btn.textContent=p?'Pause':(reduced?'Next step':'Play');
+  schedule();
+}
+var userPaused=false;
+btn.addEventListener('click',function(){
+  if(reduced){show(beat+1);return;}
+  userPaused=playing;
+  setPlaying(!playing);
+});
+
+show(0);
+if(reduced){setPlaying(false);}
+else{
+  setPlaying(true);
+  if('IntersectionObserver' in window){
+    new IntersectionObserver(function(es){
+      var vis=es[0].isIntersecting;
+      if(!vis&&playing){setPlaying(false);}
+      else if(vis&&!playing&&!userPaused){setPlaying(true);}
+    },{threshold:0.25}).observe(grid);
+  }
+}
+window.FBDemo={show:show,pause:function(){userPaused=true;setPlaying(false);},beats:BEATS.length};
 })();
 </script>
 
