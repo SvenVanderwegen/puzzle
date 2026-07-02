@@ -477,14 +477,285 @@ def selftest():
     print("all self-tests passed")
 
 
+
+
+# ---------------------------------------------------------------------------
+# Vector emission (WS-01) — the sole producer of contracts/vectors/*.
+# This block is the one sanctioned post-WS-00 edit to the reference
+# implementation (pure addition; nothing above it changed — see
+# docs/adr/0011 when the contract freeze lands). Determinism rules and
+# check/scan orders are documented in contracts/vectors/README.md; TS and
+# PHP implementations must reproduce them exactly.
+# ---------------------------------------------------------------------------
+
+import hashlib
+import json
+import os
+
+
+def _flat_times(R, C, spark, shaded):
+    """Row-major burn times over unshaded cells; -1 = shaded or unreached."""
+    helper = Puzzle(R, C, spark, {}, 0)
+    d = bfs_times(helper, lambda x: x not in shaded)
+    return [d.get((r, c), -1) if (r, c) not in shaded else -1
+            for r in range(R) for c in range(C)]
+
+
+def _shading_bits(R, C, shaded):
+    return "".join("1" if (r, c) in shaded else "0"
+                   for r in range(R) for c in range(C))
+
+
+def _burn_verdict(R, C, spark, clues, n_breaks, shaded):
+    """Validity verdict with a FROZEN check order (vectors README):
+    spark_shaded -> clue_shaded (row-major) -> wrong_break_count ->
+    unreachable_cell (row-major first) -> clue_time_mismatch (row-major
+    first) -> ok."""
+    if spark in shaded:
+        return False, "spark_shaded"
+    for cell in sorted(clues):
+        if cell in shaded:
+            return False, "clue_shaded"
+    if len(shaded) != n_breaks:
+        return False, "wrong_break_count"
+    helper = Puzzle(R, C, spark, {}, 0)
+    d = bfs_times(helper, lambda x: x not in shaded)
+    for r in range(R):
+        for c in range(C):
+            if (r, c) not in shaded and (r, c) not in d:
+                return False, "unreachable_cell"
+    for cell in sorted(clues):
+        if d.get(cell) != clues[cell]:
+            return False, "clue_time_mismatch"
+    return True, "ok"
+
+
+def _first_violation(pz, state):
+    """Structured reason for an infeasible partial state, mirroring
+    feasible()'s check order. Returns dict or None if feasible."""
+    n_shaded = sum(1 for v in state.values() if v == SHADED)
+    n_unknown = sum(1 for v in state.values() if v == UNKNOWN)
+    if n_shaded > pz.n_breaks:
+        return {"kind": "too_many_breaks", "clue": None, "minute": None}
+    if n_shaded + n_unknown < pz.n_breaks:
+        return {"kind": "not_enough_breaks_left", "clue": None, "minute": None}
+    d_opt = bfs_times(pz, lambda x: state[x] != SHADED)
+    for cell in sorted(pz.clues):
+        v = pz.clues[cell]
+        if d_opt.get(cell, INF) > v:
+            return {"kind": "clue_unreachable_in_time",
+                    "clue": list(cell), "minute": v}
+    for x in pz.cells():
+        if state[x] == OPEN and x not in d_opt:
+            return {"kind": "open_cell_unreachable", "clue": None,
+                    "minute": None}
+    d_pes = bfs_times(pz, lambda x: state[x] == OPEN)
+    for cell in sorted(pz.clues):
+        v = pz.clues[cell]
+        if d_pes.get(cell, INF) < v:
+            return {"kind": "clue_reached_too_fast",
+                    "clue": list(cell), "minute": v}
+    return None
+
+
+def _deduction_steps(pz):
+    """Mirror of deduction_solve() that records structured steps. Scan is
+    row-major; OPEN is assumed before SHADED; count-fills emit one step per
+    cell in row-major order."""
+    state = initial_state(pz)
+    steps = []
+    progress = True
+    while progress:
+        progress = False
+        n_shaded = sum(1 for v in state.values() if v == SHADED)
+        n_unknown = sum(1 for v in state.values() if v == UNKNOWN)
+        if n_unknown == 0:
+            break
+        if n_shaded == pz.n_breaks:
+            for x in pz.cells():
+                if state[x] == UNKNOWN:
+                    state[x] = OPEN
+                    steps.append({"cell": list(x), "state": "open",
+                                  "reason": {"kind": "all_breaks_placed",
+                                             "clue": None, "minute": None}})
+            break
+        if n_shaded + n_unknown == pz.n_breaks:
+            for x in pz.cells():
+                if state[x] == UNKNOWN:
+                    state[x] = SHADED
+                    steps.append({"cell": list(x), "state": "break",
+                                  "reason": {"kind": "rest_must_be_breaks",
+                                             "clue": None, "minute": None}})
+            break
+        for x in pz.cells():
+            if state[x] != UNKNOWN:
+                continue
+            state[x] = OPEN
+            ok_open, _ = feasible(pz, state)
+            why_open = None if ok_open else _first_violation(pz, state)
+            state[x] = SHADED
+            ok_shaded, _ = feasible(pz, state)
+            why_shaded = None if ok_shaded else _first_violation(pz, state)
+            state[x] = UNKNOWN
+            if not ok_open and not ok_shaded:
+                return None, None
+            if not ok_open:
+                state[x] = SHADED
+                steps.append({"cell": list(x), "state": "break",
+                              "reason": why_open})
+                progress = True
+            elif not ok_shaded:
+                state[x] = OPEN
+                steps.append({"cell": list(x), "state": "open",
+                              "reason": why_shaded})
+                progress = True
+    if any(s == UNKNOWN for s in state.values()):
+        return None, None
+    return steps, state
+
+
+def _jsonl_line(obj):
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n"
+
+
+def _board_json(pz):
+    return {
+        "rows": pz.R, "cols": pz.C, "breaks": pz.n_breaks,
+        "spark": list(pz.spark),
+        "clues": [{"r": r, "c": c, "m": pz.clues[(r, c)]}
+                  for (r, c) in sorted(pz.clues)],
+    }
+
+
+def emit_vectors(outdir):
+    """Emit contracts/vectors/{burn,generate,deduction}.v1.jsonl.
+    Fully deterministic: fixed seed plan, canonical orderings, sorted keys."""
+    os.makedirs(outdir, exist_ok=True)
+    seed_plan = ([(3, 3, 2, s) for s in range(6)]
+                 + [(4, 4, 3, s) for s in range(8)]
+                 + [(5, 5, 4, s) for s in range(20)]
+                 + [(6, 6, 8, s) for s in range(13)]
+                 + [(7, 7, 12, s) for s in (4, 2, 1)])
+    assert len(seed_plan) == 50
+    mutation_bases = 29   # first N of seed_plan get burn mutations
+
+    gen_lines, ded_lines, burn_lines = [], [], []
+    burn_no = 0
+
+    def burn_case(R, C, spark, clues, n_breaks, shaded):
+        nonlocal burn_no
+        burn_no += 1
+        valid, reason = _burn_verdict(R, C, spark, clues, n_breaks, shaded)
+        burn_lines.append(_jsonl_line({
+            "id": f"burn-{burn_no:04d}",
+            "rows": R, "cols": C, "breaks": n_breaks, "spark": list(spark),
+            "clues": [{"r": r, "c": c, "m": clues[(r, c)]}
+                      for (r, c) in sorted(clues)],
+            "shading": _shading_bits(R, C, shaded),
+            "times": _flat_times(R, C, spark, shaded),
+            "valid": valid, "reason": reason,
+        }))
+
+    for idx, (R, C, N, seed) in enumerate(seed_plan):
+        pz, solution, times = generate(R, C, N, seed=seed)
+        shaded = {x for x, s in solution.items() if s == SHADED}
+        gid = f"gen-{idx:04d}"
+
+        steps, state = _deduction_steps(pz)
+        assert steps is not None and state == solution, f"{gid} deduction"
+
+        nonunique = None
+        if R <= 6:
+            for cell in sorted(pz.clues):
+                trial = Puzzle(R, C, pz.spark,
+                               {k: v for k, v in pz.clues.items()
+                                if k != cell}, N)
+                if count_solutions(trial, limit=2, node_budget=100000) == 2:
+                    nonunique = list(cell)
+                    break
+
+        gen_lines.append(_jsonl_line({
+            "id": gid, "seed": seed, **_board_json(pz),
+            "solution": _shading_bits(R, C, shaded),
+            "times": _flat_times(R, C, pz.spark, shaded),
+            "unique": True, "deduction_steps": len(steps),
+            "nonunique_without_clue": nonunique,
+        }))
+        ded_lines.append(_jsonl_line({"id": gid, "steps": steps}))
+
+        # the solved board is always a burn case
+        burn_case(R, C, pz.spark, pz.clues, N, shaded)
+
+        if idx >= mutation_bases:
+            continue
+
+        rng = random.Random(10_000 + idx)
+        cells = [(r, c) for r in range(R) for c in range(C)]
+        breaks_rm = sorted(shaded)
+        open_free = [x for x in cells
+                     if x not in shaded and x != pz.spark
+                     and x not in pz.clues]
+
+        muts = []
+        if open_free:
+            muts.append((shaded - {breaks_rm[0]}) | {open_free[0]})   # swap
+            muts.append((shaded - {breaks_rm[0]}) | {pz.spark})       # spark
+            first_clue = sorted(pz.clues)[0]
+            muts.append((shaded - {breaks_rm[0]}) | {first_clue})     # clue
+            muts.append(shaded | {open_free[0]})                      # N+1
+            muts.append(set())                                        # all open
+        muts.append(shaded - {breaks_rm[-1]})                         # N-1
+        for _ in range(7):                                            # random
+            pool = [x for x in cells if x != pz.spark
+                    and x not in pz.clues]
+            if len(pool) >= N:
+                muts.append(set(rng.sample(pool, N)))
+        # sealed corner pocket
+        for corner in ((0, 0), (0, C - 1), (R - 1, 0), (R - 1, C - 1)):
+            nb = [x for x in Puzzle(R, C, pz.spark, {}, 0).neighbors(corner)]
+            bad = ([corner] + nb)
+            if any(x == pz.spark or x in pz.clues for x in bad):
+                continue
+            if len(nb) == 2 and N >= 2:
+                donors = [b for b in breaks_rm if b not in nb][:2]
+                needed = [x for x in nb if x not in shaded]
+                if len(donors) >= len(needed):
+                    muts.append((shaded - set(donors[:len(needed)]))
+                                | set(nb))
+                    break
+        for m in muts:
+            burn_case(R, C, pz.spark, pz.clues, N, m)
+        # off-by-one clues (board differs, solution shading kept)
+        first_clue = sorted(pz.clues)[0]
+        for delta in (1, -1):
+            m2 = pz.clues[first_clue] + delta
+            if m2 >= 1:
+                clues2 = dict(pz.clues)
+                clues2[first_clue] = m2
+                burn_case(R, C, pz.spark, clues2, N, shaded)
+
+    with open(os.path.join(outdir, "generate.v1.jsonl"), "w") as f:
+        f.writelines(gen_lines)
+    with open(os.path.join(outdir, "deduction.v1.jsonl"), "w") as f:
+        f.writelines(ded_lines)
+    with open(os.path.join(outdir, "burn.v1.jsonl"), "w") as f:
+        f.writelines(burn_lines)
+    print(f"emitted {len(gen_lines)} generate, {len(ded_lines)} deduction, "
+          f"{len(burn_lines)} burn vectors to {outdir}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Firebreak puzzle toolkit")
     ap.add_argument("--demo", action="store_true", help="run the README example")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--generate", nargs=3, type=int, metavar=("R", "C", "N"))
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--emit-vectors", metavar="OUTDIR",
+                    help="write contracts/vectors/*.jsonl (WS-01)")
     args = ap.parse_args()
-    if args.selftest:
+    if args.emit_vectors:
+        emit_vectors(args.emit_vectors)
+    elif args.selftest:
         selftest()
     elif args.generate:
         R, C, N = args.generate

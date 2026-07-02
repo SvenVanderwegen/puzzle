@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burnfront.com/schemas/calendar.v1.json",
+  "title": "burnfront.calendar/1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "content_version",
+    "from",
+    "to",
+    "days",
+    "files"
+  ],
+  "properties": {
+    "schema": {
+      "const": "burnfront.calendar/1"
+    },
+    "content_version": {
+      "type": "string",
+      "pattern": "^v[0-9]{8}-[0-9]+$"
+    },
+    "from": {
+      "type": "string",
+      "format": "date"
+    },
+    "to": {
+      "type": "string",
+      "format": "date"
+    },
+    "days": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "puzzle",
+          "grade_tier"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "$comment": "UTC day (ADR-0002)."
+          },
+          "puzzle": {
+            "type": "string"
+          },
+          "grade_tier": {
+            "enum": [
+              "lookout",
+              "crew",
+              "hotshot"
+            ]
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "$comment": "Relative path -> sha256. Chain of trust: detached Ed25519 signature (<manifest>.sig, over the exact manifest bytes) -> this hash list -> files. Only manifests are signed (WS-05)."
+    }
+  }
+}

@@ -1,0 +1,41 @@
+# Gate 4 guard (WS-01): vectors must regenerate byte-identically from the
+# reference. Runs only when the reference or the vectors change — both require
+# an ADR, so this is rare and allowed to be slow (~4 min of generation).
+name: vectors-fresh
+
+on:
+  push:
+    paths:
+      - 'reference/**'
+      - 'contracts/vectors/**'
+      - '.github/workflows/vectors.yml'
+  pull_request:
+    paths:
+      - 'reference/**'
+      - 'contracts/vectors/**'
+      - '.github/workflows/vectors.yml'
+
+jobs:
+  vectors-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Regenerate vectors from the reference
+        run: python3 reference/firebreak.py --emit-vectors contracts/vectors
+      - name: Committed vectors must be byte-identical
+        run: git diff --exit-code contracts/vectors
+      - name: Sample daily validates against puzzle.v1 schema
+        run: |
+          pip install --quiet jsonschema
+          python3 - <<'EOF'
+          import json
+          from jsonschema import Draft202012Validator
+          schema = json.load(open('contracts/schemas/puzzle.v1.json'))
+          sample = json.load(open('contracts/schemas/examples/daily-sample.json'))
+          Draft202012Validator.check_schema(schema)
+          Draft202012Validator(schema).validate(sample)
+          print('sample daily validates')
+          EOF

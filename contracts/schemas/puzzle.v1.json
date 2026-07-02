@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burnfront.com/schemas/puzzle.v1.json",
+  "title": "burnfront.puzzle/1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "engine",
+    "board",
+    "grade",
+    "certificates",
+    "solution_sha256"
+  ],
+  "properties": {
+    "schema": {
+      "const": "burnfront.puzzle/1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^bf1-[0-9]+x[0-9]+-[0-9]{6}$"
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gen_version",
+        "rules_version"
+      ],
+      "properties": {
+        "gen_version": {
+          "type": "string"
+        },
+        "rules_version": {
+          "type": "integer",
+          "const": 1
+        }
+      }
+    },
+    "board": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rows",
+        "cols",
+        "spark",
+        "breaks",
+        "clues"
+      ],
+      "properties": {
+        "rows": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 12
+        },
+        "cols": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 12
+        },
+        "spark": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "breaks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "clues": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "r",
+              "c",
+              "m"
+            ],
+            "properties": {
+              "r": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "c": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "m": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "$comment": "Canonical order: row-major by (r, c)."
+        }
+      }
+    },
+    "grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tier",
+        "score"
+      ],
+      "properties": {
+        "tier": {
+          "enum": [
+            "lookout",
+            "crew",
+            "hotshot"
+          ]
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "techniques": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "$comment": "Grading v2 (WS-05) refines score/techniques; tier enum is frozen (player-facing)."
+    },
+    "certificates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unique",
+        "deduction_steps",
+        "witnessed"
+      ],
+      "properties": {
+        "unique": {
+          "const": true
+        },
+        "deduction_steps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "witnessed": {
+          "const": true
+        }
+      },
+      "$comment": "The pipeline refuses to emit unless all three hold."
+    },
+    "solution_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "$comment": "SHA-256 hex over the ASCII row-major solution bit string ('1' = firebreak). The solution itself is never published."
+    }
+  }
+}

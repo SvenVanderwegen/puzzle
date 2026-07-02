@@ -1,0 +1,70 @@
+{
+  "schema": "burnfront.puzzle/1",
+  "id": "bf1-6x6-000001",
+  "engine": {
+    "gen_version": "py-reference-ws01",
+    "rules_version": 1
+  },
+  "board": {
+    "rows": 6,
+    "cols": 6,
+    "spark": [
+      4,
+      0
+    ],
+    "breaks": 8,
+    "clues": [
+      {
+        "c": 3,
+        "m": 7,
+        "r": 0
+      },
+      {
+        "c": 4,
+        "m": 8,
+        "r": 0
+      },
+      {
+        "c": 1,
+        "m": 6,
+        "r": 1
+      },
+      {
+        "c": 4,
+        "m": 9,
+        "r": 1
+      },
+      {
+        "c": 0,
+        "m": 2,
+        "r": 2
+      },
+      {
+        "c": 4,
+        "m": 13,
+        "r": 3
+      },
+      {
+        "c": 2,
+        "m": 4,
+        "r": 4
+      },
+      {
+        "c": 3,
+        "m": 16,
+        "r": 5
+      }
+    ]
+  },
+  "grade": {
+    "tier": "crew",
+    "score": 27,
+    "techniques": []
+  },
+  "certificates": {
+    "unique": true,
+    "deduction_steps": 27,
+    "witnessed": true
+  },
+  "solution_sha256": "3befab45b32ef462738099c6d2bf0ca804ab84d3f3daa810f4889aef64ffe702"
+}
