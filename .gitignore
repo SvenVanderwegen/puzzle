@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+book/puzzle_cache.json
+book/*.pdf
