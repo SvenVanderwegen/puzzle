@@ -74,6 +74,12 @@ knows what you should do next.
 
 ## 3. Architecture: one TypeScript core, three surfaces
 
+> **Superseded (2026-07-02):** the owner chose a **Laravel + Postgres** backend and a
+> Vite+React SPA (no Next.js, no Node on the server); v1 auth is magic-link-only. The
+> operative architecture lives in `docs/BUILD_PLAYBOOK.md` + `docs/decisions.md`
+> (ADR-0001…0010). This section is kept as the original three-platform rationale — the
+> monorepo/engine/content-pipeline shape survives unchanged.
+
 End state: **web app + iOS + Android**, one hub product on all three
 (chess.com model). The decisive fact: the engine already exists in
 TypeScript, is ~400 lines of pure logic, and runs unchanged in the
@@ -210,6 +216,14 @@ generator that mathematically proves you never have to guess."*
 
 ## 8. Roadmap & budget (solo dev + contractors)
 
+> **Superseded for execution (2026-07-02):** the build is now specified in
+> [`docs/BUILD_PLAYBOOK.md`](docs/BUILD_PLAYBOOK.md) (multi-agent workstreams, contracts,
+> gates, 12-week schedule) with resolved decisions in
+> [`docs/decisions.md`](docs/decisions.md) and ADRs in `docs/adr/`. Backend is
+> **Laravel + Postgres** (owner decision), not the Supabase sketch below; v1 is web-only
+> and free; auth is magic-link-only. The sections below remain as the original product
+> rationale.
+
 **Phase 0 — validate (2–3 weeks, now):**
 web analytics (local, privacy-clean), difficulty telemetry, 20-person
 playtest loop, grading v2 in the Python pipeline. Exit gate: >50% of
@@ -268,6 +282,11 @@ comfortable.**
    Endless, one campaign arc, Coach. Everything else is a season.
 
 ## 10. Decisions needed from you
+
+> **All four decided (2026-07-02):** Burnfront approved (domains to be registered by
+> owner) · architecture = TS monorepo + **Laravel/Postgres** backend, web-first ·
+> monetization = free v1, Pro later · schedule/budget per `docs/BUILD_PLAYBOOK.md` §7.
+> Recorded as ADR-0001…0010. Original questions kept below for the record.
 
 1. Name: approve **Burnfront** (+ "Daily Burn Order") and register the
    six domains now; formal trademark knockout follows.
