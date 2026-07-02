@@ -312,3 +312,14 @@ python3 firebreak.py --selftest           # uniqueness, deducibility, clue
 ```
 
 No dependencies beyond the Python 3 standard library.
+
+## Playable web version
+
+[`index.html`](index.html) is a self-contained interactive version (no build,
+no dependencies — open it in any browser, or serve it via GitHub Pages). It
+ports the generator and both solver oracles to JavaScript, so every "New
+fire" is generated on the spot with the same guarantees: a verified unique
+solution, reachable by deduction alone. Marks cycle firebreak → clear-ground
+dot → empty; when the last break is placed the board checks itself, and on a
+correct solution the fire replays across the map, minute by minute. Three
+difficulty tiers: 5×5 with 4 breaks, 6×6 with 8, and 7×7 with 12.
