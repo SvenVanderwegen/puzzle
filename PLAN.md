@@ -29,23 +29,29 @@ skin.
 
 ## 2. Product vision (the big version)
 
-A "provably fair puzzles" brand with Firebreak as the flagship.
+A "provably fair puzzles" brand with Firebreak as the flagship — and the
+**chess.com hub model** as the structural template: one home screen where
+every mode is a lane, a rating that makes solving feel like progress, a
+daily with visible social proof, and a big single Play button that always
+knows what you should do next.
 
-**Core app (launch):**
-1. **Daily Fire** — one shared puzzle per day (deterministic from the
-   date), three sizes, streaks, share card (emoji grid + solve time, no
-   spoilers).
-2. **Expeditions** — the campaign: hand-curated generated packs arranged
-   as regions/seasons with a difficulty arc (5×5 intro → 9×9 monsters),
-   star ratings (no hints / time), and one new twist introduced per region.
-3. **Endless** — the generator exposed directly: size + difficulty dials,
-   "always fair" stamped on every board.
-4. **The Coach** — progressive hints powered by the deduction oracle:
-   nudge (which clue to look at) → argument (the reasoning) → resolution
-   (the cell). Also post-solve "cleanest line" replay.
-5. **The Academy** — the interactive walkthrough from the web version,
-   expanded into 8–10 one-concept lessons (too fast → wall; too slow →
-   channel; wavefront pinning; counting endgames).
+**The home hub (chess.com lane → our lane):**
+
+| chess.com | Firebreak equivalent |
+|---|---|
+| Puzzles + puzzle rating + streak flame | **Rated solving** — every graded board adjusts your Fire Rating (Elo-style: board grade vs. your time/hints); the streak flame is literally on-theme |
+| Daily puzzle, "solved by 1,108,791" | **The Daily Burn Order** — same board worldwide, global solve counter, streaks, spoiler-free share card |
+| Puzzle Rush / Puzzle Battle | **Rush** — 5-minute gauntlet of escalating fresh boards, three misses and out (the generator makes this infinite); **Duel** — same board head-to-head, first to contain it wins (async via Game Center at launch, live later) |
+| Play vs Coach | **The Coach** — progressive explainable hints from the deduction oracle: nudge (which clue) → argument (the reasoning) → resolution (the cell); post-solve "cleanest line" review, chess.com-game-review style |
+| Lessons ("Control The Center") | **The Academy** — the animated walkthrough expanded into one-concept lessons ("Too Fast Means Walls", "Reading the Late Eight", "Counting Endgames") with practice boards |
+| Big green Play button | **Play** — always the next right thing: unfinished daily → next Expedition board → rated queue |
+
+**Beyond the hub (launch content):**
+* **Expeditions** — the campaign: curated packs as regions/seasons with a
+  difficulty arc (5×5 intro → 9×9 monsters), star ratings, one new twist
+  per region.
+* **Endless** — the generator exposed directly: size + difficulty dials,
+  "always fair" stamped on every board.
 
 **Season 2+ (post-launch content beats):**
 * Variant mechanics as seasons: multiple sparks (fronts merge), hidden N,
@@ -181,13 +187,23 @@ comfortable.**
 
 ## 9. Risks (honest list)
 
-1. **Name collision — act on this first.** Remedy Entertainment released
-   *FBC: Firebreak* (2025), a AAA multiplayer shooter — same industry
-   class, real confusion/trademark risk, and App Store search burial.
-   Shortlist to test: **Backburn** (firefighting term for a controlled
-   burn set to stop a wildfire — thematically perfect for placing
-   breaks), Emberline, Burn Order, Ashline. Run knockout searches
-   (USPTO/EUIPO + App Store) before any branding spend.
+1. **Name collision — resolved to a recommendation (2026-07-02).**
+   Remedy's *FBC: Firebreak* (2025) makes "Firebreak" unusable as the
+   brand. A 30-name RDAP domain sweep found two thematically perfect
+   names with the **full .com/.app/.io family unregistered**, and web
+   searches found no existing game, studio, or mark on either:
+   * **Burnfront** ← recommended brand. One word, ownable, and it is the
+     real term for a wildfire's advancing edge — the exact object the
+     player reasons about. `burnfront.com/.app/.io` all free.
+   * **Burn Order** — the arrival times themselves; reads like an
+     incident document. `burnorder.com/.app/.io` all free.
+   Best combined: **the brand is Burnfront; the daily puzzle inside it
+   is "the Daily Burn Order."** Register all six domains immediately
+   (≈ $60/yr — availability decays fast), keep "Firebreak" as the genre
+   name in rules text if desired, then run the formal USPTO/EUIPO
+   knockout on Burnfront before logo/brand spend. (Also checked and
+   rejected: backburn.com/.app taken, flamefront.com taken,
+   emberline/ashline/blazeline etc. all taken.)
 2. **Niche-genre discoverability.** Mitigation: daily share loop, the
    web demo funnel, editorial pitch, and the "provably fair" story.
 3. **Difficulty alienates casuals.** Mitigation: Academy + Coach, gentle
@@ -199,8 +215,10 @@ comfortable.**
 
 ## 10. Decisions needed from you
 
-1. Name: run the knockout search on Backburn (or keep Firebreak for the
-   web/print only)?
+1. Name: approve **Burnfront** (+ "Daily Burn Order") and register the
+   six domains now; formal trademark knockout follows.
 2. Platform: confirm iOS-native-first (vs Godot-for-Android-parity).
-3. Monetization: confirm one-time Pro unlock (vs subscription).
+3. Monetization: confirm one-time Pro unlock (vs subscription). Note the
+   Duel/Rush competitive layer may justify a light subscription tier
+   later, chess.com-style — decide only after launch data.
 4. Budget/timeline comfort: shoestring vs comfortable track.
