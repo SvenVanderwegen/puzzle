@@ -38,7 +38,7 @@ burnfront/
 ├─ docs/{BUILD_PLAYBOOK.md,decisions.md,gdpr.md,RUNBOOK.md,adr/,design/}
 ├─ e2e/                       # Playwright journeys + Lighthouse budgets
 ├─ reference/                 # frozen prototype: firebreak.py, index.html (read-only)
-└─ CLAUDE.md  CODEMAP.md  turbo.json  pnpm-workspace.yaml  .github/workflows/
+└─ README.md  PLAN.md  CLAUDE.md  CODEMAP.md  turbo.json  pnpm-workspace.yaml  .github/workflows/
 ```
 
 Import DAG (dependency-cruiser + Pest `arch()` enforced): `apps/web → packages/* → engine`;

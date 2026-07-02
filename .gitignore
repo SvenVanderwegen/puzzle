@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+node_modules/
+dist/
+coverage/
+.turbo/
+.env

@@ -1,0 +1,14 @@
+{
+  "name": "@burnfront/game-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-agnostic play state machines. Imports @burnfront/engine only. Implemented in WS-03.",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {}
+}

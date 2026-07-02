@@ -1,0 +1,14 @@
+{
+  "name": "@burnfront/ui-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Board + burn-replay web components. Implemented in WS-04.",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {}
+}

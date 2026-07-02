@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.turbo
+reference/
+docs/design/
+pnpm-lock.yaml
+*.md

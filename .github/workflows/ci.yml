@@ -1,0 +1,56 @@
+# Skeleton CI (WS-00): playbook §5 gates 1-3 and 9.
+# WS-16 extends this to the full gate list (vectors, contract conformance, e2e, budgets).
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  gates-1-3:
+    name: typecheck / lint / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Gate 1 — typecheck
+        run: pnpm -r typecheck
+      - name: Gate 2 — lint + format
+        run: pnpm -r lint && pnpm format:check
+      - name: Gate 3 — tests
+        run: pnpm -r test
+
+  reference-selftest:
+    name: python reference selftest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 reference/firebreak.py --selftest
+
+  gate-9:
+    name: hygiene sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Hygiene (no debug output / markers / focused tests; engine deps empty)
+        run: bash scripts/hygiene.sh
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

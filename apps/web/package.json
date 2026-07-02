@@ -1,0 +1,14 @@
+{
+  "name": "@burnfront/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Burnfront SPA (hub, daily, endless, academy, coach). Implemented in WS-09+.",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {}
+}

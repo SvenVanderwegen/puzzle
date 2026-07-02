@@ -1,0 +1,26 @@
+{
+  "name": "burnfront",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "hygiene": "bash scripts/hygiene.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "prettier": "^3.9.4",
+    "turbo": "^2.10.2",
+    "typescript": "~5.7.3",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^3.2.6"
+  },
+  "type": "module"
+}

@@ -51,5 +51,5 @@ EN-only launch but all copy through one keyed-strings module (NL later = transla
 file) · landing social-proof counter fed by anonymous `solve_complete` events with
 rank-fallback below 500 solves/day · `official_ms` clamped in BOTH directions
 (≤ server window, ≥ replay duration) · SEO checklist in WS-15 · a11y: WCAG 2.1 AA
-declared; no hold-to-reveal-only interactions · legal pages drafted by agents, owner
-+ lawyer sign-off · ~500 burn vectors (not 50) as the cross-language suite.
+declared; no hold-to-reveal-only interactions · legal pages drafted by agents, signed
+off by owner and lawyer · ~500 burn vectors (not 50) as the cross-language suite.

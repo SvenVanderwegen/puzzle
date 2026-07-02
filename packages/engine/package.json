@@ -1,0 +1,14 @@
+{
+  "name": "@burnfront/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Firebreak rules engine. Pure TS, ZERO runtime dependencies (CI-enforced). Implemented in WS-02 against contracts/engine-api.d.ts; contracts/vectors are law.",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {}
+}
