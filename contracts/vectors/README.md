@@ -17,7 +17,8 @@ Consumers: `packages/engine` (all three files, WS-02) · `api/` PHP `BurnValidat
 ```
 - `shading`/`solution`: row-major bit string, `1` = firebreak.
 - `times`: row-major burn minutes over unshaded cells; `-1` = shaded or unreached.
-  Always emitted, even for invalid shadings.
+  Always emitted, even for invalid shadings. If the spark itself is shaded, the
+  fire never starts: every cell is `-1`.
 - `reason` (FROZEN check order — implementations must report the first failure in
   this order): `spark_shaded` → `clue_shaded` (row-major first) →
   `wrong_break_count` → `unreachable_cell` (row-major first) →

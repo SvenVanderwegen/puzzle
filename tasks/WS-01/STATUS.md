@@ -62,3 +62,12 @@ constraints), `contracts/db-schema.sql` (ADR-0005), `contracts/RATING.md` (Glick
 params + endless weight + numeric fixtures), `contracts/design-tokens.json`
 (extract from reference/index.html CSS), `contracts/COPY.md`,
 `contracts/DEPENDENCIES.md`. Author from docs/decisions.md ONLY.
+
+## Session a close-out — 2026-07-02
+
+Independent verifier: **PASS 8/8**, including a from-scratch BFS re-verification of
+25 sampled burn cases (25/25 semantic agreement) and a scope audit of the
+reference/ diff (purely additive apart from the argparse elif). Remote CI green on
+1f4e3e5 for both workflows; vectors-fresh regenerated all 609 vectors
+byte-identically on GitHub's runner. One README ambiguity the verifier surfaced
+(shaded spark ⇒ all times -1) clarified pre-freeze. Session a CLOSED.
