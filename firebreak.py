@@ -19,8 +19,11 @@ This module provides:
   * an exact solver that counts solutions (used to guarantee uniqueness),
   * a deduction-only solver (no search) used to certify that a puzzle is
     solvable by a chain of single-cell inferences — i.e. no guessing,
-  * a generator: build a random terrain, take the full clue set, then
-    greedily remove clues while both uniqueness and deducibility hold.
+  * a generator: build a random terrain repaired so every break is
+    "witnessed" (opening it would change some burn time — no break is
+    justified by the count alone), take the full clue set, then greedily
+    remove clues while uniqueness, deducibility, and the witness property
+    all hold.
 
 Usage:
   python3 firebreak.py --demo             # the worked example from README
@@ -137,9 +140,13 @@ def initial_state(pz):
 # sound pruning. Used as the uniqueness oracle during generation.
 # ---------------------------------------------------------------------------
 
-def count_solutions(pz, limit=2, collect=None):
+def count_solutions(pz, limit=2, collect=None, node_budget=None):
+    """Exact solution count (up to `limit`). If `node_budget` is given and
+    exhausted, returns None ("don't know") — callers treat that
+    conservatively, so it never endangers the uniqueness invariant."""
     state = initial_state(pz)
     count = 0
+    nodes = [node_budget if node_budget is not None else float("inf")]
 
     def pick_branch_cell():
         # Prefer an unknown cell sitting on a tight optimistic path to some
@@ -168,8 +175,9 @@ def count_solutions(pz, limit=2, collect=None):
 
     def dfs():
         nonlocal count
-        if count >= limit:
+        if count >= limit or nodes[0] < 0:
             return
+        nodes[0] -= 1
         ok, _ = feasible(pz, state)
         if not ok:
             return
@@ -201,6 +209,8 @@ def count_solutions(pz, limit=2, collect=None):
                 return
 
     dfs()
+    if nodes[0] < 0:
+        return None          # budget exhausted: solution count unknown
     return count
 
 
@@ -277,19 +287,63 @@ def random_terrain(R, C, N, rng):
             return spark, shaded, d
 
 
+def breaks_witnessed(R, C, spark, shaded, clues):
+    """True iff every firebreak, when opened (the others staying), lets the
+    fire reach at least one clued cell earlier than its number. Such a break
+    is *witnessed*: the clues themselves justify it, not just the count N."""
+    helper = Puzzle(R, C, spark, {}, 0)
+    for s in shaded:
+        rest = shaded - {s}
+        d = bfs_times(helper, lambda x: x not in rest)
+        if all(d.get(c) == v for c, v in clues.items()):
+            return False
+    return True
+
+
+def witnessed_terrain(R, C, N, rng, max_moves=400):
+    """Random terrain repaired so that every break is witnessed by the full
+    time map: silent breaks (whose opening changes no burn time) are moved
+    to fresh connectivity-preserving positions until none remain."""
+    cells = [(r, c) for r in range(R) for c in range(C)]
+    while True:
+        spark, shaded, times = random_terrain(R, C, N, rng)
+        helper = Puzzle(R, C, spark, {}, 0)
+        for _ in range(max_moves):
+            silent = []
+            for s in shaded:
+                rest = shaded - {s}
+                d = bfs_times(helper, lambda x: x not in rest)
+                if all(d.get(x) == t for x, t in times.items()):
+                    silent.append(s)
+            if not silent:
+                return spark, shaded, times
+            s = rng.choice(silent)
+            for _ in range(50):
+                t = rng.choice(cells)
+                if t == spark or t in shaded:
+                    continue
+                cand = (shaded - {s}) | {t}
+                d = bfs_times(helper, lambda x: x not in cand)
+                if len(d) == R * C - N:
+                    shaded, times = cand, d
+                    break
+
+
 def generate(R, C, N, seed=None, require_detour=True, max_tries=500):
     """
     Generate a Firebreak puzzle with a unique solution that is provably
     solvable by single-cell deductions (no guessing).
 
-    Strategy: build a full solution, start from the complete clue set
-    (which is trivially unique), then greedily delete clues; a deletion is
-    kept only if the exact solver still reports exactly one solution AND
-    the deduction-only solver still finishes.
+    Strategy: build a full solution on witnessed terrain (every break, if
+    opened, changes some burn time — no break is justified by the count
+    alone), start from the complete clue set (which is trivially unique),
+    then greedily delete clues; a deletion is kept only if the exact solver
+    still reports exactly one solution AND the deduction-only solver still
+    finishes AND every break stays witnessed by the remaining clues.
     """
     rng = random.Random(seed)
     for _ in range(max_tries):
-        spark, shaded, times = random_terrain(R, C, N, rng)
+        spark, shaded, times = witnessed_terrain(R, C, N, rng)
         if require_detour and not any(
                 t > abs(x[0] - spark[0]) + abs(x[1] - spark[1])
                 for x, t in times.items()):
@@ -298,17 +352,19 @@ def generate(R, C, N, seed=None, require_detour=True, max_tries=500):
         pz = Puzzle(R, C, spark, clues, N)
         assert count_solutions(pz) == 1
         # Greedy clue removal, repeated until no clue can be removed. A clue
-        # is dropped only if the puzzle stays unique AND deduction-solvable.
+        # is dropped only if the puzzle stays unique AND deduction-solvable
+        # AND every firebreak keeps a clue that justifies it.
         removed_any = True
         while removed_any:
             removed_any = False
             order = list(pz.clues)
             rng.shuffle(order)
             for c in order:
-                trial = Puzzle(R, C, spark,
-                               {k: v for k, v in pz.clues.items() if k != c},
-                               N)
-                if count_solutions(trial) == 1 and deduction_solve(trial):
+                trial_clues = {k: v for k, v in pz.clues.items() if k != c}
+                trial = Puzzle(R, C, spark, trial_clues, N)
+                if (breaks_witnessed(R, C, spark, shaded, trial_clues)
+                        and count_solutions(trial, node_budget=60000) == 1
+                        and deduction_solve(trial)):
                     pz = trial
                     removed_any = True
         solution = {x: (SHADED if x in shaded else OPEN)
@@ -350,8 +406,9 @@ def render(pz, solution=None, times=None):
 # ---------------------------------------------------------------------------
 
 def demo_puzzle():
-    """The instance produced by generate(5, 5, 4, seed=12), hard-coded so
-    the README example stays stable. Columns A-E, rows 1-5: spark at A4,
+    """The fixed instance used in the README, kept stable across generator
+    changes; the self-test verifies it is unique, deduction-solvable, and
+    that every break is witnessed. Columns A-E, rows 1-5: spark at A4,
     clues B4=1, B5=2, C3=5, E2=8, D5=8."""
     clues = {
         (1, 4): 8,
@@ -392,14 +449,21 @@ def selftest():
     ok = run_demo(verbose=False)
     assert ok, "demo puzzle must be unique and deducible"
 
-    # Generated puzzles must be unique, deducible, and their published
-    # solution must be found by the exact solver.
+    # The demo's breaks must all be witnessed by its clues.
+    pz = demo_puzzle()
+    demo_breaks = {(1, 3), (2, 1), (3, 2), (4, 2)}
+    assert breaks_witnessed(pz.R, pz.C, pz.spark, demo_breaks, pz.clues)
+
+    # Generated puzzles must be unique, deducible, their published solution
+    # must be found by the exact solver, and every break must be witnessed.
     for seed in range(5):
         pz, solution, _ = generate(5, 5, 4, seed=seed)
         sols = []
         assert count_solutions(pz, limit=3, collect=sols) == 1
         assert sols[0] == solution
         assert deduction_solve(pz) == solution
+        shaded = {x for x, s in solution.items() if s == SHADED}
+        assert breaks_witnessed(pz.R, pz.C, pz.spark, shaded, pz.clues)
 
     # Removing one more clue from the demo must break uniqueness or
     # deducibility (the clue set is irredundant).

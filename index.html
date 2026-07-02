@@ -237,6 +237,7 @@
         <ul>
           <li>A cell&rsquo;s burn minute is the length of the shortest unshaded route from the ★ — never less than its straight-line distance. A big number means the fire was forced around something.</li>
           <li>Unshaded neighbors burn within a minute of each other, and a cell burning at minute t has a neighbor that burned at t&minus;1.</li>
+          <li>Every firebreak earns its place: if it were open, the fire would reach at least one numbered cell ahead of schedule. No break has to be found by counting alone.</li>
           <li>The dot mark is a pencil note for ground you&rsquo;ve proven must stay open. It isn&rsquo;t checked.</li>
         </ul>
       </div>
@@ -245,7 +246,8 @@
 
   <footer>
     <p>Every fire is generated on the spot and machine-verified: exactly one valid
-    placement of breaks, and a solving path that needs no guessing — only deduction.</p>
+    placement of breaks, a solving path that needs no guessing, and no firebreak
+    the clues can&rsquo;t justify.</p>
   </footer>
 </main>
 
@@ -454,6 +456,57 @@ function randomTerrain(R,C,N,rnd){
   }
 }
 
+/* Every firebreak, when opened (others staying), must let the fire reach
+   at least one clued cell earlier than its number. Such a break is
+   "witnessed": the visible clues justify it, never the count alone. */
+function breaksWitnessed(n,adj,spark,shaded,clueIdx,clueVal){
+  for(let s=0;s<n;s++){
+    if(!shaded[s])continue;
+    const d=bfs(n,adj,spark,i=>i===s||!shaded[i]);
+    let changed=false;
+    for(let k=0;k<clueIdx.length;k++)
+      if(d[clueIdx[k]]!==clueVal[k]){changed=true;break;}
+    if(!changed)return false;
+  }
+  return true;
+}
+
+/* Random terrain repaired until every break is witnessed by the full time
+   map: silent breaks are relocated (connectivity preserved) until none
+   remain, so no break in the solution sits on a "looks fine" square. */
+function witnessedTerrain(R,C,N,rnd){
+  const n=R*C,adj=buildAdj(R,C);
+  for(;;){
+    const terr=randomTerrain(R,C,N,rnd);
+    const shaded=terr.shaded,spark=terr.spark;
+    let times=terr.times,ok=false;
+    for(let moves=0;moves<400;moves++){
+      const silent=[];
+      for(let s=0;s<n;s++){
+        if(!shaded[s])continue;
+        const d=bfs(n,adj,spark,i=>i===s||!shaded[i]);
+        let changed=false;
+        for(let i=0;i<n;i++)
+          if(!shaded[i]&&d[i]!==times[i]){changed=true;break;}
+        if(!changed)silent.push(s);
+      }
+      if(!silent.length){ok=true;break;}
+      const s=silent[Math.floor(rnd()*silent.length)];
+      for(let tries=0;tries<50;tries++){
+        const t=Math.floor(rnd()*n);
+        if(t===spark||shaded[t])continue;
+        shaded[s]=0;shaded[t]=1;
+        const d=bfs(n,adj,spark,i=>!shaded[i]);
+        let reach=0;
+        for(let i=0;i<n;i++)if(d[i]>=0)reach++;
+        if(reach===n-N){times=d;break;}
+        shaded[s]=1;shaded[t]=0;
+      }
+    }
+    if(ok)return {spark,shaded,times};
+  }
+}
+
 function hasDetour(R,C,spark,times){
   const sr=Math.floor(spark/C),sc=spark%C;
   for(let r=0;r<R;r++)for(let c=0;c<C;c++){
@@ -479,25 +532,28 @@ async function generatePuzzle(R,C,N,opts){
     if(++work%yieldEvery===0)await new Promise(r=>setTimeout(r,0));
   }
   for(;;){
-    const terr=randomTerrain(R,C,N,rnd);
+    const terr=witnessedTerrain(R,C,N,rnd);
     await tick();
     if(!hasDetour(R,C,terr.spark,terr.times))continue;
     let clues=[];
     for(let i=0;i<R*C;i++)
       if(!terr.shaded[i]&&i!==terr.spark)clues.push([i,terr.times[i]]);
     let pz=makePuzzle(R,C,terr.spark,clues,N);
+    const minClues=opts.minClues||0;
     let removed=true;
-    while(removed&&Date.now()-t0<budgetMs){
+    while(removed&&Date.now()-t0<budgetMs&&clues.length>minClues){
       removed=false;
-      const order=shuffle(clues.map((_,k)=>k),rnd);
-      for(const k of order){
-        if(Date.now()-t0>=budgetMs)break;
-        const trialClues=clues.filter((_,j)=>j!==k);
+      const order=shuffle(clues.map(cv=>cv[0]),rnd);
+      for(const cell of order){
+        if(Date.now()-t0>=budgetMs||clues.length<=minClues)break;
+        const trialClues=clues.filter(cv=>cv[0]!==cell);
+        if(trialClues.length===clues.length)continue; /* already removed */
         const trial=makePuzzle(R,C,terr.spark,trialClues,N);
+        if(!breaksWitnessed(trial.n,trial.adj,terr.spark,terr.shaded,
+                            trial.clueIdx,trial.clueVal)){await tick();continue;}
         const res=countSolutions(trial,2,60000);
         if(!res.aborted&&res.count===1&&deductionSolve(trial)){
           clues=trialClues;pz=trial;removed=true;
-          break; /* re-shuffle after each removal keeps indices simple */
         }
         await tick();
       }
@@ -524,7 +580,8 @@ function validate(pz,breaks){
 
 const root=typeof window!=="undefined"?window:globalThis;
 root.FBEngine={buildAdj,bfs,makePuzzle,countSolutions,deductionSolve,
-               generatePuzzle,validate,randomTerrain,hasDetour};
+               generatePuzzle,validate,randomTerrain,witnessedTerrain,
+               breaksWitnessed,hasDetour};
 })();
 </script>
 
@@ -535,9 +592,9 @@ root.FBEngine={buildAdj,bfs,makePuzzle,countSolutions,deductionSolve,
 const E=window.FBEngine;
 
 const DIFFS={
-  easy:{R:5,C:5,N:4,budgetMs:4000},
-  medium:{R:6,C:6,N:8,budgetMs:6000},
-  hard:{R:7,C:7,N:12,budgetMs:9000}
+  easy:{R:5,C:5,N:4,budgetMs:4000,minClues:5},
+  medium:{R:6,C:6,N:8,budgetMs:6000,minClues:8},
+  hard:{R:7,C:7,N:12,budgetMs:9000,minClues:12}
 };
 const COLS="ABCDEFGHIJ";
 
@@ -726,7 +783,7 @@ async function newGame(){
   banner.classList.remove("show");
   hint.style.display="";
   try{
-    const res=await E.generatePuzzle(cfg.R,cfg.C,cfg.N,{budgetMs:cfg.budgetMs});
+    const res=await E.generatePuzzle(cfg.R,cfg.C,cfg.N,{budgetMs:cfg.budgetMs,minClues:cfg.minClues});
     if(token!==genToken)return;             /* superseded by a newer request */
     game={
       pz:res.pz,spark:res.spark,R:cfg.R,C:cfg.C,N:cfg.N,
