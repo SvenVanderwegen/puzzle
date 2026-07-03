@@ -56,6 +56,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       php: ${{ steps.filter.outputs.php }}
       reference: ${{ steps.filter.outputs.reference }}
+      pipeline: ${{ steps.filter.outputs.pipeline }}
       contracts_or_config: ${{ steps.filter.outputs.contracts_or_config }}
     steps:
       - uses: actions/checkout@v4
@@ -112,6 +113,22 @@ jobs:
         with:
           python-version: '3.12'
       - run: python3 reference/firebreak.py --selftest
+
+  pipeline-test:
+    name: python pipeline suite
+    needs: changes
+    if: needs.changes.outputs.pipeline == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pipeline/requirements.lock
+      - run: make -C pipeline venv
+      - run: make -C pipeline test
 
   conformance:
     name: generated artifacts fresh + budgets

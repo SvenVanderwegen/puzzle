@@ -9,6 +9,9 @@
 #                       (drives the TS gates, conformance, and the e2e sentinel)
 #   php                 api/, contracts/, scripts/ or CI config changed
 #   reference           reference/, scripts/ or CI config changed
+#   pipeline            pipeline/, contracts/ (vectors are its law),
+#                       reference/ (parity source), scripts/ or CI config
+#                       changed (drives the python pipeline-test leg)
 #   contracts_or_config contracts/, scripts/ or root build config changed —
 #                       the TS leg forces turbo (TURBO_FORCE) because turbo
 #                       hashes package inputs only and cannot see contracts/
@@ -33,6 +36,7 @@ run_everything() {
   echo "code=true"
   echo "php=true"
   echo "reference=true"
+  echo "pipeline=true"
   echo "contracts_or_config=true"
 }
 
@@ -85,6 +89,11 @@ if grep -qE '^(reference/|scripts/|\.github/)' <<<"$changed"; then
   reference=true
 fi
 
+pipeline=false
+if grep -qE '^(pipeline/|contracts/|reference/|scripts/|\.github/)' <<<"$changed"; then
+  pipeline=true
+fi
+
 contracts_or_config=false
 if grep -qE '^(contracts/|scripts/|\.github/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$|eslint\.config\.js$|turbo\.json$|\.prettierrc$|\.prettierignore$)' <<<"$changed"; then
   contracts_or_config=true
@@ -93,4 +102,5 @@ fi
 echo "code=$code"
 echo "php=$php"
 echo "reference=$reference"
+echo "pipeline=$pipeline"
 echo "contracts_or_config=$contracts_or_config"

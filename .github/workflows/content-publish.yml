@@ -10,9 +10,8 @@
 #   - WS-05's `make content` emits pipeline/dist/content/{version}/... with a
 #     signed manifest ({manifest}.sig sibling, Ed25519)
 #   - the signing key arrives via secret CONTENT_SIGNING_PRIVATE_KEY and is
-#     passed as a file path in CONTENT_SIGNING_PRIVATE_KEY_PATH (WS-05's brief
-#     reads the key path from env; confirm the exact variable name when WS-05
-#     lands and adjust here if it differs)
+#     passed as a key-file path via the Makefile's KEY= variable (interface
+#     confirmed at WS-05 integration; see pipeline/Makefile)
 #   - the dist-dir -> bucket-root sync below assumes puzzle files and manifest
 #     live flat under the version dir, matching CONTENT_CDN_URL_TEMPLATE
 #     (https://content.burnfront.com/puzzles/{id}.json); confirm against
@@ -25,6 +24,16 @@ name: content-publish
 on:
   workflow_dispatch:
     inputs:
+      date:
+        description: 'First daily to emit (YYYYMMDD)'
+        required: true
+      days:
+        description: 'Number of dailies to emit'
+        required: false
+        default: '60'
+      seeds:
+        description: 'Curated seeds JSON, path within pipeline/ (never the tests/fixtures sample for production)'
+        required: true
       manifest:
         description: 'Manifest object key within the content bucket'
         required: false
@@ -95,12 +104,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --quiet pynacl pillow jsonschema
+      - run: make -C pipeline venv
       - name: Emit signed content
         id: emit
         env:
           SIGNING_KEY: ${{ secrets.CONTENT_SIGNING_PRIVATE_KEY }}
           MANIFEST: ${{ inputs.manifest }}
+          EMIT_DATE: ${{ inputs.date }}
+          EMIT_DAYS: ${{ inputs.days }}
+          EMIT_SEEDS: ${{ inputs.seeds }}
         run: |
           if [ ! -f pipeline/Makefile ]; then
             echo '::error::pipeline/ has no Makefile — WS-05 (content pipeline) has not landed yet.'
@@ -110,7 +122,8 @@ jobs:
           install -m 600 /dev/null "$keyfile"
           printf '%s' "$SIGNING_KEY" > "$keyfile"
           trap 'rm -f "$keyfile"' EXIT
-          CONTENT_SIGNING_PRIVATE_KEY_PATH="$keyfile" make -C pipeline content
+          make -C pipeline content DATE="$EMIT_DATE" DAYS="$EMIT_DAYS" \
+            SEEDS="$EMIT_SEEDS" KEY="$keyfile"
 
           versions=(pipeline/dist/content/*/)
           if [ "${#versions[@]}" -ne 1 ] || [ ! -d "${versions[0]}" ]; then
@@ -125,6 +138,14 @@ jobs:
           test -f "pipeline/dist/content/$version/$MANIFEST.sig"
           find "pipeline/dist/content/$version" -name '*.json' | grep -q . || {
             echo '::error::dist contains no JSON — refusing to publish'; exit 1; }
+
+          # Refuse content signed with the committed DEV key (WS-05 ships it
+          # for tests; the Makefile even defaults to it — this is the fence).
+          if make -C pipeline verify "DIR=dist/content/$version" \
+               PUB=tests/fixtures/dev-signing-key.pub >/dev/null 2>&1; then
+            echo '::error::dist verifies against the committed DEV key — refusing to publish'
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: content-dist

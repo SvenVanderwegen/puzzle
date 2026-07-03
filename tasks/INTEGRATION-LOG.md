@@ -242,3 +242,33 @@
   default branch to main, then Hetzner/Forge/Cloudflare/R2 accounts + the 13
   named secrets; all live rehearsals (staging deploy, rollback, pgBackRest
   restore drill) remain REHEARSAL PENDING in docs/RUNBOOK.md.
+
+## 2026-07-03 — WS-05 merged (critical path clear)
+- Branch worktree-agent-ab7cb9cb136c6f64f @ 99550ef → merged after verification
+  (MERGE, no blocking fixes; verifier re-proved 509/509 burn vectors byte-exact
+  with a mutation-sensitive harness, out-of-subset generate parity, all four
+  refusal gates incl. a constructed 2-solution board and a constructed
+  silent-break board, cross-stack Ed25519 verify in PyNaCl AND PHP sodium,
+  all 21 fixture boards re-checked for the three fairness guarantees, OG PNGs
+  proven spoiler-free by byte-identical re-render from public data only, a
+  full 60-day emit conforming 60/60 to the weekly table — 365 dailies ≈ 3.5h
+  single-core).
+- Merge conflicts (unions): .prettierignore keeps api/ + pipeline/;
+  hygiene.sh keeps vendor + .venv excludes.
+- Lead rulings: Decision 7 CONFIRMED (the reduced 7x7/8x8 samples n=93/66
+  were lead-authorized in the resume directive after the measurement job was
+  reaped); committed DEV signing key RATIFIED (loudly marked, tests-only) —
+  with the fence built this cycle: content-publish.yml now REFUSES any dist
+  that verifies against the committed dev pubkey; checkpointed-foreground
+  curation equivalence CLOSED by the verifier's one-process byte-identical
+  re-emit; verify-ignores-unmapped-files noted → WS-22 to confirm the api
+  importer consumes only signed-map files.
+- Lead touches at integration: content-publish.yml reconciled with the real
+  Makefile interface (make venv; DATE/DAYS/SEEDS/KEY args; new required
+  date+seeds dispatch inputs) + the dev-key refusal guard; ci.yml gains the
+  pipeline-test leg (make venv + pytest) behind a new `pipeline` filter class
+  in ci-changed.sh (pipeline/, contracts/, reference/, scripts/, CI config;
+  fail-open preserved) — closes the CI gap WS-16 tracked; 50/50 pipeline
+  tests green on the merged mainline.
+- Unblocked: WS-10 (daily page) and WS-12 (academy) launch off this head;
+  og:image 404 noted at WS-15 is now resolvable (PNGs exist in the fixture).
