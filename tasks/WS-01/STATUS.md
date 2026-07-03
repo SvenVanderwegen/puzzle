@@ -134,3 +134,29 @@ rejected" list. **Lead ruling: accepted** — a greppable ban on a vendor is the
 purpose of the rejected-list; the killed-options rule means no *affirmative*
 references. Any future automated killed-options grep must except the
 DEPENDENCIES.md rejected section. Session b CLOSED.
+
+## Session c — 2026-07-02 (freeze; lead agent)
+
+## Done
+- Lead cross-consistency pass over the full pack: two seams found and closed
+  pre-freeze — (1) endless `deduction_steps` storage documented on
+  `solves.endless_spec` (db-schema.sql comment); (2) **self-serve email change cut
+  from v1** (WS-14 brief promised it; no endpoint existed; magic-link auth makes it
+  nontrivial — delete + re-signup covers v1). WS-14 brief amended.
+- **Owner sign-off obtained explicitly** ("Approve the freeze") with the two policy
+  calls surfaced: time-free rating outcomes; email-change cut.
+- `docs/adr/0011-contract-freeze.md` committed: frozen file list, change process
+  (ADR in same range + contract-change label on PRs + owner approval), COPY
+  EN-wording exemption, --emit-vectors sanction recorded.
+- `scripts/contracts-guard.sh` + `contracts-guard` CI job (push + PR ranges).
+  Behavior proven: pre-freeze contracts-only range FAILS, empty range no-ops,
+  and this very commit (contracts diff + new ADR together) must PASS on CI.
+- Gates 1–3 + 9 green.
+
+## WS-01 CLOSED. All acceptance criteria met across sessions a–c.
+
+## Resume instructions
+Lanes A and B are open. Next sessions (parallelizable):
+- **WS-02** (tasks/WS-02/brief.md) — engine extraction; CRITICAL PATH; start first.
+- **WS-06** (tasks/WS-06/brief.md) — Laravel scaffold + magic-link auth.
+Owner actions still open: register burnfront.com/.app/.io.

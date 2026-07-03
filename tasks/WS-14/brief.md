@@ -5,7 +5,7 @@ Lane: A · Deps: WS-09, WS-06 · Sessions: 1
 ## Scope
 `/login` (magic-link request + consumed-link landing), `/me` (rating graph, streak, solve
 history, distributions), `/settings`: sound toggle, reduced motion, hide-timer, high-
-contrast theme, email change, **export data** (request → emailed signed link) and **delete
+contrast theme, **export data** (request → emailed signed link) and **delete
 account** (type-to-confirm; explains anonymization — aggregates survive). Blade legal
 routes `/privacy`, `/terms`, `/imprint` rendering owner-approved copy; agent drafts first
 versions into `docs/legal/` for owner + lawyer review (critique #29; Belgian imprint

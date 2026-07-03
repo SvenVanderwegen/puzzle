@@ -96,7 +96,8 @@ CREATE TABLE solves (
     replay_sha256   text,
     ip_hash         text,                            -- sha256+pepper; purged at 90 days
     ua_hash         text,
-    endless_spec    jsonb,                           -- board object for mode='endless'
+    endless_spec    jsonb,                           -- mode='endless': board object +
+                                                     -- client deduction_steps (RATING.md §4)
     response_snapshot jsonb,                         -- idempotent replay of the response
     CONSTRAINT solves_user_client_unique UNIQUE (user_id, client_solve_id)
 );

@@ -38,6 +38,21 @@ jobs:
           python-version: '3.12'
       - run: python3 reference/firebreak.py --selftest
 
+  contracts-guard:
+    name: contracts frozen (ADR-0011)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: A contracts/ diff must add an ADR in the same range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            bash scripts/contracts-guard.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+          else
+            bash scripts/contracts-guard.sh "${{ github.event.before }}" "${{ github.sha }}"
+          fi
+
   gate-9:
     name: hygiene sweep
     runs-on: ubuntu-latest
