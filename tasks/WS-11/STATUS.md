@@ -4,7 +4,7 @@
 
 ## Done
 
-(commit SHA appended below after the commit; base 50803ce.)
+Commit `cecdbdf` (base `50803ce`, everything below is in that one commit):
 
 - `/play` Endless mode implemented in `apps/web/src/endless/` + `PlayPage.tsx` rewrite.
 - **Generation in a Web Worker**: `generator.worker.ts` is the ONLY module importing the
