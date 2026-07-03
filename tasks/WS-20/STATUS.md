@@ -26,7 +26,9 @@ baseline was 87f2447).
   NEVER touched → percentile-ineligible by construction; WS-07's aggregate
   query already filters `imported`.
 - **Streak merge**: only same-UTC-day solves count (archive solves never move
-  the streak — live-rule parity); newest consecutive run only, capped at
+  the streak — live-rule parity) **and only dates within the trailing 7-day
+  UTC window** — the window is what makes the cap hold ACROSS calls (see the
+  live-verification finding below); newest consecutive run only, capped at
   **7 days**; range-union with the live streak when touching; disjoint-newer
   gaps judged with the exact rollover walk (`StreakService::walkGap` — may
   consume a freeze); disjoint-older runs only raise `best_len` (≤ 7); trailing
@@ -47,7 +49,7 @@ baseline was 87f2447).
 - **Controller/route/throttle**: `ImportController` (shape validation only),
   route in the sanctum group, `me-import` limiter 10/hour/user (429
   documented on the operation).
-- **Tests**: `api/tests/Feature/Import/ImportTest.php` — 17 tests / 134
+- **Tests**: `api/tests/Feature/Import/ImportTest.php` — 18 tests / 145
   assertions incl. all four brief acceptance boxes at feature level:
   fabricated-100-day attack (7 days, zero daily_stats rows, only weight-0.5
   events from RD 350, zero suspect/live rows) · idempotent re-import (zero new
@@ -55,8 +57,26 @@ baseline was 87f2447).
   Plus: F3/F5 fixture exactness for the half-weight seed, recompute
   reproduction, reserved-namespace defense, in-batch dedupe, endless
   stats-only, s3-unrated, archive-no-streak, publish-time and future-time
-  lies, no-leak future boards, throttle 429, batch shape 422s. Spectator
-  validates 200/401/429 against the frozen contract.
+  lies, no-leak future boards, throttle 429, batch shape 422s, and the
+  **split-batch attack** (below). Spectator validates 200/401/429 against
+  the frozen contract.
+
+### Live verification (real server, not the test kernel)
+Drove the real surface with curl against `php artisan serve` on a fresh
+migrated Postgres DB (scripts kept at the scratchpad path in-session; the
+repo recipe is `api/tests/e2e-auth.sh` extended with /me/import calls):
+csrf-cookie → magic-link (log mailer) → consume → import. Observed: 3-day
+guest log → `credited×3, credited_days 3, streak 3`; byte-identical
+re-import → `duplicate×3, 0, 3`; /me/streak `current 3`; /me/rating seeded
+`1544.78 / RD 280.7 / games 3 / calibrating` with rising sparkline;
+/me/solves shows the 3 imported rows (`official_ms null, clean`); no-CSRF
+POST → 419; unauthenticated → 401 envelope; empty items → 422 envelope.
+**Finding fixed during verification**: the first build allowed a
+split-batch attack — after a 3-day merge, a second batch of OLDER dates
+unioned backward to `streak 10` (7 more per call, unbounded). Closed by
+the trailing 7-day streak-eligibility window (older items stay credited
+for stats/rating only); re-drive shows 3 → 7 (window-bounded union) → 7
+(further old batches add 0). Pinned by the new feature test.
 
 ### Web — merge upload flow + summary (the WS-14 `data-ws="WS-20"` seam)
 - **`state/localState.ts`**: new `solveLog` field (`SolveLogEntry` = the
@@ -95,7 +115,7 @@ baseline was 87f2447).
   assertions.
 
 ## Gates (final run, this session — all green)
-- `php artisan test` — **239 passed (3369 assertions)** (baseline 222; +17)
+- `php artisan test` — **240 passed (3380 assertions)** (baseline 222; +18)
 - `vendor/bin/pint --test` — passed · `vendor/bin/phpstan analyse` — level 9,
   no errors · Spectator conformance on /me/import responses (in ImportTest)
 - `pnpm typecheck` ✓ · `pnpm lint` ✓ · `pnpm test` ✓ — apps/web **325**
@@ -138,12 +158,16 @@ baseline was 87f2447).
 4. **Streak semantics beyond the brief's letter**: (a) streak credit
    additionally requires solved-on-its-own-UTC-day (mirrors "archive solves
    never move it"; the local client only counts same-day contains anyway);
-   (b) disjoint/trailing gaps are judged with the existing rollover walk
-   (freezes/amnesty/unpublished days behave identically to live play);
-   (c) `date_ineligible` items (claimed solve before publish, or from the
-   future) are dropped ENTIRELY — a provably impossible timestamp is
-   fabrication, not data; (d) imported history can raise `best_len` (still
-   ≤ 7 from any one run).
+   (b) **trailing 7-day eligibility window** — only dates ≥ today−6 can be
+   streak days; without it the 7-day cap is per-call cosmetics (split
+   batches stack backward without bound — found by driving the live
+   server, see Live verification). A guest log merged promptly loses
+   nothing; stale history merges as stats + rating; (c) disjoint/trailing
+   gaps are judged with the existing rollover walk (freezes/amnesty/
+   unpublished days behave identically to live play); (d) `date_ineligible`
+   items (claimed solve before publish, or from the future) are dropped
+   ENTIRELY — a provably impossible timestamp is fabrication, not data;
+   (e) imported history can raise `best_len` (still ≤ 7 from any one run).
 5. **v7-only `client_solve_id` per item** (contract only says format: uuid):
    parity with POST /solves' Idempotency-Key rule and the second fence for
    the reserved v8 failed-daily namespace; a non-v7 id drops the item
@@ -188,7 +212,7 @@ baseline was 87f2447).
   (imported-weight replay rule)
 - `api/routes/api.php` (+route), `api/app/Providers/AppServiceProvider.php`
   (+`me-import` limiter)
-- `api/tests/Feature/Import/ImportTest.php` (new, 17 tests)
+- `api/tests/Feature/Import/ImportTest.php` (new, 18 tests)
 - `apps/web/src/state/localState.ts` (+solveLog) + `localState.test.ts`
 - `apps/web/src/account/merge.ts` + `merge.test.ts` (new)
 - `apps/web/src/chrome/{flash.ts,AppChrome.tsx}` (toast params)

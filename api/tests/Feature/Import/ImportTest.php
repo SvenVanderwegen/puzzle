@@ -185,6 +185,40 @@ test('a fabricated 100-day streak earns at most 7 days, no percentile rows, and 
         ->and(Solve::query()->where('suspect', true)->count())->toBe(0);
 });
 
+test('a split-batch attack cannot stack streak credit past the 7-day window', function (): void {
+    $user = actingAsUser();
+
+    for ($i = 0; $i < 20; $i++) {
+        seedPublishedDaily(CarbonImmutable::parse('2026-07-10', 'UTC')->subDays($i)->format('Y-m-d'));
+    }
+
+    // Batch 1: the newest 7 days — the legitimate maximum.
+    postImport(sameDayItems('2026-07-10', 7))
+        ->assertStatus(200)
+        ->assertJsonPath('credited_days', 7)
+        ->assertJsonPath('streak.current', 7);
+
+    // Batch 2: the 7 days before that, fresh ids. Real boards, valid
+    // shadings, same-day claims — but outside the trailing 7-day window:
+    // stats + rating only, never a backward streak union.
+    $older = [];
+    for ($i = 7; $i < 14; $i++) {
+        $date = CarbonImmutable::parse('2026-07-10', 'UTC')->subDays($i)->format('Y-m-d');
+        $older[] = importItem(['date' => $date, 'solved_at' => $date.'T10:00:00Z']);
+    }
+
+    $second = postImport($older);
+
+    $second->assertStatus(200)
+        ->assertValidResponse(200)
+        ->assertJsonPath('credited_days', 0)
+        ->assertJsonPath('streak.current', 7)
+        ->assertJsonPath('streak.best', 7);
+
+    expect(statusesOf($second))->toBe(array_fill(0, 7, 'credited'))
+        ->and((int) DB::table('ratings')->where('user_id', $user->id)->value('games'))->toBe(14);
+});
+
 test('invalid local solves are silently dropped with per-item codes', function (): void {
     $user = actingAsUser();
     seedPublishedDaily('2026-07-10');

@@ -50,8 +50,11 @@ final class LocalRecordImporter
 {
     /**
      * Anti-fabrication ceiling (openapi importLocalRecord description,
-     * ImportResult.credited_days maximum): an import can never certify more
-     * than one week of streak history.
+     * ImportResult.credited_days maximum): imports can never certify more
+     * than one week of streak history. Enforced twice: per call (newest
+     * consecutive run, ≤ 7 days) and absolutely (only dates within the
+     * trailing 7-day UTC window are streak-eligible), so splitting a
+     * fabricated history across many calls stacks nothing.
      */
     public const MAX_STREAK_CREDIT_DAYS = 7;
 
@@ -232,9 +235,14 @@ final class LocalRecordImporter
             $seedQueue[] = [$solve, $solvedAt->toIso8601String()];
         }
 
-        if ($solvedAt->format('Y-m-d') === $date) {
+        if ($solvedAt->format('Y-m-d') === $date
+            && $date >= $now->subDays(self::MAX_STREAK_CREDIT_DAYS - 1)->format('Y-m-d')) {
             // Streak days are days solved ON their own UTC day — archive
-            // solves never move the streak, imported or live.
+            // solves never move the streak, imported or live — AND within
+            // the trailing 7-day window. The window is what makes the cap
+            // hold across calls: without it, split batches of ever-older
+            // dates could union backward 7 days at a time without bound.
+            // Older days still merge as stats + rating, never as streak.
             $streakDates[] = $date;
         }
 
