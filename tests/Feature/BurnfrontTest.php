@@ -97,4 +97,53 @@ class BurnfrontTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    /**
+     * A player accepting an "open" hint has no way to tell the server
+     * except by sending it back as a committed open cell next time — if the
+     * endpoint dropped that (only ever looking at `shaded`), an open verdict
+     * would repeat forever instead of the search moving on. Walks the fixed
+     * demo instance from EngineTest, feeding every returned cell back as
+     * shaded or open depending on its verdict, and asserts no cell is ever
+     * suggested twice.
+     */
+    public function test_hint_endpoint_advances_past_an_accepted_open_verdict(): void
+    {
+        $spark = 15;
+        $clues = [[9, 8], [12, 5], [16, 1], [21, 2], [23, 8]];
+
+        $shaded = [];
+        $open = [];
+        $seen = [];
+
+        for ($i = 0; $i < 25; $i++) {
+            $response = $this->getJson('/hint?'.http_build_query([
+                'difficulty' => 'lookout',
+                'spark' => $spark,
+                'clues' => json_encode($clues),
+                'shaded' => json_encode($shaded),
+                'open' => json_encode($open),
+            ]));
+
+            $response->assertStatus(200);
+            $status = $response->json('status');
+
+            if ($status !== 'forced') {
+                $this->assertSame('complete', $status);
+                break;
+            }
+
+            $cell = $response->json('cell');
+            $this->assertNotContains($cell, $seen, "Cell {$cell} was suggested more than once.");
+            $seen[] = $cell;
+
+            if ($response->json('state') === 'break') {
+                $shaded[] = $cell;
+            } else {
+                $open[] = $cell;
+            }
+        }
+
+        $this->assertSame('complete', $response->json('status'));
+    }
 }

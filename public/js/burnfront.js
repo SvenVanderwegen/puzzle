@@ -82,6 +82,7 @@
   let locked = false;
   let hinting = false;
   let hintCell = -1;
+  let marksVersion = 0;
   let startAt = 0,
     clockTimer = null,
     toastTimer = null;
@@ -195,6 +196,7 @@
     if (locked || !game) return;
     if (i === game.spark || game.clueMap.has(i)) return;
     clearHint();
+    marksVersion++;
     const prev = marks[i];
     marks[i] = (prev + dir + 3) % 3;
     undoStack.push([[i, prev]]);
@@ -206,6 +208,7 @@
   function undo() {
     if (locked || !undoStack.length) return;
     clearHint();
+    marksVersion++;
     const entry = undoStack.pop();
     for (const [i, prev] of entry) {
       marks[i] = prev;
@@ -218,6 +221,7 @@
     if (locked || !game) return;
     hideToast();
     clearHint();
+    marksVersion++;
     const entry = [];
     for (let i = 0; i < marks.length; i++)
       if (marks[i] !== 0) {
@@ -321,26 +325,38 @@
     }
   }
 
-  /* Asks the incident desk for one forced deduction given the clues and
-     whichever breaks are already placed — never the full solution. Purely
-     server-side: the client has no deduction solver, only the local
-     validator used at completion. */
+  /* Asks the incident desk for one forced deduction given the clues, plus
+     whichever breaks and clear-ground dots are already placed — never the
+     full solution. Purely server-side: the client has no deduction solver,
+     only the local validator used at completion. Both the puzzle token and
+     a marks version are captured before the request goes out and rechecked
+     after, so a reply for a superseded puzzle or a stale board (the player
+     tapped, undid, reset, or started a new fire while waiting) is dropped
+     instead of being painted onto whatever's on screen now. */
   async function requestHint() {
     if (locked || !game || hinting) return;
     hinting = true;
     updateChrome();
+    const token = genToken;
+    const version = marksVersion;
     try {
       const shaded = [];
-      for (let i = 0; i < marks.length; i++) if (marks[i] === 1) shaded.push(i);
+      const open = [];
+      for (let i = 0; i < marks.length; i++) {
+        if (marks[i] === 1) shaded.push(i);
+        else if (marks[i] === 2) open.push(i);
+      }
       const qs = new URLSearchParams({
         difficulty: game.difficulty,
         spark: String(game.spark),
         clues: JSON.stringify(game.clues),
         shaded: JSON.stringify(shaded),
+        open: JSON.stringify(open),
       });
       const resp = await fetch("/hint?" + qs.toString());
       if (!resp.ok) throw new Error("hint request failed");
       const data = await resp.json();
+      if (token !== genToken || version !== marksVersion) return; /* superseded */
       clearHint();
       if (data.status === "forced") {
         hintCell = data.cell;
@@ -354,7 +370,7 @@
         showToast("No forced move right now — take another look at what's placed.");
       }
     } catch (e) {
-      showToast("Couldn't reach the incident desk. Try again.");
+      if (token === genToken && version === marksVersion) showToast("Couldn't reach the incident desk. Try again.");
     } finally {
       hinting = false;
       updateChrome();
