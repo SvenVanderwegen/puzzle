@@ -6,12 +6,12 @@
  */
 import { formatIcu, type IcuParams } from './icu';
 import { catalog, type CatalogKey } from './strings.gen';
-import { proposedCatalog } from './proposed';
+import { proposedCatalog, type ProposedKey } from './proposed';
 
-// The proposed-keys quarantine is empty (ADR-0017). When a future workstream
-// adds a proposed key, widen this to `CatalogKey | ProposedKey` (import the
-// type from './proposed') — the runtime merge below already handles it.
-export type StringKey = CatalogKey;
+// The proposed-keys quarantine holds WS-20's `streak.protect.capped` (see
+// proposed.ts). When the lead moves it into COPY.md by ADR, collapse this
+// back to `CatalogKey`.
+export type StringKey = CatalogKey | ProposedKey;
 export type { IcuParams };
 export { catalog };
 

@@ -335,12 +335,18 @@ final class LocalRecordImporter
     /**
      * Merges the imported same-day dates into the streaks row.
      *
-     * Only the NEWEST consecutive run counts, capped at 7 days; it is
-     * range-unioned with the live streak when they touch, gap-judged with
-     * the exact rollover walk (StreakService::walkGap — frozen, amnestied
-     * and unpublished days pass, one freeze per month may burn) when they
-     * do not, and finally judged up to yesterday so a stale import cannot
-     * resurrect a streak the rollover rules already killed.
+     * Live parity is the rule: `current_len` counts SOLVED days only —
+     * frozen days bridge a streak without counting, exactly as
+     * creditDailySolve/walkGap leave it. Only the NEWEST consecutive run of
+     * imported days counts, capped at 7; a date a freeze already bridged
+     * earns nothing (the day is covered — crediting it again would
+     * double-count). The run joins the live streak additively when it
+     * touches the live range (frozen days inside the span stretch the range
+     * without counting — touchesBelow), through the exact rollover walk
+     * when a gap separates them (may consume a freeze), and not at all when
+     * it is older disjoint history (best_len only). Finally the trailing
+     * gap up to yesterday is judged so a stale import cannot resurrect a
+     * streak rollover already killed.
      *
      * @param  list<string>  $dates  Y-m-d days credited AND solved on their own day
      * @return int days this import added to the resulting current streak (0..7)
@@ -353,7 +359,28 @@ final class LocalRecordImporter
 
         $today = $now->format('Y-m-d');
 
-        $dates = array_values(array_unique($dates));
+        /** @var Streak|null $row */
+        $row = Streak::query()->lockForUpdate()->find($userId);
+
+        if ($row === null) {
+            $row = new Streak([
+                'user_id' => $userId,
+                'current_len' => 0,
+                'best_len' => 0,
+                'frozen_dates' => [],
+            ]);
+        }
+
+        // A frozen day is already covered — it bridges without counting in
+        // live semantics, so an imported solve there must not double-credit.
+        // This also keeps the invariant the range walks rely on: counted
+        // (solved) days never sit at frozen positions.
+        $dates = array_values(array_unique(array_diff($dates, $row->frozen_dates)));
+
+        if ($dates === []) {
+            return 0;
+        }
+
         rsort($dates);
 
         $run = [$dates[0]];
@@ -373,99 +400,92 @@ final class LocalRecordImporter
 
         $end = $run[0];
         $start = $run[count($run) - 1];
-
-        /** @var Streak|null $row */
-        $row = Streak::query()->lockForUpdate()->find($userId);
-
-        if ($row === null) {
-            $row = new Streak([
-                'user_id' => $userId,
-                'current_len' => 0,
-                'best_len' => 0,
-                'frozen_dates' => [],
-            ]);
-        }
+        $k = count($run);
 
         $existingLen = $row->current_len;
         $existingEnd = $existingLen > 0 ? $row->last_daily_date?->format('Y-m-d') : null;
-        $existingStart = null;
 
+        // Every run day is a NEW solved day (already-solved dates come back
+        // as duplicates, frozen dates were filtered above), so a joined
+        // streak always counts existing solved days + k — never a calendar
+        // span, which would silently count bridged days as solved.
         if ($existingEnd === null) {
-            [$newStart, $newEnd] = [$start, $end];
-        } else {
-            $existingStart = CarbonImmutable::parse($existingEnd, 'UTC')->subDays($existingLen - 1)->format('Y-m-d');
-
-            if ($start <= $this->dayAfter($existingEnd) && $existingStart <= $this->dayAfter($end)) {
-                // Touching or overlapping: one contiguous union.
-                [$newStart, $newEnd] = [min($start, $existingStart), max($end, $existingEnd)];
-            } elseif ($end > $existingEnd) {
-                // Imported run is newer, disjoint: judge the gap like
-                // rollover would (may consume a freeze; zeroes current_len
-                // on death).
+            $current = $k;
+            $last = $end;
+        } elseif ($end > $existingEnd) {
+            // Run is strictly newer (it cannot straddle the live range).
+            if ($start > $this->dayAfter($existingEnd)) {
+                // Disjoint: judge the gap like rollover would (may consume
+                // a freeze; zeroes current_len on death).
                 $bridged = $this->streaks->walkGap($row, $existingEnd, $this->dayBefore($start));
-                [$newStart, $newEnd] = [$bridged ? $existingStart : $start, $end];
+                $current = $bridged ? $existingLen + $k : $k;
             } else {
-                // Imported run is older, disjoint: the live streak stands;
-                // the run is history and can only raise the best.
-                $row->best_len = max($row->best_len, count($run));
-
-                if ($row->isDirty()) {
-                    $row->updated_at = Carbon::now('UTC');
-                    $row->save();
-                }
-
-                return 0;
+                $current = $existingLen + $k;
             }
+
+            $last = $end;
+        } elseif ($this->touchesBelow($row, $existingLen, $existingEnd, $end)) {
+            // Run is older and reaches the live range's TRUE start.
+            $current = $existingLen + $k;
+            $last = $existingEnd;
+        } else {
+            // Older, disjoint: the live streak stands; the run is history
+            // and can only raise the best.
+            $row->best_len = max($row->best_len, $k);
+
+            if ($row->isDirty()) {
+                $row->updated_at = Carbon::now('UTC');
+                $row->save();
+            }
+
+            return 0;
         }
 
-        $row->current_len = (int) CarbonImmutable::parse($newStart, 'UTC')
-            ->diffInDays(CarbonImmutable::parse($newEnd, 'UTC')) + 1;
-        $row->best_len = max($row->best_len, $row->current_len);
-        $row->last_daily_date = Carbon::parse($newEnd, 'UTC');
+        $row->current_len = $current;
+        $row->best_len = max($row->best_len, $current);
+        $row->last_daily_date = Carbon::parse($last, 'UTC');
 
-        if ($newEnd < $today) {
+        $alive = true;
+
+        if ($last < $today) {
             // Judge the trailing gap immediately (rollover semantics: keeps
             // last_daily_date, zeroes current_len on death) — an import must
             // not resurrect a streak that already died.
-            $this->streaks->walkGap($row, $newEnd, $this->dayBefore($today));
+            $alive = $this->streaks->walkGap($row, $last, $this->dayBefore($today));
         }
 
         $row->updated_at = Carbon::now('UTC');
         $row->save();
 
-        return $this->creditedDays($run, $row, $existingStart, $existingEnd);
+        return $alive ? min(self::MAX_STREAK_CREDIT_DAYS, $k) : 0;
     }
 
     /**
-     * Days of the imported run that ended up inside the FINAL current-streak
-     * range and were not already covered by the pre-merge streak.
+     * Does an older run ending at $end reach the live range's true start?
      *
-     * @param  list<string>  $run
+     * The live range spans existingLen SOLVED days back from existingEnd,
+     * stretched by any frozen days inside it (covered days bridge without
+     * counting — the frozen-day parity probes). The walk stops as soon as
+     * it crosses the day after $end, so its depth is bounded by the 7-day
+     * import window, never by the streak's age.
      */
-    private function creditedDays(array $run, Streak $row, ?string $existingStart, ?string $existingEnd): int
+    private function touchesBelow(Streak $row, int $existingLen, string $existingEnd, string $end): bool
     {
-        if ($row->current_len < 1 || $row->last_daily_date === null) {
-            return 0;
-        }
+        $threshold = $this->dayAfter($end);
+        $day = CarbonImmutable::parse($existingEnd, 'UTC');
+        $solvedSeen = 1; // last_daily_date itself is a solved day.
 
-        $finalEnd = $row->last_daily_date->format('Y-m-d');
-        $finalStart = CarbonImmutable::parse($finalEnd, 'UTC')
-            ->subDays($row->current_len - 1)
-            ->format('Y-m-d');
+        while ($solvedSeen < $existingLen && $day->format('Y-m-d') > $threshold) {
+            $day = $day->subDay();
 
-        $credited = 0;
-
-        foreach ($run as $date) {
-            $inFinal = $date >= $finalStart && $date <= $finalEnd;
-            $preCovered = $existingStart !== null && $existingEnd !== null
-                && $date >= $existingStart && $date <= $existingEnd;
-
-            if ($inFinal && ! $preCovered) {
-                $credited++;
+            if (! in_array($day->format('Y-m-d'), $row->frozen_dates, true)) {
+                $solvedSeen++;
             }
         }
 
-        return min(self::MAX_STREAK_CREDIT_DAYS, $credited);
+        // Either the true start sits at/below the day after the run
+        // (touching), or it was found above it (a real gap remains).
+        return $solvedSeen < $existingLen || $day->format('Y-m-d') <= $threshold;
     }
 
     private function dayAfter(string $date): string

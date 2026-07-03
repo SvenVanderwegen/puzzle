@@ -7,6 +7,7 @@ use App\Domain\Ratings\RatingService;
 use App\Models\DailyPuzzle;
 use App\Models\Puzzle;
 use App\Models\Solve;
+use App\Models\Streak;
 use Carbon\CarbonImmutable;
 use Database\Factories\PuzzleFactory;
 use Illuminate\Support\Facades\DB;
@@ -217,6 +218,72 @@ test('a split-batch attack cannot stack streak credit past the 7-day window', fu
 
     expect(statusesOf($second))->toBe(array_fill(0, 7, 'credited'))
         ->and((int) DB::table('ratings')->where('user_id', $user->id)->value('games'))->toBe(14);
+});
+
+test('frozen-day parity: importing today after a rollover-frozen day counts solved days only', function (): void {
+    $user = actingAsUser();
+
+    foreach (['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10'] as $date) {
+        seedPublishedDaily($date);
+    }
+
+    // Live state as rollover leaves it on the morning of 07-10: solved
+    // 07-06..07-08 (len 3), missed 07-09, freeze burnt for it at rollover.
+    Streak::query()->create([
+        'user_id' => $user->id,
+        'current_len' => 3,
+        'best_len' => 3,
+        'last_daily_date' => '2026-07-08',
+        'frozen_dates' => ['2026-07-09'],
+        'freeze_available_at' => '2026-08-01',
+    ]);
+
+    // Solving 07-10 live would give current_len 4 (frozen days bridge, they
+    // never count) — routing the same solve through import must match, not
+    // hand out a phantom fifth day. (WS-20 verifier regression.)
+    $response = postImport([
+        importItem(['date' => '2026-07-10', 'solved_at' => '2026-07-10T10:00:00Z']),
+    ]);
+
+    $response->assertStatus(200)
+        ->assertValidResponse(200)
+        ->assertJsonPath('credited_days', 1)
+        ->assertJsonPath('streak.current', 4)
+        ->assertJsonPath('streak.best', 4)
+        ->assertJsonPath('streak.last_daily_date', '2026-07-10');
+});
+
+test('frozen-day parity: an older touching run unions across a frozen day inside the live span', function (): void {
+    $user = actingAsUser();
+
+    foreach (['2026-07-04', '2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10'] as $date) {
+        seedPublishedDaily($date);
+    }
+
+    // Live: solved 07-05, missed 07-06 (frozen), solved 07-07..07-10 -> len
+    // 5 over a 6-day calendar span. The true streak start is 07-05.
+    Streak::query()->create([
+        'user_id' => $user->id,
+        'current_len' => 5,
+        'best_len' => 5,
+        'last_daily_date' => '2026-07-10',
+        'frozen_dates' => ['2026-07-06'],
+        'freeze_available_at' => '2026-08-01',
+    ]);
+
+    // Device B solved 07-04 on its own day: it touches the true start, so
+    // it must union to 6 — a dense len-derived range would misread the
+    // start as 07-06 and throw the day away. (WS-20 verifier regression.)
+    $response = postImport([
+        importItem(['date' => '2026-07-04', 'solved_at' => '2026-07-04T10:00:00Z']),
+    ]);
+
+    $response->assertStatus(200)
+        ->assertValidResponse(200)
+        ->assertJsonPath('credited_days', 1)
+        ->assertJsonPath('streak.current', 6)
+        ->assertJsonPath('streak.best', 6)
+        ->assertJsonPath('streak.last_daily_date', '2026-07-10');
 });
 
 test('invalid local solves are silently dropped with per-item codes', function (): void {

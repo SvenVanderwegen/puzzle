@@ -43,7 +43,12 @@ describe('decidePostSolveNudge — the three states', () => {
 
   it('guests at streak day 3+ get the primary protect nudge', () => {
     expect(decidePostSolveNudge(withStreak(3))).toBe('streak-protect');
-    expect(decidePostSolveNudge(withStreak(13))).toBe('streak-protect');
+    expect(decidePostSolveNudge(withStreak(7))).toBe('streak-protect');
+  });
+
+  it('guests past 7 days get the capped variant — the merge carries 7, the nudge must not promise more', () => {
+    expect(decidePostSolveNudge(withStreak(8))).toBe('streak-protect-capped');
+    expect(decidePostSolveNudge(withStreak(13))).toBe('streak-protect-capped');
   });
 });
 
@@ -93,6 +98,18 @@ describe('PostSolveNudge — stats-card footer component', () => {
       );
     });
     expect(document.querySelector('[data-nudge="streak-protect"]')).not.toBeNull();
+  });
+
+  it('renders the honest capped line past 7 days — real {n}, real merge behavior', async () => {
+    await renderNudge(withStreak(12));
+    await waitFor(() => {
+      expect(
+        screen.getByRole('link', { name: t('streak.protect.capped', { n: 12 }) }),
+      ).toHaveAttribute('href', '/login');
+    });
+    expect(document.querySelector('[data-nudge="streak-protect-capped"]')).not.toBeNull();
+    // The uncapped promise is not shown alongside.
+    expect(document.querySelector('[data-nudge="streak-protect"]')).toBeNull();
   });
 
   it('renders nothing for signed-in users', async () => {
