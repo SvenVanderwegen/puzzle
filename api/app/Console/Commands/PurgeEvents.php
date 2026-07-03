@@ -4,43 +4,35 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\AnalyticsEvent;
+use App\Domain\Analytics\AnalyticsRetention;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
 /**
  * 13-month retention for first-party analytics (docs/gdpr.md): rows are
- * aggregated, then deleted.
+ * aggregated, then deleted. WS-19 filled the WS-06 aggregation seam — the
+ * real rollup lives in AnalyticsRetention (shared with analytics:purge, the
+ * scheduled entry point); this targeted command remains for manual runs.
  */
 final class PurgeEvents extends Command
 {
-    public const RETENTION_MONTHS = 13;
+    public const int RETENTION_MONTHS = AnalyticsRetention::EVENT_RETENTION_MONTHS;
 
     protected $signature = 'retention:purge-events';
 
     protected $description = 'Aggregate then delete events rows older than 13 months';
 
-    public function handle(): int
+    public function handle(AnalyticsRetention $retention): int
     {
-        $cutoff = now()->subMonths(self::RETENTION_MONTHS);
+        $result = $retention->aggregateThenPurgeEvents(CarbonImmutable::now());
 
-        $this->aggregateExpiredRows();
-
-        $count = AnalyticsEvent::query()->where('created_at', '<', $cutoff)->toBase()->delete();
-
-        $this->info(sprintf('Deleted %d event(s) recorded before %s.', $count, $cutoff->toIso8601String()));
+        $this->info(sprintf(
+            'Wrote %d rollup row(s); deleted %d raw event(s) past the %d-month boundary.',
+            $result['rollups'],
+            $result['deleted'],
+            self::RETENTION_MONTHS,
+        ));
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Aggregation step of aggregate-then-delete. The weekly owner digest that
-     * consumes these aggregates is WS-19 and does not exist yet, so this is a
-     * documented no-op by design: expired rows only feed the digest; deleting
-     * them without a digest loses nothing that the retention policy allows us
-     * to keep. WS-19 replaces this method body with the real rollup.
-     */
-    private function aggregateExpiredRows(): void
-    {
-        // Intentionally empty until the WS-19 digest lands.
     }
 }

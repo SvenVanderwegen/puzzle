@@ -22,6 +22,15 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Sanctum stateful SPA mode: same-origin cookie session + CSRF (ADR-0003).
         $middleware->statefulApi();
+
+        // Beacon endpoints (WS-19): navigator.sendBeacon cannot attach the
+        // XSRF header, so the stateful-origin CSRF check is waived for these
+        // two anonymous fire-and-forget writes. The session cookie is
+        // SameSite=Lax, so cross-site POSTs carry no session to abuse.
+        $middleware->validateCsrfTokens(except: [
+            'api/v1/events',
+            'api/v1/errors',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

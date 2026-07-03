@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\DailyController;
+use App\Http\Controllers\Api\V1\EventController;
 use App\Http\Controllers\Api\V1\ExportController;
+use App\Http\Controllers\Api\V1\FrontendErrorController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MagicLinkController;
 use App\Http\Controllers\Api\V1\MeController;
@@ -21,6 +23,14 @@ Route::post('/auth/magic-link/consume', [MagicLinkController::class, 'consume'])
     ->middleware('throttle:magic-link-consume');
 
 Route::get('/health', HealthController::class);
+
+// First-party analytics + error beacon (ADR-0008, WS-19). Anonymous
+// (`security: []`); throttles keyed by anon_id / session in AppServiceProvider.
+Route::post('/events', [EventController::class, 'store'])
+    ->middleware('throttle:events');
+
+Route::post('/errors', [FrontendErrorController::class, 'store'])
+    ->middleware('throttle:frontend-errors');
 
 Route::get('/daily/{date}', [DailyController::class, 'show'])
     ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');

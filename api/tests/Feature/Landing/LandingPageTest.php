@@ -203,7 +203,33 @@ test('social proof shows the live counter once the flag is on and solves reach 5
     expect(pageText($html))->toContain('12,408 crews have contained Incident #142.');
 });
 
-test('the live counter stays a rank while the WS-19 stub flag is off', function (): void {
+test('the live counter is on by default since WS-19 (config/landing.php)', function (): void {
+    // No config()->set here: the shipped default itself is under test.
+    expect(config('landing.live_counter'))->toBeTrue();
+
+    seedDaily('2026-07-10', ['incident_number' => 142]);
+    DailyStat::query()->create(['date' => '2026-07-10', 'solved_count' => 500, 'started_count' => 900]);
+
+    $html = $this->get('/')->getContent();
+
+    assert(is_string($html));
+
+    expect(pageText($html))->toContain('500 crews have contained Incident #142.');
+});
+
+test('the live counter still falls back to a rank below 500 solves with the flag on', function (): void {
+    seedDaily('2026-07-10', ['incident_number' => 142]);
+    DailyStat::query()->create(['date' => '2026-07-10', 'solved_count' => 499, 'started_count' => 900]);
+
+    $html = $this->get('/')->getContent();
+
+    assert(is_string($html));
+
+    expect(pageText($html))->toContain(copyText('daily.rankFallback', ['rank' => 500]));
+});
+
+test('the live counter stays a rank when the flag is forced off', function (): void {
+    config()->set('landing.live_counter', false);
     seedDaily('2026-07-10', ['incident_number' => 142]);
     DailyStat::query()->create(['date' => '2026-07-10', 'solved_count' => 12408, 'started_count' => 20000]);
 

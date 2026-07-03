@@ -51,13 +51,21 @@ test('events rows are aggregated-then-deleted at 13 months', function (): void {
 
     $this->artisan('retention:purge-events')->assertSuccessful();
 
-    expect(AnalyticsEvent::query()->pluck('name')->all())->toBe(['solve_complete']);
+    // The raw expired row is gone; what remains is the fresh row plus the
+    // WS-19 monthly rollup written before the delete (aggregate-then-purge).
+    $names = AnalyticsEvent::query()->orderBy('id')->pluck('name')->all();
+    sort($names);
+
+    expect($names)->toBe(['_rollup.first_seen', 'solve_complete']);
 });
 
-test('the three purge commands are scheduled daily', function (): void {
+test('the retention commands are scheduled daily, without double runs', function (): void {
     $events = collect(Schedule::events())->map(fn ($event): string => (string) $event->command);
 
+    // analytics:purge (WS-19) covers events + frontend_errors; the narrower
+    // WS-06 commands still exist for manual runs but are not scheduled twice.
     expect($events->filter(fn (string $cmd): bool => str_contains($cmd, 'retention:purge-solve-artifacts')))->toHaveCount(1)
-        ->and($events->filter(fn (string $cmd): bool => str_contains($cmd, 'retention:purge-frontend-errors')))->toHaveCount(1)
-        ->and($events->filter(fn (string $cmd): bool => str_contains($cmd, 'retention:purge-events')))->toHaveCount(1);
+        ->and($events->filter(fn (string $cmd): bool => str_contains($cmd, 'analytics:purge')))->toHaveCount(1)
+        ->and($events->filter(fn (string $cmd): bool => str_contains($cmd, 'retention:purge-frontend-errors')))->toHaveCount(0)
+        ->and($events->filter(fn (string $cmd): bool => str_contains($cmd, 'retention:purge-events')))->toHaveCount(0);
 });

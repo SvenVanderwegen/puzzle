@@ -71,5 +71,27 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(30)->by('solves:'.$key);
         });
+
+        // Analytics intake: 60 batches/min keyed by anon_id (ADR-0008,
+        // openapi recordEvents). The IP participates only as the fallback key
+        // for requests without a plausible anon_id; it is never stored (WS-19).
+        RateLimiter::for('events', function (Request $request): Limit {
+            $anonId = $request->input('anon_id');
+            $plausible = is_string($anonId) && strlen($anonId) >= 8 && strlen($anonId) <= 64;
+
+            $key = $plausible ? 'anon:'.$anonId : 'ip:'.(string) $request->ip();
+
+            return Limit::perMinute(60)->by('events:'.$key);
+        });
+
+        // Error beacon: 10/min per session (openapi recordFrontendError) —
+        // session id when the SPA cookie rode along, IP for cookieless clients.
+        RateLimiter::for('frontend-errors', function (Request $request): Limit {
+            $key = $request->hasSession()
+                ? 'session:'.$request->session()->getId()
+                : 'ip:'.(string) $request->ip();
+
+            return Limit::perMinute(10)->by('errors:'.$key);
+        });
     }
 }
