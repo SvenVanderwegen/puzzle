@@ -6,13 +6,16 @@
  */
 import { formatIcu, type IcuParams } from './icu';
 import { catalog, type CatalogKey } from './strings.gen';
-import { proposedCatalog } from './proposed';
+import { proposedCatalog, type ProposedKey } from './proposed';
 
-// The proposed-keys quarantine is empty (ADR-0017). When a future workstream
-// adds a proposed key, widen this to `CatalogKey | ProposedKey` (import the
-// type from './proposed') — the runtime merge below already handles it.
-export type StringKey = CatalogKey;
-export type { IcuParams };
+// WS-12 filled the proposed quarantine with the Academy lesson scripts, so the
+// key type is now the union of the frozen catalog and the proposed keys. The
+// lead moves each proposed key into COPY.md by ADR at integration, at which
+// point it leaves proposed.ts and re-enters via CatalogKey; generated keys win
+// the runtime merge below, so a promoted key is a silent switch here.
+export type StringKey = CatalogKey | ProposedKey;
+export type { IcuParams, ProposedKey };
+export type { CatalogKey };
 export { catalog };
 
 const merged: Readonly<Record<StringKey, string>> = { ...proposedCatalog, ...catalog };
