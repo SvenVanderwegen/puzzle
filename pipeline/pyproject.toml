@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "burnfront-pipeline"
+version = "0.1.0"
+description = "Burnfront content pipeline: generate, grade v2, curate, sign, emit (WS-05)"
+requires-python = ">=3.11"
+dependencies = ["pynacl", "pillow", "jsonschema"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["burnfront_pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow' -q"
+markers = [
+  "slow: full-content regeneration tests; run explicitly with -m slow",
+]
