@@ -23,9 +23,13 @@ final class SolveController extends Controller
     {
         $clientSolveId = $request->header('Idempotency-Key');
 
-        if (! is_string($clientSolveId) || ! Str::isUuid($clientSolveId)) {
+        // Version 7 ONLY (contract: "client-generated UUID (v7)"; game-core
+        // emits v7). The v8 namespace is reserved for the failed-daily audit
+        // anchors (RatingService::failedDailyKey) and must stay structurally
+        // unclaimable through this endpoint.
+        if (! is_string($clientSolveId) || ! Str::isUuid($clientSolveId, 7)) {
             throw ValidationException::withMessages([
-                'Idempotency-Key' => 'The Idempotency-Key header must be a client-generated UUID.',
+                'Idempotency-Key' => 'The Idempotency-Key header must be a client-generated UUIDv7.',
             ]);
         }
 

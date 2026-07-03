@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Solves;
 
 use App\Domain\Ratings\Events\RatableSolveRecorded;
+use App\Domain\Ratings\RatingService;
 use App\Domain\Streaks\StreakService;
 use App\Models\DailyPuzzle;
 use App\Models\DailyStat;
@@ -157,6 +158,14 @@ final class SolveSubmissionService
         $existing = Solve::query()
             ->where('user_id', $userId)
             ->where('client_solve_id', $clientSolveId)
+            // Failed-daily bookkeeping rows (WS-08) are not submissions and
+            // must never replay as one. Their reserved-UUIDv8 keys cannot
+            // pass the v7-only header validation anyway; this is the second
+            // fence.
+            ->where(function ($query): void {
+                $query->whereNull('reject_reason')
+                    ->orWhere('reject_reason', '<>', RatingService::FAILED_DAILY_REASON);
+            })
             ->first();
 
         if ($existing === null) {

@@ -63,14 +63,14 @@ final class RatingService
 
         $userId = $solve->user_id;
 
-        if (! $this->userIsActive($userId)) {
-            return;
-        }
-
         $score = Outcome::solveScore($solve->hints_s1, $solve->hints_s2);
         $weight = Outcome::weightFor($solve->mode);
 
         DB::transaction(function () use ($solve, $userId, $score, $weight): void {
+            if (! $this->lockedActiveUser($userId)) {
+                return; // Anonymized (checked under the users row lock).
+            }
+
             $rating = $this->lockedUserRating($userId);
 
             if (RatingEvent::query()->where('solve_id', $solve->id)->exists()) {
@@ -90,10 +90,6 @@ final class RatingService
      */
     public function applyFailedDaily(string $userId, string $date, string $puzzleId): void
     {
-        if (! $this->userIsActive($userId)) {
-            return;
-        }
-
         if (Puzzle::query()->whereKey($puzzleId)->doesntExist()) {
             return;
         }
@@ -101,6 +97,10 @@ final class RatingService
         $clientSolveId = self::failedDailyKey($userId, $date);
 
         DB::transaction(function () use ($userId, $puzzleId, $clientSolveId): void {
+            if (! $this->lockedActiveUser($userId)) {
+                return; // Anonymized (checked under the users row lock).
+            }
+
             $rating = $this->lockedUserRating($userId);
 
             $alreadyApplied = Solve::query()
@@ -137,12 +137,20 @@ final class RatingService
     }
 
     /**
-     * Deterministic uuid-shaped key for the synthetic failed-daily row: the
-     * DB-unique (user_id, client_solve_id) then enforces one per day.
+     * Deterministic key for the synthetic failed-daily row: the DB-unique
+     * (user_id, client_solve_id) then enforces one per day. Shaped as an RFC
+     * 9562 UUID **version 8** (custom, hash-derived): the solve endpoint
+     * accepts only version 7 client keys, so this namespace is structurally
+     * unclaimable by players — the derivation inputs are public; the
+     * reserved version, not secrecy, is the mechanism.
      */
     public static function failedDailyKey(string $userId, string $date): string
     {
         $hex = substr(hash('sha256', 'burnfront.failed-daily|'.$userId.'|'.$date), 0, 32);
+
+        // Version nibble 8, RFC variant 10xx.
+        $hex[12] = '8';
+        $hex[16] = dechex(((int) hexdec($hex[16]) & 0x3) | 0x8);
 
         return sprintf(
             '%s-%s-%s-%s-%s',
@@ -298,11 +306,19 @@ final class RatingService
     }
 
     /**
-     * GDPR: anonymization deletes the ratings row and disowns the audit
-     * trail; a late queued event must not resurrect either.
+     * GDPR guard, taken INSIDE the settlement transaction: anonymization
+     * deletes the ratings row, and a late queued event must not resurrect
+     * it. Locks the users row — UserAnonymizer takes the same lock first —
+     * so an in-flight anonymization either blocks behind this settlement
+     * (its ratings-row delete then lands after our commit) or is already
+     * visible here. Lock order everywhere: users -> ratings -> board_ratings.
      */
-    private function userIsActive(string $userId): bool
+    private function lockedActiveUser(string $userId): bool
     {
-        return User::query()->whereKey($userId)->whereNull('anonymized_at')->exists();
+        return User::query()
+            ->whereKey($userId)
+            ->whereNull('anonymized_at')
+            ->lockForUpdate()
+            ->exists();
     }
 }

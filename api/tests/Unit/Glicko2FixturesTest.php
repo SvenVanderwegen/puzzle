@@ -29,7 +29,9 @@ dataset('rating fixtures', [
         1.0,
         ['1478.8473', '269.4299', '0.059999'],
     ],
-    'F3 endless clean, w = 0.5' => [
+    // Endless-mode plumbing for F3 is covered end-to-end in
+    // Feature/Ratings/RatingUpdateTest; here the weight is passed literally.
+    'F3 half-delta (literal weight)' => [
         [1500.0, 350.0, 0.06],
         [[1408.0, 200.0, 1.0]],
         0.5,
