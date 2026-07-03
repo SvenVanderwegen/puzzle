@@ -96,3 +96,22 @@ test('the 11th beacon inside a minute is throttled', function (): void {
         ->postJson('/api/v1/errors', ['message' => 'other client'])
         ->assertStatus(202);
 });
+
+test('rotating sessions cannot bypass the per-IP ceiling (verifier finding)', function (): void {
+    // Default test requests are stateful (same-origin header) and carry no
+    // cookie jar, so every request gets a FRESH session id — exactly the
+    // key-rotation shape of the verifier's events finding, mirrored here.
+    // The 10/min session key never accumulates; the 40/min IP ceiling must
+    // stop the flood regardless.
+    for ($i = 1; $i <= 40; $i++) {
+        $this->postJson('/api/v1/errors', ['message' => "rotated {$i}"])->assertStatus(202);
+    }
+
+    $this->postJson('/api/v1/errors', ['message' => 'rotated 41'])
+        ->assertStatus(429)
+        ->assertValidResponse(429)
+        ->assertJsonPath('error.code', 'rate_limited');
+
+    // Row count stops exactly at the ceiling.
+    expect(FrontendError::query()->count())->toBe(40);
+});

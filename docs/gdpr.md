@@ -49,7 +49,11 @@ The frontend assigns each browser a random id, kept in localStorage, sent only
 to our own API with analytics events. It is first-party, never in a cookie
 header, never shared, and never joined with IP addresses — the API does not
 store IPs for analytics at all (the IP participates in rate limiting only, in
-memory/cache, never in a row). This persistent identifier is a conscious
+memory/cache, never in a row). Rate-limit throttle keys — including the
+IP-derived per-address ceilings on the events and errors endpoints — are
+transient cache entries that decay within about a minute; they are never
+persisted to the analytics tables, so the no-IP-stored guarantee is unchanged.
+This persistent identifier is a conscious
 ePrivacy position (decisions.md #7): it is disclosed plainly in the privacy
 policy, players can clear it at any time by clearing site data, and the
 position is revisited if Belgian DPA guidance tightens. There is no consent

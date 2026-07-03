@@ -234,3 +234,29 @@ test('the 61st batch inside a minute is throttled per anon_id', function (): voi
     $this->postJson('/api/v1/events', eventsPayload(anonId: 'anon-other-crew-01'))
         ->assertStatus(202);
 });
+
+test('rotating anon_ids cannot bypass the per-IP ceiling (verifier finding)', function (): void {
+    // Happy path first: two distinct crews behind one address, both accepted.
+    $this->postJson('/api/v1/events', eventsPayload(anonId: 'anon-crew-aaaaaa'))->assertStatus(202);
+    $this->postJson('/api/v1/events', eventsPayload(anonId: 'anon-crew-bbbbbb'))->assertStatus(202);
+
+    // The verifier's attack: a fresh plausible anon_id on every request from
+    // one IP. Each key dodges the 60/min anon_id throttle; the 240/min IP
+    // ceiling must stop the flood regardless.
+    for ($i = 3; $i <= 240; $i++) {
+        $this->postJson('/api/v1/events', eventsPayload(anonId: sprintf('anon-rotate-%06d', $i)))
+            ->assertStatus(202);
+    }
+
+    $this->postJson('/api/v1/events', eventsPayload(anonId: 'anon-rotate-000241'))
+        ->assertStatus(429)
+        ->assertValidResponse(429)
+        ->assertJsonPath('error.code', 'rate_limited');
+
+    // Row count stops exactly at the ceiling, and further rotation stays 429.
+    expect(AnalyticsEvent::query()->count())->toBe(240);
+
+    $this->postJson('/api/v1/events', eventsPayload(anonId: 'anon-rotate-000242'))->assertStatus(429);
+
+    expect(AnalyticsEvent::query()->count())->toBe(240);
+});

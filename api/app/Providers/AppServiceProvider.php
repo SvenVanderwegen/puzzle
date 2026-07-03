@@ -73,25 +73,33 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // Analytics intake: 60 batches/min keyed by anon_id (ADR-0008,
-        // openapi recordEvents). The IP participates only as the fallback key
-        // for requests without a plausible anon_id; it is never stored (WS-19).
-        RateLimiter::for('events', function (Request $request): Limit {
+        // openapi recordEvents), PLUS a per-IP ceiling so rotating anon_ids
+        // cannot flood the table from one address (verifier finding). IPs
+        // live only in transient throttle cache keys; they are never stored.
+        RateLimiter::for('events', function (Request $request): array {
             $anonId = $request->input('anon_id');
             $plausible = is_string($anonId) && strlen($anonId) >= 8 && strlen($anonId) <= 64;
 
             $key = $plausible ? 'anon:'.$anonId : 'ip:'.(string) $request->ip();
 
-            return Limit::perMinute(60)->by('events:'.$key);
+            return [
+                Limit::perMinute(60)->by('events:'.$key),
+                Limit::perMinute(240)->by('events-ip:'.(string) $request->ip()),
+            ];
         });
 
         // Error beacon: 10/min per session (openapi recordFrontendError) —
-        // session id when the SPA cookie rode along, IP for cookieless clients.
-        RateLimiter::for('frontend-errors', function (Request $request): Limit {
+        // session id when the SPA cookie rode along, IP for cookieless
+        // clients — PLUS the same per-IP ceiling against key rotation.
+        RateLimiter::for('frontend-errors', function (Request $request): array {
             $key = $request->hasSession()
                 ? 'session:'.$request->session()->getId()
                 : 'ip:'.(string) $request->ip();
 
-            return Limit::perMinute(10)->by('errors:'.$key);
+            return [
+                Limit::perMinute(10)->by('errors:'.$key),
+                Limit::perMinute(40)->by('errors-ip:'.(string) $request->ip()),
+            ];
         });
     }
 }
