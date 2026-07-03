@@ -3,7 +3,9 @@
 ## Session 2026-07-03 (builder)
 
 ## Done
-- (commit SHA recorded below after commit; single commit on this worktree branch)
+- `eeab27c0abeb5eebbf6a220b6c8280acf5c93a58` — WS-21: transactional email —
+  queued mailables, streak-risk alert, one-click unsubscribe (all work this
+  session; the SHA-amendment commit below only stamps this ledger line).
 - **Transactional mail hardening**: new abstract `App\Domain\Email\TransactionalMail`
   (extends `Mailable`, implements `ShouldQueue`, `$tries = 5`, exponential
   `backoff()` 1m/5m/15m/1h). Every user-facing mailable now derives from it, so
