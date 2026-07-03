@@ -112,3 +112,29 @@
   (4) ADR-0022 in-range: landing.hero.solved key + Blade marketing-copy
   exemption. (5) og:image 404 until WS-05 PNGs; sitemap /daily URLs 404 until
   WS-10 unfurl shells — both tracked in briefs.
+
+## 2026-07-03 — WS-19 merged
+- Branch worktree-agent-a3bd56de1eabb2d40 @ 4cc82a3 → merged after verification
+  (MERGE-WITH-FIXES → fixed; 18 verifier teeth tests all passed, D1/D7
+  independently recomputed + mutation-checked, purge idempotency and rollup
+  permanence proven, PII scrub probed with live-looking payloads).
+- Verifier finding FIXED pre-merge (fix-up c8132b3): per-IP rate-limit bypass
+  on /events (anon_id rotation gave unbounded writes; 1,750 rows/min proven).
+  Both beacons now carry secondary per-IP ceilings (events 240/min, errors
+  40/min) with attack-replay regression tests; 205/3182 green.
+- Lead rulings: (1) landing counter reads daily_stats.solved_count, not raw
+  events — RATIFIED as the abuse-resistant reading of ADR-0008 (an events-fed
+  counter would be inflatable via the very bypass the verifier proved);
+  recorded here rather than an ADR errata since no contract text changes.
+  (2) EventCatalog closed-record props validation is STRICTER than the
+  contract's additionalProperties:true — ratified as server policy; the future
+  beacon client codes to EventCatalog, and a contract-tightening ADR may
+  follow post-v1. (3) Whole-calendar-month retention boundary (rows live up
+  to ~1 month past 13) accepted; honestly documented in gdpr.md. (4) CSRF
+  exemption for the two beacon paths added to WS-22's security-review list.
+  (5) analytics:purge consolidation of the two WS-06 retention entries
+  ratified (delegate commands preserved and tested).
+- Gates re-run on mainline post-merge from repo root: PHP 205/3182, pint,
+  phpstan L9 (vendor/ now installed on main — WS-06 debt cleared), TS 525
+  tests incl. 130 web, format/hygiene/lint/strings/generate/budget/
+  budget:landing all green.
