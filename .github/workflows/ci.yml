@@ -1,5 +1,34 @@
-# Skeleton CI (WS-00): playbook §5 gates 1-3 and 9.
-# WS-16 extends this to the full gate list (vectors, contract conformance, e2e, budgets).
+# Full playbook §5 gate wiring (WS-16, extends the WS-00 skeleton).
+#
+# Gate map (docs/BUILD_PLAYBOOK.md §5):
+#   1 typecheck ......... gates-1-3 (tsc strict) + php-gate (Larastan level 9)
+#   2 lint/format ....... gates-1-3 (eslint + prettier) + php-gate (pint --test)
+#   3 unit/feature ...... gates-1-3 (vitest; coverage floors live in each
+#                         package's vitest.config.ts) + php-gate (pest)
+#   4 vectors ........... engine crosscheck tests run inside gates-1-3 and the
+#                         PHP BurnValidator vector tests inside php-gate;
+#                         freshness (reference regenerates byte-identically)
+#                         is vectors.yml (path-filtered, ADR-guarded)
+#   5 conformance ....... conformance (api-client generate:check) + php-gate
+#                         (Spectator validates responses against openapi.yaml)
+#   6 playwright smoke .. e2e-smoke — sentinel until WS-17 lands its suite
+#                         (WS-17's brief authorizes the CI wiring swap)
+#   7 budgets + a11y .... conformance (budget:check ≤200KB SPA, budget:landing
+#                         ≤90KB); Lighthouse CI + axe arrive with WS-17
+#   8 adversarial review  process gate (separate reviewer session) — not CI
+#   9 hygiene ........... gate-9 (hygiene.sh, dependency allowlist, gitleaks)
+#
+# Path filtering: scripts/ci-changed.sh classifies the diff. Docs-only diffs
+# skip the heavy legs (skipped jobs satisfy branch protection); contracts/
+# changes always run every leg; an unknown diff base fails open to running
+# everything. contracts-guard and gate-9 are unconditional on purpose —
+# gitleaks must see every change, including docs.
+#
+# Caching: pnpm store (setup-node), Turborepo (.turbo via actions/cache; the
+# TS leg force-bypasses the turbo cache when contracts/ or root config changed,
+# because turbo hashes package inputs only and the engine tests read
+# contracts/vectors from outside the package), Composer (files cache keyed on
+# composer.lock). Playwright browser caching lands with the WS-17 suite.
 name: ci
 
 on:
@@ -7,10 +36,43 @@ on:
     branches: ['**']
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  # Superseded pushes cancel; main always runs to completion.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+
 jobs:
-  gates-1-3:
-    name: typecheck / lint / test
+  changes:
+    name: path filter
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      php: ${{ steps.filter.outputs.php }}
+      reference: ${{ steps.filter.outputs.reference }}
+      contracts_or_config: ${{ steps.filter.outputs.contracts_or_config }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify the diff (fails open to running everything)
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            bash scripts/ci-changed.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            bash scripts/ci-changed.sh "${{ github.event.before }}" "${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  gates-1-3:
+    name: typecheck / lint / test (TS)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,17 +82,27 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      - name: Gate 1 — typecheck
-        run: pnpm -r typecheck
-      - name: Gate 2 — lint + format
-        run: pnpm -r lint && pnpm format:check
-      - name: Gate 3 — tests
-        run: pnpm -r test
+      - name: Gates 1-3 — typecheck, lint, tests (turbo-cached; forced on contract/config diffs)
+        env:
+          TURBO_FORCE: ${{ needs.changes.outputs.contracts_or_config }}
+        run: pnpm exec turbo run typecheck lint test
+      - name: Gate 2 — format
+        run: pnpm format:check
 
   reference-selftest:
     name: python reference selftest
+    needs: changes
+    if: needs.changes.outputs.reference == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,7 +112,10 @@ jobs:
 
   conformance:
     name: generated artifacts fresh + budgets
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -51,14 +126,104 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @burnfront/web strings:check
-      - run: pnpm --filter @burnfront/api-client generate:check
-      - run: pnpm --filter @burnfront/web budget:check
-      - run: pnpm --filter @burnfront/web budget:landing
+      - name: Gate 5 — keyed strings fresh (contracts/COPY.md)
+        run: pnpm --filter @burnfront/web strings:check
+      - name: Gate 5 — api-client regenerates diff-clean (contracts/openapi.yaml)
+        run: pnpm --filter @burnfront/api-client generate:check
+      - name: Gate 7 — SPA bundle budget (ADR-0009)
+        run: pnpm --filter @burnfront/web budget:check
+      - name: Gate 7 — landing budget + freshness (ADR-0009)
+        run: pnpm --filter @burnfront/web budget:landing
+
+  php-gate:
+    name: php — pint / larastan / pest (Spectator, vectors, schema conformance)
+    needs: changes
+    if: needs.changes.outputs.php == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      # The scratch cluster the whole api test suite expects (api/phpunit.xml:
+      # 127.0.0.1:55432, user postgres, trust auth, db burnfront_test).
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: burnfront_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, pgsql, redis, sodium
+          coverage: none
+          tools: composer:v2
+      - name: Composer cache location
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('api/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+      # Plain dist install. (Agent worktree sessions may see packagist dists
+      # blocked by their egress proxy and fall back to git-source installs —
+      # tasks/WS-06/STATUS.md decision 10. GitHub-hosted runners have normal
+      # egress; keep this standard and do not copy the agent workaround here.)
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: pg client 16 present (schema-conformance diffs pg_dump output)
+        run: |
+          if ! pg_dump --version | grep -q ' 16\.'; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client-16
+          fi
+          pg_dump --version
+      - name: App key for the test env
+        run: cp .env.example .env && php artisan key:generate
+      - name: Gate 2 — pint
+        run: vendor/bin/pint --test
+      - name: Gate 1 — larastan (level 9)
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+      - name: Gates 3/4/5 — pest (feature + vectors crosscheck + Spectator + schema conformance)
+        run: php artisan test
+
+  e2e-smoke:
+    # Gate 6 sentinel. e2e/ holds only a README until WS-17 lands the
+    # Playwright suite; this job is green-but-empty until then and turns RED
+    # the moment a suite exists without CI wiring, so gate 6 cannot be skipped
+    # silently. WS-17's brief authorizes replacing this job with the real
+    # compose-stack run (PG + Laravel + built SPA + mailpit, 5 journeys,
+    # axe + Lighthouse — playbook §5 gates 6-7).
+    name: gate 6 — playwright smoke (sentinel until WS-17)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Suite present means this sentinel must be replaced
+        run: |
+          if [ -e e2e/package.json ] || ls e2e/playwright.config.* >/dev/null 2>&1; then
+            echo '::error::e2e/ contains a suite but ci.yml still holds the WS-16 sentinel job.'
+            echo '::error::WS-17 must wire the real gate-6 leg (its brief authorizes CI edits).'
+            exit 1
+          fi
+          echo 'gate 6 pending: e2e/ has no suite yet (WS-17). Sentinel passes by design.'
 
   contracts-guard:
     name: contracts frozen (ADR-0011)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,6 +239,7 @@ jobs:
   gate-9:
     name: hygiene sweep
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,6 +249,8 @@ jobs:
           node-version: 22
       - name: Hygiene (no debug output / markers / focused tests; engine deps empty)
         run: bash scripts/hygiene.sh
+      - name: Dependency allowlist (manifests vs contracts/DEPENDENCIES.md)
+        run: bash scripts/deps-allowlist.sh
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
         env:
