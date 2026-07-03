@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Casts\PgDateArray;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -15,7 +16,7 @@ use Illuminate\Support\Carbon;
  * @property int $best_len
  * @property Carbon|null $last_daily_date
  * @property Carbon|null $freeze_available_at
- * @property string $frozen_dates
+ * @property list<string> $frozen_dates
  * @property Carbon|null $updated_at
  */
 class Streak extends Model
@@ -40,6 +41,7 @@ class Streak extends Model
             'best_len' => 'integer',
             'last_daily_date' => 'date',
             'freeze_available_at' => 'date',
+            'frozen_dates' => PgDateArray::class,
             'updated_at' => 'datetime',
         ];
     }

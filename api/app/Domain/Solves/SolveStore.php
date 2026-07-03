@@ -4,15 +4,77 @@ declare(strict_types=1);
 
 namespace App\Domain\Solves;
 
+use App\Models\DailyPuzzle;
 use App\Models\Solve;
 use DateTimeInterface;
 
 /**
- * WS-06 slice of the solves table: GDPR disowning, retention purge, export.
- * The gameplay write path is WS-07.
+ * Solves table reads + GDPR paths: history listing (WS-07), disowning,
+ * retention purge, export. The write path is SolveSubmissionService.
  */
 final class SolveStore
 {
+    /**
+     * Newest-first solve history for GET /me/solves (cursor = the id of the
+     * last item of the previous page, opaque to clients).
+     *
+     * @return array{items: list<array<string, mixed>>, next_cursor: string|null}
+     */
+    public function listFor(string $userId, ?int $beforeId, int $limit): array
+    {
+        $query = Solve::query()
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->limit($limit + 1);
+
+        if ($beforeId !== null) {
+            $query->where('id', '<', $beforeId);
+        }
+
+        /** @var list<Solve> $rows */
+        $rows = $query->get()->all();
+
+        $hasMore = count($rows) > $limit;
+        $rows = array_slice($rows, 0, $limit);
+
+        $puzzleIds = array_values(array_filter(array_map(
+            fn (Solve $solve): ?string => $solve->mode === 'daily' ? $solve->puzzle_id : null,
+            $rows,
+        )));
+
+        /** @var array<string, DailyPuzzle> $dailies */
+        $dailies = DailyPuzzle::query()
+            ->whereIn('puzzle_id', $puzzleIds)
+            ->get()
+            ->keyBy('puzzle_id')
+            ->all();
+
+        $items = array_map(function (Solve $solve) use ($dailies): array {
+            $daily = $solve->puzzle_id !== null && $solve->mode === 'daily'
+                ? ($dailies[$solve->puzzle_id] ?? null)
+                : null;
+
+            return [
+                'solve_id' => (string) $solve->id,
+                'mode' => $solve->mode,
+                'puzzle_id' => $solve->puzzle_id,
+                'date' => $daily?->date,
+                'incident_number' => $daily?->incident_number,
+                'valid' => $solve->valid,
+                'official_ms' => $solve->official_ms,
+                'clean' => $solve->hints_s1 === 0 && $solve->hints_s2 === 0 && $solve->hints_s3 === 0,
+                'received_at' => $solve->received_at->toJSON(),
+            ];
+        }, $rows);
+
+        $last = $rows === [] ? null : $rows[count($rows) - 1];
+
+        return [
+            'items' => $items,
+            'next_cursor' => $hasMore && $last !== null ? (string) $last->id : null,
+        ];
+    }
+
     /**
      * Anonymization: solves survive with user_id NULL (aggregates stay truthful).
      */

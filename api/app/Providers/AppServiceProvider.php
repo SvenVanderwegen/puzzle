@@ -52,5 +52,13 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perHour(3)->by('me-export:'.$key);
         });
+
+        // Solve submissions: 30/min/user (contracts/openapi.yaml submitSolve).
+        RateLimiter::for('solves', function (Request $request): Limit {
+            $user = $request->user();
+            $key = $user instanceof User ? $user->id : (string) $request->ip();
+
+            return Limit::perMinute(30)->by('solves:'.$key);
+        });
     }
 }
