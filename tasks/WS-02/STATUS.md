@@ -5,7 +5,7 @@
 ## Done
 
 Complete implementation of `packages/engine` against the frozen contract
-(commit SHA recorded below after commit; single commit for the session).
+Commit: 5cc3edd20b09711073def47580cd50d03d33178a (single commit for the session).
 
 - Ported the fb-engine (reference/index.html) honoring reference/firebreak.py
   semantics into typed modules: `grid.ts` (adjacency, BFS + reusable scratch
