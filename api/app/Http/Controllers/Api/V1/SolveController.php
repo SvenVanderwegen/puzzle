@@ -43,7 +43,9 @@ final class SolveController extends Controller
             'hints.s3' => ['required', 'integer', 'min:0', 'max:200'],
             'undo_count' => ['required', 'integer', 'min:0', 'max:100000'],
             'replay' => ['sometimes', 'string', 'max:262144'],
-            'replay_sha256' => ['sometimes', 'string', 'regex:/^[0-9a-f]{64}$/'],
+            // ADR-0020: a replay without its integrity digest would hollow
+            // out ADR-0012 — the digest is required whenever replay is sent.
+            'replay_sha256' => ['required_with:replay', 'string', 'regex:/^[0-9a-f]{64}$/'],
             // Endless only: the client-graded deduction-chain length feeding
             // the board rating prior (RATING.md §4). Required there so WS-08
             // can rate the solve.

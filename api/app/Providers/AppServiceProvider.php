@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domain\Auth\MagicLinkService;
+use App\Domain\Ratings\Events\FailedDailyRecorded;
+use App\Domain\Ratings\Events\RatableSolveRecorded;
+use App\Domain\Ratings\Listeners\ApplyFailedDaily;
+use App\Domain\Ratings\Listeners\ApplyRatableSolve;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,6 +30,12 @@ class AppServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom($this->app->databasePath('migrations/contract'));
 
         $this->configureRateLimiting();
+
+        // WS-08: the queued rating listeners live under Domain\Ratings —
+        // outside the app/Listeners discovery path — so the WS-07 seam is
+        // wired explicitly.
+        Event::listen(RatableSolveRecorded::class, ApplyRatableSolve::class);
+        Event::listen(FailedDailyRecorded::class, ApplyFailedDaily::class);
     }
 
     /**

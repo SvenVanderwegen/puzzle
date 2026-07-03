@@ -11,9 +11,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * GET /me/rating (contracts/openapi.yaml #/components/schemas/Rating).
- * Serves stored values with calibration defaults; the Glicko-2 math that
- * populates them is WS-08.
+ * GET /me/rating (contracts/openapi.yaml #/components/schemas/Rating): the
+ * live Glicko-2 values with the last-30-solves sparkline and the first-10
+ * calibration flag (RATING.md §5). Updates land via the queued WS-08
+ * listeners; this endpoint only reads.
  */
 final class RatingController extends Controller
 {

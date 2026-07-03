@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Solves;
 
+use App\Domain\Ratings\RatingService;
 use App\Models\DailyPuzzle;
 use App\Models\Solve;
 use DateTimeInterface;
@@ -24,6 +25,12 @@ final class SolveStore
     {
         $query = Solve::query()
             ->where('user_id', $userId)
+            // Failed-daily bookkeeping rows (WS-08) anchor rating audit
+            // events; they are not player submissions and never surface here.
+            ->where(function ($query): void {
+                $query->whereNull('reject_reason')
+                    ->orWhere('reject_reason', '<>', RatingService::FAILED_DAILY_REASON);
+            })
             ->orderByDesc('id')
             ->limit($limit + 1);
 
