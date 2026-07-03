@@ -63,6 +63,7 @@
   const grid = document.getElementById("grid");
   const veil = document.getElementById("veil");
   const newBtn = document.getElementById("newBtn");
+  const hintBtn = document.getElementById("hintBtn");
   const undoBtn = document.getElementById("undoBtn");
   const resetBtn = document.getElementById("resetBtn");
   const breakChip = document.getElementById("breakChip");
@@ -79,6 +80,8 @@
   let cells = [];
   let undoStack = [];
   let locked = false;
+  let hinting = false;
+  let hintCell = -1;
   let startAt = 0,
     clockTimer = null,
     toastTimer = null;
@@ -140,6 +143,7 @@
     breakChip.classList.toggle("over", p > game.N);
     undoBtn.disabled = locked || undoStack.length === 0;
     resetBtn.disabled = locked;
+    hintBtn.disabled = locked || hinting;
   }
 
   function paintCell(i) {
@@ -149,9 +153,15 @@
     b.setAttribute("aria-label", cellLabel(i));
   }
 
+  function clearHint() {
+    if (hintCell >= 0 && cells[hintCell]) cells[hintCell].classList.remove("hint-cell");
+    hintCell = -1;
+  }
+
   function buildGrid() {
     grid.innerHTML = "";
     grid.classList.remove("done");
+    hintCell = -1;
     grid.style.setProperty("--cols", game.C);
     grid.style.gridTemplateColumns = "repeat(" + game.C + ",1fr)";
     cells = [];
@@ -184,6 +194,7 @@
   function tap(i, dir) {
     if (locked || !game) return;
     if (i === game.spark || game.clueMap.has(i)) return;
+    clearHint();
     const prev = marks[i];
     marks[i] = (prev + dir + 3) % 3;
     undoStack.push([[i, prev]]);
@@ -194,6 +205,7 @@
 
   function undo() {
     if (locked || !undoStack.length) return;
+    clearHint();
     const entry = undoStack.pop();
     for (const [i, prev] of entry) {
       marks[i] = prev;
@@ -205,6 +217,7 @@
   function reset() {
     if (locked || !game) return;
     hideToast();
+    clearHint();
     const entry = [];
     for (let i = 0; i < marks.length; i++)
       if (marks[i] !== 0) {
@@ -232,6 +245,7 @@
   function win(times) {
     locked = true;
     hideToast();
+    clearHint();
     stopClock();
     grid.classList.add("done");
     updateChrome();
@@ -285,6 +299,8 @@
         clueMap: new Map(p.clues),
         clueIdx: p.clues.map((cv) => cv[0]),
         clueVal: p.clues.map((cv) => cv[1]),
+        clues: p.clues,
+        difficulty: diff,
       };
       marks = new Int8Array(n);
       undoStack = [];
@@ -305,6 +321,46 @@
     }
   }
 
+  /* Asks the incident desk for one forced deduction given the clues and
+     whichever breaks are already placed — never the full solution. Purely
+     server-side: the client has no deduction solver, only the local
+     validator used at completion. */
+  async function requestHint() {
+    if (locked || !game || hinting) return;
+    hinting = true;
+    updateChrome();
+    try {
+      const shaded = [];
+      for (let i = 0; i < marks.length; i++) if (marks[i] === 1) shaded.push(i);
+      const qs = new URLSearchParams({
+        difficulty: game.difficulty,
+        spark: String(game.spark),
+        clues: JSON.stringify(game.clues),
+        shaded: JSON.stringify(shaded),
+      });
+      const resp = await fetch("/hint?" + qs.toString());
+      if (!resp.ok) throw new Error("hint request failed");
+      const data = await resp.json();
+      clearHint();
+      if (data.status === "forced") {
+        hintCell = data.cell;
+        cells[hintCell].classList.add("hint-cell");
+        showToast(cellName(hintCell) + " has to " + (data.state === "break" ? "be a firebreak." : "stay clear."));
+      } else if (data.status === "contradiction") {
+        showToast("Something already marked doesn’t fit the report. Recheck your breaks.");
+      } else if (data.status === "complete") {
+        showToast("Every cell is already accounted for.");
+      } else {
+        showToast("No forced move right now — take another look at what's placed.");
+      }
+    } catch (e) {
+      showToast("Couldn't reach the incident desk. Try again.");
+    } finally {
+      hinting = false;
+      updateChrome();
+    }
+  }
+
   segButtons.forEach((b) =>
     b.addEventListener("click", () => {
       if (b.dataset.diff === diff) return;
@@ -314,6 +370,7 @@
     })
   );
   newBtn.addEventListener("click", newGame);
+  hintBtn.addEventListener("click", requestHint);
   undoBtn.addEventListener("click", undo);
   resetBtn.addEventListener("click", reset);
 
