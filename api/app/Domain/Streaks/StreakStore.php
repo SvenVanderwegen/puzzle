@@ -7,12 +7,13 @@ namespace App\Domain\Streaks;
 use App\Models\Streak;
 
 /**
- * Streak reads + GDPR paths. Streak progression (UTC day math, freezes) is WS-07;
- * until then freeze_available derives conservatively from freeze_available_at and
- * safe_until stays null.
+ * Streak reads + GDPR paths. Progression and the summary math (UTC day walk,
+ * freezes, safe_until) live in StreakService (WS-07).
  */
 final class StreakStore
 {
+    public function __construct(private readonly StreakService $streaks) {}
+
     /**
      * Streak summary per contracts/openapi.yaml #/components/schemas/Streak.
      *
@@ -20,18 +21,7 @@ final class StreakStore
      */
     public function summaryFor(string $userId): array
     {
-        /** @var Streak|null $row */
-        $row = Streak::query()->find($userId);
-
-        return [
-            'current' => $row->current_len ?? 0,
-            'best' => $row->best_len ?? 0,
-            'last_daily_date' => $row?->last_daily_date?->format('Y-m-d'),
-            'freeze_available' => $row === null
-                || $row->freeze_available_at === null
-                || $row->freeze_available_at->lessThanOrEqualTo(now()),
-            'safe_until' => null,
-        ];
+        return $this->streaks->summaryFor($userId);
     }
 
     /**
