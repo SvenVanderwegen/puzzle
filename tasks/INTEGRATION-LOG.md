@@ -216,3 +216,29 @@
   List-Unsubscribe (RFC 8058 https-only — on the owner's ESP checklist).
 - Owner blockers stand: ESP account + DPA, SMTP creds in Forge, SPF/DKIM/
   DMARC records (exact set in tasks/WS-21/STATUS.md).
+
+## 2026-07-03 — WS-16 merged
+- Branch worktree-agent-aa54ffe4617d60b14 @ 606fa20 → merged after verification
+  (MERGE-WITH-FIXES → all six applied and re-validated; verifier's
+  gate-coverage table proved ZERO gates dropped by the ci.yml rewrite,
+  path-filter semantics proven on real diffs incl. fail-open edges, preflight
+  skip-green pattern sound, php-gate service matches phpunit.xml
+  field-for-field, two cold forced runs 15/15 green ~63s).
+- Fixes verified in 67177df: AWS CLI v2 installer (noble has no apt awscli),
+  branch-protection must require the `changes` job (closes the
+  fail-to-skip route), ci.yml header honesty, scripts/ self-edits force full
+  runs, guarded Forge poll curl, RUNBOOK nits + production quick-deploy OFF.
+- Lead rulings: CI-only GitHub Actions without ADR RATIFIED (WS-00 precedent;
+  DEPENDENCIES.md governs package manifests); turbo.json globalDependencies
+  recommendation NOTED for a future config pass (TURBO_FORCE plumbing covers
+  it today); deps-allowlist covers manifests not composer.lock (accepted —
+  frozen-lockfile + composer content-hash backstop); pipeline/ python tests
+  land in CI with WS-05's merge (tracked).
+- Lead fix at integration: the pre-existing @burnfront/web#test flake the
+  builder reproduced (waitFor 1s real-timer timeout under CPU contention,
+  2/8 cold parallel runs) — testing-library asyncUtilTimeout raised to 5s
+  in apps/web/src/test-setup.ts. Triage closed; WS-17 need not carry it.
+- Owner blockers stand (ordered checklist in tasks/WS-16/STATUS.md): rename
+  default branch to main, then Hetzner/Forge/Cloudflare/R2 accounts + the 13
+  named secrets; all live rehearsals (staging deploy, rollback, pgBackRest
+  restore drill) remain REHEARSAL PENDING in docs/RUNBOOK.md.
