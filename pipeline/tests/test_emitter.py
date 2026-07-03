@@ -163,11 +163,11 @@ def test_og_renderer_cannot_see_the_solution():
     # deterministic bytes; heading changes bytes (text is actually drawn)
     clues = [{"r": 0, "c": 1, "m": 3}, {"r": 2, "c": 2, "m": 5}]
     a = emitter.render_og_card(5, 5, [3, 0], clues, "Incident #100",
-                               "Lookout 5×5")
+                               "Lookout 5x5")
     b = emitter.render_og_card(5, 5, [3, 0], clues, "Incident #100",
-                               "Lookout 5×5")
+                               "Lookout 5x5")
     c = emitter.render_og_card(5, 5, [3, 0], clues, "Incident #101",
-                               "Lookout 5×5")
+                               "Lookout 5x5")
     assert a == b != c
     assert a[:8] == b"\x89PNG\r\n\x1a\n"
 
@@ -179,9 +179,9 @@ def test_og_bytes_identical_for_any_solution(emitted):
     board = engine.board_json(rec.pz)
     png1 = emitter.render_og_card(board["rows"], board["cols"],
                                   board["spark"], board["clues"],
-                                  "Incident #100", "Lookout 5×5")
+                                  "Incident #100", "Lookout 5x5")
     rec.solution = {x: engine.OPEN for x in rec.pz.cells()}   # nonsense fill
     png2 = emitter.render_og_card(board["rows"], board["cols"],
                                   board["spark"], board["clues"],
-                                  "Incident #100", "Lookout 5×5")
+                                  "Incident #100", "Lookout 5x5")
     assert png1 == png2

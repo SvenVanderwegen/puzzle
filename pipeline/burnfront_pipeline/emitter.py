@@ -163,7 +163,7 @@ def render_og_card(rows, cols, spark, clues, heading, subheading):
 
 def _og_bytes_for(rec):
     board = engine.board_json(rec.pz)
-    size_text = f"{rec.player_tier.capitalize()} {rec.pz.R}×{rec.pz.C}"
+    size_text = f"{rec.player_tier.capitalize()} {rec.pz.R}x{rec.pz.C}"
     if rec.incident is not None:
         heading = f"Incident #{rec.incident}"
     else:
