@@ -229,3 +229,74 @@ is blocked on it.** In order (details per step in docs/RUNBOOK.md §2):
    job logs first.
 5. Verifier session runs the brief acceptance checklist; this session
    deliberately did not self-certify or fake any rehearsal.
+
+---
+
+## Session 2026-07-03 addendum (builder — lead fix-up round, verdict MERGE-WITH-FIXES)
+
+## Done
+
+- `67177df` — all six lead/verifier fixes applied:
+  1. RUNBOOK §2.2: `apt-get install awscli` replaced with the official AWS
+     CLI v2 installer + GPG signature verification (no working awscli package
+     on Ubuntu 24.04 "noble"; `forge-deploy.sh` hard-depends on `aws`).
+  2. Branch-protection wording in RUNBOOK §2.1.4 and Blockers item 1: require
+     every ci.yml job INCLUDING the path-filter `changes` job (closes the
+     failed-filter → legs-report-skipped → required-checks-satisfied route).
+  3. ci.yml header comment corrected: contracts/ runs every CONSUMER leg;
+     reference-selftest keys on reference/, scripts/ and CI config (matching
+     ci-changed.sh comments too).
+  4. ci-changed.sh hardening: `scripts/` added to the `reference` and
+     `contracts_or_config` classes — edits to the gate/filter scripts force a
+     full run.
+  5. forge-command.sh: poll curl guarded; transient Forge API blips retry
+     within the existing deadline instead of failing the run.
+  6. RUNBOOK nits: §2.3 cross-ref → §2.6 step 4; quick-deploy OFF documented
+     for the production site too (double-deploy race with the pointer-branch
+     force-push).
+
+Re-validation after the fixes:
+
+- All four workflows `yaml.safe_load` clean; prettier clean; hygiene +
+  deps-allowlist green; shellcheck clean on all six scripts.
+- Path-filter simulations rerun with the new patterns: scripts-only and
+  filter-itself diffs now set all four outputs true (full run); docs-only
+  still skips; contracts/, api/, reference/, workflow classes unchanged and
+  correct. Real-diff runs (87f2447..HEAD, zero-base) both run everything.
+- Forced full gate runs: 4 executed this round — 3 fully green (60–75s),
+  1 hit the web test flake below.
+
+## FAILED (gate 3 — `@burnfront/web#test`, intermittent, pre-existing; lead triage requested)
+
+- **Symptom**: under cold, fully-parallel forced turbo runs (all 5 vitest
+  suites concurrently), `@burnfront/web#test` fails intermittently — 2
+  failures in ~8 such runs this session. Captured signature:
+  `Timeout.checkRealTimersCallback` in `@testing-library/dom` `wait-for.js`,
+  i.e. a real-timer `waitFor` exceeding its timeout. Never fails solo, never
+  fails in a direct `pnpm test` (309/309), never fails cached.
+- **Hypothesis**: a timing-sensitive `waitFor` in an apps/web test breaches
+  its default timeout under CPU contention. CI runners (2 cores) will see the
+  same contention profile inside the gates-1-3 job; expect occasional red.
+- **What was tried**: 8 forced full-parallel runs to characterize (2 red,
+  6 green); solo re-runs of the web suite (always green); direct suite run
+  (green, full coverage). Not a third blind retry of a broken gate — the
+  failures are load-dependent and the exact test name is not deterministic to
+  capture (the failing run's log was truncated by turbo's grouped output).
+- **Not caused by this branch**: the WS-16 diff contains zero TS/product
+  changes (workflows, scripts, docs, tasks only); the first occurrence was on
+  an untouched working tree.
+- **Suggested triage**: (c)-shaped — apps/web is outside WS-16's paths; the
+  fix (raise the offending `waitFor` timeout or fake timers) belongs to the
+  lead or WS-17's test-infra hardening. Until then, a rare gates-1-3 red that
+  greens on re-run has this signature.
+
+## Files touched (addendum)
+
+- `.github/workflows/ci.yml`, `scripts/ci-changed.sh`,
+  `scripts/forge-command.sh`, `docs/RUNBOOK.md`, `tasks/WS-16/STATUS.md`
+
+## Resume instructions (unchanged)
+
+- Owner provisioning checklist above, then the three rehearsals. The lead has
+  the flake triage request; everything else from the fix list is applied and
+  validated.
