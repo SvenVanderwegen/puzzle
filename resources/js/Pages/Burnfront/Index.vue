@@ -24,8 +24,7 @@ const hintCell = ref(-1);
 const boardDone = ref(false);
 const veilVisible = ref(false);
 const clockText = ref('0:00');
-const toastMessage = ref('');
-const toastVisible = ref(false);
+const statusMessage = ref('');
 const bannerVisible = ref(false);
 const finalTimeText = ref('0:00');
 
@@ -34,7 +33,7 @@ let marksVersion = 0;
 let genToken = 0;
 let startAt = 0;
 let clockTimer = null;
-let toastTimer = null;
+let statusTimer = null;
 let winTimer = null;
 
 const placedCount = computed(() => marks.value.reduce((n, m) => n + (m === 1 ? 1 : 0), 0));
@@ -59,16 +58,15 @@ function startClock() {
     }, 1000);
 }
 
-function hideToast() {
-    clearTimeout(toastTimer);
-    toastVisible.value = false;
+function clearStatus() {
+    clearTimeout(statusTimer);
+    statusMessage.value = '';
 }
-function showToast(msg) {
-    toastMessage.value = msg;
-    toastVisible.value = true;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        toastVisible.value = false;
+function showStatus(msg) {
+    statusMessage.value = msg;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => {
+        statusMessage.value = '';
     }, 3400);
 }
 
@@ -126,7 +124,7 @@ function undo() {
 
 function reset() {
     if (locked.value || !game.value) return;
-    hideToast();
+    clearStatus();
     clearHint();
     marksVersion++;
     const entry = [];
@@ -148,14 +146,14 @@ function maybeFinish(justCompleted) {
     if (d) {
         win(d);
     } else if (justCompleted) {
-        showToast(`All ${g.N} breaks are down, but the fire disagrees with the report. Something’s off.`);
+        showStatus(`All ${g.N} breaks are down, but the fire disagrees with the report. Something’s off.`);
     }
 }
 
 function win(times) {
     const g = game.value;
     locked.value = true;
-    hideToast();
+    clearStatus();
     clearHint();
     stopClock();
     boardDone.value = true;
@@ -192,7 +190,7 @@ async function newGame() {
     const token = ++genToken;
     locked.value = true;
     stopClock();
-    hideToast();
+    clearStatus();
     veilVisible.value = true;
     bannerVisible.value = false;
     try {
@@ -229,7 +227,7 @@ async function newGame() {
                locked forever: tap/undo/reset all bail out while locked. */
             locked.value = false;
         }
-        showToast("Couldn't reach the incident desk. Try again.");
+        showStatus("Couldn't reach the incident desk. Try again.");
     } finally {
         if (token === genToken) veilVisible.value = false;
     }
@@ -269,16 +267,16 @@ async function requestHint() {
         clearHint();
         if (data.status === 'forced') {
             hintCell.value = data.cell;
-            showToast(cellName(data.cell, game.value.C) + ' has to ' + (data.state === 'break' ? 'be a firebreak.' : 'stay clear.'));
+            showStatus(cellName(data.cell, game.value.C) + ' has to ' + (data.state === 'break' ? 'be a firebreak.' : 'stay clear.'));
         } else if (data.status === 'contradiction') {
-            showToast('Something already marked doesn’t fit the report. Recheck your breaks.');
+            showStatus('Something already marked doesn’t fit the report. Recheck your breaks.');
         } else if (data.status === 'complete') {
-            showToast('Every cell is already accounted for.');
+            showStatus('Every cell is already accounted for.');
         } else {
-            showToast("No forced move right now — take another look at what's placed.");
+            showStatus("No forced move right now — take another look at what's placed.");
         }
     } catch (e) {
-        if (token === genToken && version === marksVersion) showToast("Couldn't reach the incident desk. Try again.");
+        if (token === genToken && version === marksVersion) showStatus("Couldn't reach the incident desk. Try again.");
     } finally {
         hinting.value = false;
     }
@@ -292,7 +290,7 @@ function selectDifficulty(key) {
 
 onBeforeUnmount(() => {
     stopClock();
-    clearTimeout(toastTimer);
+    clearTimeout(statusTimer);
     clearTimeout(winTimer);
 });
 
@@ -371,10 +369,6 @@ newGame();
             </div>
 
             <div class="mt-3.5 flex min-h-11 items-baseline gap-3">
-                <p v-if="!bannerVisible" class="max-w-[60ch] text-[13px] text-ash-dim">
-                    Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases. New
-                    here? The walkthrough below shows exactly how the fire moves.
-                </p>
                 <div v-if="bannerVisible" class="flex flex-col gap-1.5">
                     <span class="bf-banner-headline">FIRE MAPPED</span>
                     <p class="text-sm text-ash">
@@ -382,6 +376,11 @@ newGame();
                         time.
                     </p>
                 </div>
+                <p v-else-if="statusMessage" class="bf-status" role="status">{{ statusMessage }}</p>
+                <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
+                    Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases. New
+                    here? The walkthrough below shows exactly how the fire moves.
+                </p>
             </div>
         </section>
 
@@ -418,6 +417,4 @@ newGame();
             </p>
         </footer>
     </main>
-
-    <div class="bf-toast" :class="{ 'is-visible': toastVisible }" role="status">{{ toastMessage }}</div>
 </template>
