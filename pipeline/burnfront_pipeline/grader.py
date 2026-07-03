@@ -158,11 +158,12 @@ def player_tier(rows, cols):
 MON_MIN_CLUES = 10        # 5x5: score fixed at 14, tier almost always A/B
 SUN_MIN_CLUES = 28        # 8x8: score fixed at 35, generation stays fast
 
-# Minimal-band score thresholds (score = R*C - 1 - n_clues).
-TUE_MIN_SCORE = 17        # 5x5 minimal: reject the over-clued easy tail
+# Minimal-band score thresholds (score = R*C - 1 - n_clues). Acceptance
+# rates over the 200-board measurement runs are in GRADING.md §4.
+TUE_MIN_SCORE = 19        # 5x5 minimal: reject the over-clued easy tail
 WED_SCORE_RANGE = (25, 28)  # 6x6 minimal: the fat middle of the distribution
-THU_MIN_DETOUR = 10       # 6x6 minimal: upper ~40% detour depth
-FRI_MIN_SCORE = 28        # 6x6 minimal: sparse-clue hard band
+THU_MIN_DETOUR = 12       # 6x6 minimal: upper ~38% detour depth
+FRI_MIN_SCORE = 29        # 6x6 minimal: sparsest-clue top ~20%
 SAT_MIN_DETOUR = 8        # 7x7 minimal: the summit keeps a deep detour
 
 
