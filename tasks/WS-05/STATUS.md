@@ -60,16 +60,19 @@
   marks. The renderer cannot leak by construction (no solution parameter;
   asserted in tests) and identical boards with different solutions render
   identical bytes (test).
-- Tests green from `pipeline/` (default suite; count in the final report):
+- Tests: **50 passed, 1 deselected (slow), 0 failed** from `pipeline/`:
   vectors replay, tier logic, curation determinism, sign/verify + tamper,
-  emit determinism = two full runs byte-identical, refusal paths incl. CLI
-  nonzero exit, fixture integrity. Slow marker (`pytest -m slow`) rebuilds
-  the committed content sample from scratch and byte-compares.
-- Gates at session end (exact one-liners in the final report): pytest
-  green; `python3 reference/firebreak.py --selftest` green (reference
-  untouched); `bash scripts/hygiene.sh` green; `pnpm format:check` fails
-  only on the pre-existing `packages/api-client/package.json` violation
-  (present before this workstream; pipeline adds no new ones).
+  emit determinism = two full pipeline runs byte-identical, refusal paths
+  incl. CLI nonzero exit, fixture integrity. Slow marker (`pytest -m slow`)
+  rebuilds the committed content sample in one process and byte-compares —
+  left for the verifier on stable hardware (see Decisions 11).
+- Gates at session end: `pytest` 50 passed/1 deselected; `python3
+  reference/firebreak.py --selftest` -> "all self-tests passed" with zero
+  diff under `reference/` and `contracts/`; `bash scripts/hygiene.sh` ->
+  exit 0; `pnpm format:check` fails only on the pre-existing
+  `packages/api-client/package.json` violation (present before this
+  workstream; pipeline adds none — `.venv`/fixtures are ignored per
+  Decisions 1–2).
 
 ## Remaining
 
@@ -123,6 +126,22 @@
    serials in curation order (dailies by date, then pack by lesson).
 10. pytest default excludes the `slow` marker (full content rebuild);
     `pytest -m slow` runs it. Documented in README.
+11. **The committed fixture was produced by deterministic checkpointed
+    curation** (one foreground process per day/lesson, pickled, then a
+    single assemble+emit step): this session's environment reaps processes
+    living longer than ~10–25 minutes (killed two measurement runs and two
+    single-process fixture emits mid-flight). Equivalence to a
+    single-process emit is structural (identical seeds -> identical
+    records) and was evidenced in-session by (a) re-curating the Saturday
+    unit from scratch -> identical board/solution, (b) a second
+    assemble+emit -> `diff -r` clean against the committed tree, (c) the
+    default suite's 2-day full-pipeline double emit being byte-identical.
+    The one-process proof is `pytest -m slow` on stable hardware.
+12. Lesson 5's unproducible primary predicate is probed over a bounded
+    40-candidate prefix per emit (`PROBE_ATTEMPTS_LESSON`) instead of the
+    full 150 budget — an unbounded probe cost ~8 minutes per emit for a
+    kind that cannot occur; the accepted fallback boards are identical
+    under any probe budget.
 
 ## Files touched
 
