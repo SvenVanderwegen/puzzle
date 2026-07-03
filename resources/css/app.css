@@ -267,16 +267,8 @@
         @apply font-semibold text-paper;
     }
 
-    /* ---------- toast ---------- */
-    .bf-toast {
-        @apply pointer-events-none fixed bottom-[26px] left-1/2 z-[5] max-w-[min(88vw,420px)] -translate-x-1/2 translate-y-4 rounded-[5px] border border-line border-l-[3px] border-l-danger bg-char-2 px-4 py-3 text-[13.5px] text-paper opacity-0 transition-[opacity,transform] duration-[250ms] ease-out;
-    }
-    .bf-toast.is-visible {
-        @apply translate-y-0 opacity-100;
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .bf-toast {
-            transition: none;
-        }
+    /* ---------- status message ---------- */
+    .bf-status {
+        @apply max-w-[60ch] border-l-[3px] border-l-danger py-0.5 pl-2.5 text-[13px] text-paper;
     }
 }
