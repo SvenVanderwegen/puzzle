@@ -840,7 +840,7 @@ export interface operations {
     parameters: {
       query?: never;
       header: {
-        /** @description Client-generated UUID (v7); doubles as `client_solve_id`. */
+        /** @description Client-generated UUID, MUST be version 7 (enforced server-side, ADR-0021); doubles as `client_solve_id`. */
         'Idempotency-Key': string;
       };
       path?: never;

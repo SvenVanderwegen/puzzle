@@ -43,6 +43,8 @@ s = max(0.5, 1.0 − 0.15·min(hints_s1, 1) − 0.15·hints_s2)
   counts for streak/completion)
 - Failed daily: a daily with a `puzzle_fetches` start record left unsolved at UTC
   rollover scores **s = 0.25** (applied by the rollover job; one per day max)
+  — and counts as a rated game: `games += 1` user-side, `attempts += 1`
+  board-side, feeding calibration (ADR-0021)
 - Endless abandons: unrated (no obligation, no punishment)
 - Academy boards: always unrated
 - Time affects percentiles and prestige, never the rating (v1; revisit = ADR)

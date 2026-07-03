@@ -85,7 +85,9 @@ CREATE TABLE solves (
     started_at      timestamptz,
     received_at     timestamptz NOT NULL DEFAULT now(),
     valid           boolean NOT NULL,
-    reject_reason   text,                            -- BurnVerdictReason when invalid
+    reject_reason   text,                            -- BurnVerdictReason when invalid, or the
+                                                     -- internal marker 'failed_daily' on synthetic
+                                                     -- rating-anchor rows (ADR-0021)
     suspect         boolean NOT NULL DEFAULT false,  -- clock lies: percentile-ineligible
     imported        boolean NOT NULL DEFAULT false,  -- via /me/import: percentile-ineligible
     hints_s1        smallint NOT NULL DEFAULT 0,

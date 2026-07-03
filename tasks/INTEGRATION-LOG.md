@@ -87,3 +87,14 @@
   (vendor/ not installed in main checkout — WS-08 session installs it).
 - Consumer check: strings/api-client generation unaffected (description-only
   contract edits; generate:check diff-clean).
+
+## 2026-07-03 — WS-08 merged
+- Branch worktree-agent-aa08c10041829237d @ cffcfc0 → merged after full
+  verification (PASS: 7 fixtures independently re-derived in Python, both
+  parameter mutations killed, recompute bit-deterministic, dedupe race-safe)
+  PLUS a fix-up round for the verifier-proven failed-daily key pre-claim
+  exploit (v7-only submissions, v8 reserved anchors, replay second fence,
+  GDPR lock ordering) — attack replayed as a test, 139/2475 green.
+- Lead rulings: ADR-0021 in-range (key namespace + RATING failed-daily-games
+  errata + schema comment errata); D2/D4/D6/D7 ratified; lead re-ran the
+  attack tests cold pre-merge.
