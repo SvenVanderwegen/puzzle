@@ -1,32 +1,30 @@
 /**
- * /play (Endless) stub — heading, tier chip from the validated ?tier search
- * param (rating-recommended when absent), and the generation loading line.
- * On-site generation and the board are WS-11's (data-ws area).
+ * /play (Endless, WS-11). Tier resolution: explicit ?tier search param, else
+ * the persisted dial, else the rating-recommended tier (hub/tiers.ts). The
+ * feature itself — worker generation, session, replay, submission — lives in
+ * src/endless/EndlessPlay.
  */
 import { useSearch } from '@tanstack/react-router';
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { PageHeading } from '../chrome/PageHeading';
-import { recommendedTier, tierLabel } from '../hub/tiers';
-import { useLocalState } from '../state/runtime';
+import { EndlessPlay } from '../endless/EndlessPlay';
+import { loadPrefs } from '../endless/prefs';
+import { recommendedTier } from '../hub/tiers';
+import { useLocalState, useRuntime } from '../state/runtime';
 import { t } from '../strings';
 
 export function PlayPage(): ReactElement {
   const search = useSearch({ strict: false });
+  const { storage } = useRuntime();
   const state = useLocalState();
-  const tier = search.tier ?? recommendedTier(state.record.rating);
+  const dial = useMemo(() => loadPrefs(storage).dial, [storage]);
+  const tier = search.tier ?? dial ?? recommendedTier(state.record.rating);
 
   return (
     <>
       <PageHeading>{t('hub.lane.endless')}</PageHeading>
-      <p>
-        <span className="bf-chip bf-tier-chip" data-tier={tier}>
-          {tierLabel(tier)}
-        </span>
-      </p>
-      <section data-ws="WS-11" aria-labelledby="bf-play-area">
-        <p className="bf-lane__meta" id="bf-play-area">
-          {t('play.loading')}
-        </p>
+      <section data-ws="WS-11">
+        <EndlessPlay tier={tier} />
       </section>
     </>
   );
