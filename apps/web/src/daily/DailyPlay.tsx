@@ -13,7 +13,6 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import type { ReactElement } from 'react';
 import { shadingToBits, type BurnResult } from '@burnfront/engine';
 import {
-  clearSnapshot,
   loadSnapshot,
   PlaySession,
   revealSequence,
@@ -270,7 +269,8 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
       return;
     }
     loadBoard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- online transitions handled in a sibling effect
+    // Deliberately keyed on `date` only; connectivity changes are handled by
+    // the sibling effect below. (react-hooks/exhaustive-deps is not enabled.)
   }, [date]);
 
   // Reconnect: reload when we came online without a board, and flush any queued
@@ -281,7 +281,7 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
     void retryPendingDaily(api, runtime.storage, (next) => {
       setStateIfMounted(setSubmission, next);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on connectivity flips
+    // Runs on connectivity flips. (react-hooks/exhaustive-deps is not enabled.)
   }, [online]);
 
   // ---- pre-cache tomorrow --------------------------------------------------

@@ -111,11 +111,13 @@ export async function shareOrCopy(
 /** Reads navigator's share/clipboard capabilities (bound); DOM-only, no state. */
 export function browserShareEnv(): ShareEnv {
   if (typeof navigator === 'undefined') return {};
-  const env: { share?: ShareEnv['share']; writeText?: ShareEnv['writeText'] } = {};
-  if (typeof navigator.share === 'function') env.share = navigator.share.bind(navigator);
-  const clipboard = navigator.clipboard;
-  if (clipboard !== undefined && typeof clipboard.writeText === 'function') {
-    env.writeText = clipboard.writeText.bind(clipboard);
-  }
-  return env;
+  const clipboard = navigator.clipboard as Clipboard | undefined;
+  return {
+    ...(typeof navigator.share === 'function'
+      ? { share: navigator.share.bind(navigator) }
+      : {}),
+    ...(clipboard !== undefined && typeof clipboard.writeText === 'function'
+      ? { writeText: clipboard.writeText.bind(clipboard) }
+      : {}),
+  };
 }
