@@ -138,3 +138,29 @@
   phpstan L9 (vendor/ now installed on main — WS-06 debt cleared), TS 525
   tests incl. 130 web, format/hygiene/lint/strings/generate/budget/
   budget:landing all green.
+
+## 2026-07-03 — WS-11 merged
+- Branch worktree-agent-a3b5ca2623c572be4 @ 384c76d → merged after verification
+  (MERGE, no fixes; 14 verifier chaos/teeth tests all passed: out-of-order
+  worker delivery, prefetch poisoning, tier-switch races — token protocol
+  dropped stale results 100%; main bundle proven generator-free at byte level;
+  11 boards through the real worker path hold all three fairness guarantees;
+  UUIDv7 timestamp == injected clock; replay digest proven over uncompressed
+  bytes via byte-reversing compressor).
+- Lead rulings: (1) board rating NOT displayed in v1 — RATIFIED; SolveResult
+  exposes no board-rating surface, builder correctly resolved brief-vs-contract
+  toward the contract; a display needs a future ADR + contract change.
+  (2) no-new-copy-keys workaround RATIFIED as the correct in-brief call; the
+  two keys (endless.new, endless.rating.pending) land with the WS-14
+  integration's COPY ADR, replacing the reused hub.play.endless label and the
+  "…" pending chip (current chip is an a11y gap: role=status announcing an
+  ellipsis — closed in the same pass). (3) un-gated /me/rating refresh after
+  any accepted submission accepted as harmless (server always queues rating
+  for valid endless solves). (4) STATUS D1 overstatement noted: crew
+  6×6/8 dial is not perf-certified by perf.test.ts (lookout/hotshot are);
+  empirically ~1–2s worst-case off-main-thread — acceptable, no action.
+  (5) silent mid-solve tier-switch abandon ratified (product.md: no confirm
+  dialogs in play; RATING.md: abandons unrated).
+- Gates re-run on mainline post-merge: TS 525 tests green, budgets
+  107.56/200 KB + landing fresh, strings/generate/format/hygiene/lint green,
+  PHP 205/3182 re-confirmed.
