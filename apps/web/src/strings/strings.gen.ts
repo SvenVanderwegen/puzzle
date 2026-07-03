@@ -38,6 +38,8 @@ export const catalog = {
   'hub.lane.rush': 'Rush — crews in training. Coming after launch.',
   'hub.guest': 'Guest',
   'hub.countdown': 'Next incident at midnight UTC — {hh}:{mm}:{ss}.',
+  'hub.endless.solved': '{n} contained this tier',
+  'hub.academy.progress': '{done}/{total} lessons',
   'daily.title': 'Incident #{n}',
   'daily.solvedBy':
     '{count, plural, one {# crew has} other {# crews have}} contained Incident #{n}.',
@@ -94,6 +96,7 @@ export const catalog = {
     'Your profile, streak and rating are erased. Anonymous solve statistics remain in the aggregates.',
   'settings.streakAlert':
     'Streak protection alerts — one email, only on days your streak would end unsolved.',
+  'settings.title': 'Settings',
   'email.magic.subject': 'Your Burnfront sign-in link',
   'email.streak.subject': 'Your {n}-day streak has {hours} hours.',
   'email.streak.body':

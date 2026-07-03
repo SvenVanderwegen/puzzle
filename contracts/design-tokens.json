@@ -24,7 +24,7 @@
     },
     "ashDim": {
       "value": "#6e6558",
-      "role": "secondary text, labels"
+      "role": "decorative/disabled/large-text only - fails AA (4.5:1) at body size, measured 3.22 on soot / 2.94 on char (ADR-0018); body-size secondary text uses ash"
     },
     "paper": {
       "value": "#f3ead9",

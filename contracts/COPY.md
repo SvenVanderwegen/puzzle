@@ -52,6 +52,8 @@ Interpolations use `{braces}`. Pluralization via ICU MessageFormat where marked.
 - `hub.lane.rush` — Rush — crews in training. Coming after launch.
 - `hub.guest` — Guest
 - `hub.countdown` — Next incident at midnight UTC — {hh}:{mm}:{ss}.
+- `hub.endless.solved` — {n} contained this tier
+- `hub.academy.progress` — {done}/{total} lessons
 
 ## daily
 
@@ -116,6 +118,7 @@ Interpolations use `{braces}`. Pluralization via ICU MessageFormat where marked.
 - `settings.delete` — Delete my account
 - `settings.delete.explain` — Your profile, streak and rating are erased. Anonymous solve statistics remain in the aggregates.
 - `settings.streakAlert` — Streak protection alerts — one email, only on days your streak would end unsolved.
+- `settings.title` — Settings
 
 ## email (WS-21; text-first)
 

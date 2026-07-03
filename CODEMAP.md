@@ -8,3 +8,4 @@ Add a row when you add a shared module.
 | Firebreak engine (validate/count/deduce/generate/grade/codec) | `@burnfront/engine` | Pure TS port of the reference; vectors are law; RNG/clock injected |
 | Play-state machines (marks/undo/timer/coach/session/solve-record/replay/persistence) | `@burnfront/game-core` | Framework-agnostic; engine-only dependency; clock/gzip/sha/rng injected |
 | Board + burn-replay React components (+HUD, tokens.ts CSS-var emitter) | `@burnfront/ui-web` | Tokens-only styling; keyboard-first; reduced-motion stepper; fixture harness for e2e |
+| Typed API client (types.gen.ts + type-locked wrapper) | `@burnfront/api-client` | Generated from openapi.yaml (ADR-0016); zero deps; wrong path = compile error |

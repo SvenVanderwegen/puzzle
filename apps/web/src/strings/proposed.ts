@@ -1,19 +1,14 @@
 /**
- * PROPOSED COPY KEYS — NOT in contracts/COPY.md yet.
+ * PROPOSED COPY KEYS — quarantine for strings apps/web needs before they
+ * exist in contracts/COPY.md.
  *
- * The shell needs these three strings and the frozen catalog has no key for
- * them (same situation WS-04 hit; resolved then by ADR-0014). They are
- * quarantined here so the copy gap stays visible; the lead should either
- * amend COPY.md by ADR (moving them into strings.gen.ts) or rule them out.
- * Everything else in apps/web renders generated catalog keys only.
+ * Empty since ADR-0017 moved settings.title, hub.endless.solved and
+ * hub.academy.progress into the frozen catalog (strings.gen.ts). If a future
+ * workstream needs a new string: add it here with a justification comment,
+ * flag it in STATUS.md, and the lead amends COPY.md by ADR — at which point
+ * the key moves out of this file. Generated catalog keys always win
+ * collisions.
  */
-export const proposedCatalog = {
-  /** /settings page heading — a11y requires a page name; no COPY.md key names the page. */
-  'settings.title': 'Settings',
-  /** Endless lane, per-tier solved count (product §3: "boards solved this tier"). */
-  'hub.endless.solved': '{n} contained this tier',
-  /** Academy lane progress (product §3: progress "4/7 lessons"). */
-  'hub.academy.progress': '{done}/{total} lessons',
-} as const;
+export const proposedCatalog = {} as const;
 
 export type ProposedKey = keyof typeof proposedCatalog;

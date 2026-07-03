@@ -8,8 +8,8 @@ import { catalog } from './strings.gen';
 import { proposedCatalog } from './proposed';
 
 describe('strings.gen catalog', () => {
-  it('holds all 93 COPY.md keys', () => {
-    expect(Object.keys(catalog)).toHaveLength(93);
+  it('holds all 96 COPY.md keys', () => {
+    expect(Object.keys(catalog)).toHaveLength(96);
   });
 
   it('covers every COPY.md section', () => {
