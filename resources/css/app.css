@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './fonts.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -6,4 +7,276 @@
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-staatliches: 'Staatliches', system-ui, sans-serif;
+
+    --color-soot: #171310;
+    --color-char: #221c15;
+    --color-char-2: #2c2519;
+    --color-line: #3b3325;
+    --color-ash: #a89d8c;
+    --color-ash-dim: #998f80;
+    --color-paper: #f3ead9;
+    --color-ember: #ff8a3d;
+    --color-ember-deep: #e06a1f;
+    --color-flame: #ffd86b;
+    --color-danger: #e5484d;
+}
+
+@layer base {
+    :root {
+        font-size: 16px;
+        --cell-max: 540px;
+    }
+
+    body {
+        font-family:
+            system-ui,
+            -apple-system,
+            'Segoe UI',
+            Roboto,
+            sans-serif;
+        line-height: 1.55;
+    }
+}
+
+@layer components {
+    /* ---------- buttons & controls ---------- */
+    .bf-btn {
+        @apply cursor-pointer appearance-none rounded-[5px] border border-line bg-transparent px-3.5 py-2 text-[11px] font-semibold tracking-[.09em] whitespace-nowrap text-ash uppercase;
+    }
+    .bf-btn:hover:not(:disabled) {
+        @apply border-ember text-paper;
+    }
+    .bf-btn:disabled {
+        @apply cursor-default opacity-35;
+    }
+    .bf-btn:disabled:hover {
+        @apply border-line text-ash;
+    }
+    .bf-btn-primary {
+        @apply border-ember-deep text-ember;
+    }
+    .bf-btn-primary:hover:not(:disabled) {
+        @apply bg-ember/10 text-flame;
+    }
+    .bf-btn:focus-visible {
+        @apply outline-2 outline-offset-2 outline-flame;
+    }
+
+    .bf-seg {
+        @apply flex overflow-hidden rounded-[5px] border border-line;
+    }
+    .bf-seg-btn {
+        @apply cursor-pointer appearance-none border-0 border-l border-l-line bg-transparent px-3 py-2 text-[11px] font-semibold tracking-[.09em] whitespace-nowrap text-ash-dim uppercase first:border-l-0;
+    }
+    .bf-seg-btn.is-active {
+        @apply bg-ember/8 text-ember;
+    }
+    .bf-seg-btn:hover:not(.is-active) {
+        @apply text-ash;
+    }
+    .bf-seg-btn:focus-visible {
+        @apply outline-2 outline-offset-2 outline-flame;
+    }
+
+    .bf-chip {
+        @apply flex items-baseline gap-[7px] rounded-[5px] border border-line px-3 py-2 text-xs whitespace-nowrap text-ash tabular-nums;
+    }
+    .bf-chip-key {
+        @apply text-[10px] tracking-[.14em] text-ash-dim uppercase;
+    }
+    .bf-chip-value {
+        @apply font-semibold text-paper;
+    }
+    .bf-chip.is-over .bf-chip-value {
+        @apply text-danger;
+    }
+
+    /* ---------- board ---------- */
+    .bf-board-grid {
+        @apply grid touch-manipulation gap-[5px];
+        width: min(92vw, var(--cell-max));
+    }
+    .bf-cell {
+        @apply relative aspect-square cursor-pointer appearance-none rounded-[5px] border border-line bg-char p-0 font-staatliches leading-none text-paper transition-[background-color,color,border-color] duration-300 ease-out;
+        font-size: min(calc(84vw / var(--cols) * 0.44), calc(var(--cell-max) / var(--cols) * 0.44));
+    }
+    .bf-cell:not(.is-fixed):hover {
+        @apply border-ash-dim;
+    }
+    .bf-cell:focus-visible {
+        @apply z-[1] outline-2 outline-offset-1 outline-flame;
+    }
+    .bf-cell.is-fixed {
+        @apply cursor-default;
+    }
+    .bf-cell.is-spark {
+        @apply bg-char-2 text-flame;
+        text-shadow: 0 0 14px rgba(255, 216, 107, 0.5);
+    }
+    .bf-cell.is-clue {
+        @apply bg-char-2;
+    }
+    .bf-cell.is-break {
+        @apply border-[#6e6146] bg-[repeating-linear-gradient(135deg,#564b38_0_3px,#241f16_3px_9px)];
+    }
+    .bf-cell.is-dot::after {
+        content: '';
+        @apply absolute inset-0 m-auto size-[12%] rounded-full bg-ash opacity-90;
+    }
+    .bf-cell.is-hint {
+        animation: bf-hint-pulse 1.3s ease-in-out infinite;
+        box-shadow:
+            0 0 0 2px var(--color-flame),
+            0 0 12px rgba(255, 216, 107, 0.55);
+    }
+    @keyframes bf-hint-pulse {
+        0%,
+        100% {
+            box-shadow:
+                0 0 0 2px var(--color-flame),
+                0 0 12px rgba(255, 216, 107, 0.55);
+        }
+        50% {
+            box-shadow:
+                0 0 0 2px var(--color-flame),
+                0 0 20px rgba(255, 216, 107, 0.85);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bf-cell.is-hint {
+            animation: none;
+        }
+    }
+    .bf-cell .bf-cell-minute {
+        @apply absolute inset-0 flex items-center justify-center;
+    }
+    /* burn replay */
+    .bf-cell.is-burnt {
+        @apply border-transparent text-soot;
+        background: var(--burn-bg, var(--color-ember));
+        text-shadow: none;
+    }
+    .bf-cell.is-burnt.is-spark {
+        color: #5a1d00;
+    }
+    .bf-board-grid.is-done .bf-cell {
+        @apply cursor-default;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bf-cell {
+            transition: none;
+        }
+    }
+
+    .bf-banner-headline {
+        @apply font-staatliches text-[30px] leading-none tracking-[.05em] text-flame;
+    }
+
+    .bf-veil {
+        @apply absolute inset-0 z-[2] hidden items-center justify-center rounded-md bg-soot/72 backdrop-blur-[1px];
+    }
+    .bf-veil.is-visible {
+        @apply flex;
+    }
+    .bf-veil span {
+        @apply text-xs tracking-[.18em] text-ash uppercase;
+        animation: bf-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes bf-pulse {
+        0%,
+        100% {
+            opacity: 0.45;
+        }
+        50% {
+            opacity: 1;
+        }
+    }
+
+    /* ---------- how it works demo ---------- */
+    .bf-demo {
+        @apply flex flex-col gap-4 rounded-md border border-line p-[18px];
+    }
+    .bf-stress {
+        @apply text-ember;
+    }
+    .bf-demo-grid {
+        @apply grid w-full max-w-[300px] shrink-0 grid-cols-5 gap-1;
+    }
+    .bf-dcell {
+        @apply relative flex aspect-square items-center justify-center rounded border border-line bg-char font-staatliches text-[clamp(15px,4.6vw,24px)] leading-none text-paper transition-[background-color,color,opacity] duration-300 ease-out;
+    }
+    .bf-dcell.is-spark {
+        @apply bg-char-2 text-flame;
+        text-shadow: 0 0 10px rgba(255, 216, 107, 0.5);
+    }
+    .bf-dcell.is-clue {
+        @apply bg-char-2;
+    }
+    .bf-dcell.is-break {
+        @apply border-[#6e6146] bg-[repeating-linear-gradient(135deg,#564b38_0_3px,#241f16_3px_9px)];
+    }
+    .bf-dcell.is-burnt {
+        @apply border-transparent text-soot;
+        background: var(--burn-bg, var(--color-ember));
+        text-shadow: none;
+    }
+    .bf-dcell.is-burnt.is-spark {
+        color: #5a1d00;
+    }
+    .bf-dcell.is-route {
+        @apply z-[1] outline-3 -outline-offset-1 outline-paper;
+    }
+    .bf-dcell.is-blocked {
+        @apply z-[1] outline-3 -outline-offset-1 outline-dashed outline-danger;
+    }
+    .bf-demo-grid.is-focus .bf-dcell {
+        @apply opacity-30;
+    }
+    .bf-demo-grid.is-focus .bf-dcell.is-route,
+    .bf-demo-grid.is-focus .bf-dcell.is-blocked,
+    .bf-demo-grid.is-focus .bf-dcell.is-spark {
+        @apply opacity-100;
+    }
+    .bf-dcell.is-x::before {
+        content: '\2715';
+        @apply absolute inset-0 flex items-center justify-center font-sans text-sm font-bold text-danger;
+    }
+    .bf-dcell.is-ok::after {
+        content: '\2713';
+        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-soot opacity-85;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bf-dcell {
+            transition: none;
+        }
+    }
+
+    .bf-rulecols {
+        @apply grid gap-5;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .bf-rulecol h3 {
+        @apply text-[11px] font-semibold tracking-[.18em] text-ash-dim uppercase;
+    }
+    .bf-rulecol ol,
+    .bf-rulecol ul {
+        @apply flex flex-col gap-[9px] pl-5 text-sm text-ash;
+    }
+    .bf-rulecol li strong {
+        @apply font-semibold text-paper;
+    }
+
+    /* ---------- toast ---------- */
+    .bf-toast {
+        @apply pointer-events-none fixed bottom-[26px] left-1/2 z-[5] max-w-[min(88vw,420px)] -translate-x-1/2 translate-y-4 rounded-[5px] border border-line border-l-[3px] border-l-danger bg-char-2 px-4 py-3 text-[13.5px] text-paper opacity-0 transition-[opacity,transform] duration-[250ms] ease-out;
+    }
+    .bf-toast.is-visible {
+        @apply translate-y-0 opacity-100;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bf-toast {
+            transition: none;
+        }
+    }
 }

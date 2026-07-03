@@ -7,15 +7,16 @@ use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class BurnfrontController extends Controller
 {
     public function __construct(private readonly PuzzleService $puzzles) {}
 
-    public function index(): View
+    public function index(): Response
     {
-        return view('burnfront.index', [
+        return Inertia::render('Burnfront/Index', [
             'difficulties' => PuzzleService::DIFFICULTIES,
             'defaultDifficulty' => PuzzleService::DEFAULT_DIFFICULTY,
         ]);
