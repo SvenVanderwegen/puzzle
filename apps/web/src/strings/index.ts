@@ -6,12 +6,12 @@
  */
 import { formatIcu, type IcuParams } from './icu';
 import { catalog, type CatalogKey } from './strings.gen';
-import { proposedCatalog } from './proposed';
+import { proposedCatalog, type ProposedKey } from './proposed';
 
-// The proposed-keys quarantine is empty (ADR-0017). When a future workstream
-// adds a proposed key, widen this to `CatalogKey | ProposedKey` (import the
-// type from './proposed') — the runtime merge below already handles it.
-export type StringKey = CatalogKey;
+// WS-14 filled the proposed-keys quarantine (see ./proposed.ts and
+// tasks/WS-14/STATUS.md); per the ADR-0017 pattern the union collapses back
+// to `CatalogKey` once the lead moves the keys into COPY.md.
+export type StringKey = CatalogKey | ProposedKey;
 export type { IcuParams };
 export { catalog };
 

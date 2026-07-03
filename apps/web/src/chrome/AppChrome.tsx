@@ -1,6 +1,9 @@
 /**
  * Root layout: night-incident-map chrome, route-change focus management and
- * aria-live route announcements, plus the offline notice (error.offline).
+ * aria-live route announcements, the offline notice (error.offline), the
+ * one-shot flash toast (history state, see flash.ts) and the WS-14 device
+ * preferences applied as data attributes (high contrast drives CSS here;
+ * reduced motion / hide-timer are read by the play surfaces).
  * Every visible string comes from the keyed catalog (CLAUDE.md rule 7).
  */
 import { Link, Outlet, useRouterState } from '@tanstack/react-router';
@@ -8,6 +11,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { t } from '../strings';
 import { useLocalState } from '../state/runtime';
 import { appCssText } from './appCss';
+import { flashKeyOf } from './flash';
 import { useOnline } from './useOnline';
 
 /**
@@ -41,9 +45,14 @@ export function AppChrome(): ReactElement {
   const announcement = useRouteFocus();
   const online = useOnline();
   const state = useLocalState();
+  const flash = useRouterState({ select: (routerState) => flashKeyOf(routerState.location.state) });
 
   return (
-    <div className="bf-app">
+    <div
+      className="bf-app"
+      data-contrast={state.prefs.highContrast ? 'high' : 'normal'}
+      data-motion={state.prefs.reducedMotion ? 'reduced' : 'full'}
+    >
       <style>{appCssText()}</style>
       <header className="bf-header">
         <div>
@@ -54,7 +63,8 @@ export function AppChrome(): ReactElement {
         </div>
         <div className="bf-header__spacer" />
         {state.account === null ? (
-          <Link className="bf-chip" to="/login" data-ws="WS-14">
+          // Nudge 3 of exactly three (product §1): the persistent Guest chip.
+          <Link className="bf-chip" to="/login" data-nudge="guest-chip">
             {t('hub.guest')}
           </Link>
         ) : (
@@ -63,6 +73,11 @@ export function AppChrome(): ReactElement {
           </Link>
         )}
       </header>
+      {flash === null ? null : (
+        <p className="bf-toast" role="status">
+          {t(flash)}
+        </p>
+      )}
       {online ? null : (
         <p className="bf-offline" role="status">
           {t('error.offline')}

@@ -45,6 +45,18 @@ export interface RecordState {
   readonly cleanContains: number;
 }
 
+/**
+ * Device preferences (product §1 /settings row: sound, reduced motion,
+ * hide-timer, high-contrast) — local-only, never synced to the account.
+ * Sound is off by default on web until the first solve (product §4).
+ */
+export interface PrefsState {
+  readonly sound: boolean;
+  readonly reducedMotion: boolean;
+  readonly hideTimer: boolean;
+  readonly highContrast: boolean;
+}
+
 export interface LocalState {
   readonly v: 1;
   /** First Shift (tutorial) completed — drives the Play button's first state. */
@@ -54,6 +66,7 @@ export interface LocalState {
   readonly streak: StreakState;
   readonly academy: AcademyState;
   readonly record: RecordState;
+  readonly prefs: PrefsState;
   /** Signed-in marker (WS-14 sets it); null = guest chip everywhere. */
   readonly account: { readonly email: string } | null;
 }
@@ -81,6 +94,7 @@ export function defaultLocalState(): LocalState {
     streak: { current: 0, best: 0, lastDailyDate: null },
     academy: { done: 0, total: 7 },
     record: { rating: INITIAL_RATING, lastDelta: 0, games: 0, cleanContains: 0 },
+    prefs: { sound: false, reducedMotion: false, hideTimer: false, highContrast: false },
     account: null,
   };
 }
@@ -108,6 +122,7 @@ export function loadLocalState(storage: StorageLike): LocalState {
         streak: { ...defaults.streak, ...candidate.streak },
         academy: { ...defaults.academy, ...candidate.academy },
         record: { ...defaults.record, ...candidate.record },
+        prefs: { ...defaults.prefs, ...candidate.prefs },
       };
     }
     return defaultLocalState();
@@ -118,6 +133,20 @@ export function loadLocalState(storage: StorageLike): LocalState {
 
 export function saveLocalState(storage: StorageLike, state: LocalState): void {
   storage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
+}
+
+/** Marks the browser as signed in (WS-14 auth); everything else is untouched. */
+export function withAccount(state: LocalState, email: string): LocalState {
+  return { ...state, account: { email } };
+}
+
+/**
+ * Drops the signed-in marker ONLY — the anonymous-first record (streak,
+ * rating, progress, prefs) stays. Sign-out and account deletion never erase
+ * guest state (product §1; the server side is settings.delete.explain).
+ */
+export function withoutAccount(state: LocalState): LocalState {
+  return { ...state, account: null };
 }
 
 /** In-memory fallback when localStorage is unavailable (private mode etc.). */

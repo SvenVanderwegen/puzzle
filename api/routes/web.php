@@ -19,6 +19,14 @@ Route::get('/landing/hero.js', [LandingController::class, 'heroModule'])->name('
 
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
+// Legal pages (WS-14, product §1): static Blade rendering owner-approved
+// copy. The current text is an AGENT DRAFT pending owner + lawyer review —
+// sources with owner-field markers live in docs/legal/ (critique #29).
+// Route::view keeps these route:cache-safe (no closures).
+Route::view('/privacy', 'legal.privacy')->name('legal.privacy');
+Route::view('/terms', 'legal.terms')->name('legal.terms');
+Route::view('/imprint', 'legal.imprint')->name('legal.imprint');
+
 // GDPR export download: signed URL (24 h expiry) + live session required, single
 // download. Outside the /api/v1 contract surface — the link is delivered by email.
 Route::get('/exports/{userId}/{file}', ExportDownloadController::class)

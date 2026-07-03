@@ -84,6 +84,10 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
+  // The consumed-link landing (ADR-0003): /login?token=… exchanges the
+  // emailed single-use token for a session.
+  validateSearch: (search: Record<string, unknown>): { token?: string } =>
+    typeof search.token === 'string' && search.token !== '' ? { token: search.token } : {},
 });
 
 const routeTree = rootRoute.addChildren([
