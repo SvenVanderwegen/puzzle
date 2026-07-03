@@ -8,17 +8,22 @@
 #   code                anything outside the documentation-only set changed
 #                       (drives the TS gates, conformance, and the e2e sentinel)
 #   php                 api/, contracts/, scripts/ or CI config changed
-#   reference           reference/ or CI config changed
-#   contracts_or_config contracts/ or root build config changed — the TS leg
-#                       passes --force to turbo because turbo hashes package
-#                       inputs only and cannot see contracts/ (engine tests
-#                       import contracts/vectors from outside the package)
+#   reference           reference/, scripts/ or CI config changed
+#   contracts_or_config contracts/, scripts/ or root build config changed —
+#                       the TS leg forces turbo (TURBO_FORCE) because turbo
+#                       hashes package inputs only and cannot see contracts/
+#                       (engine tests import contracts/vectors from outside
+#                       the package)
 #
 # Safety: this filter FAILS OPEN. Unknown base (first push, force push, shallow
 # history) or any diff error means every output is true and every gate runs.
-# contracts/ is deliberately in every class: a contract change can never skip
-# a gate. Docs-only diffs still get contracts-guard + hygiene + gitleaks — those
-# jobs are unconditional in ci.yml.
+# contracts/ is deliberately in every consumer class (code, php,
+# contracts_or_config) — a contract change can never skip a gate that consumes
+# contracts; reference-selftest keys on reference/, scripts/ and CI config
+# only, which consume no contracts. scripts/ is in every class so edits to the
+# gate/filter scripts themselves force a full run. Docs-only diffs still get
+# contracts-guard + hygiene + gitleaks — those jobs are unconditional in
+# ci.yml.
 set -euo pipefail
 
 base="${1:-}"
@@ -76,12 +81,12 @@ if grep -qE '^(api/|contracts/|scripts/|\.github/)' <<<"$changed"; then
 fi
 
 reference=false
-if grep -qE '^(reference/|\.github/)' <<<"$changed"; then
+if grep -qE '^(reference/|scripts/|\.github/)' <<<"$changed"; then
   reference=true
 fi
 
 contracts_or_config=false
-if grep -qE '^(contracts/|\.github/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$|eslint\.config\.js$|turbo\.json$|\.prettierrc$|\.prettierignore$)' <<<"$changed"; then
+if grep -qE '^(contracts/|scripts/|\.github/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$|eslint\.config\.js$|turbo\.json$|\.prettierrc$|\.prettierignore$)' <<<"$changed"; then
   contracts_or_config=true
 fi
 

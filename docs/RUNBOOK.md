@@ -63,7 +63,10 @@ credentials only the owner holds.
 2. Laravel Forge account, connected to the GitHub repo.
 3. Cloudflare account; add the `burnfront.com` zone; enable R2.
 4. GitHub repository settings: default branch `main`, branch protection on
-   `main` (require the ci.yml checks), Actions enabled, environment
+   `main` requiring every ci.yml job as a status check — INCLUDING the
+   path-filter `changes` job (if `changes` fails, the heavy legs report
+   "skipped", which would otherwise satisfy required checks; requiring
+   `changes` itself closes that route). Actions enabled, environment
    `production` with the owner as required reviewer.
 
 The complete list of GitHub secrets to create, with exact names, is in
@@ -84,11 +87,25 @@ php -m | grep -E 'pdo_pgsql|redis|sodium'
 All three ship with Forge's PHP build. If one is missing:
 `sudo apt-get install php8.3-pgsql php8.3-redis` (sodium is compiled in).
 
-Install the two extra tools the deploy and backup paths need:
+Install the two extra tools the deploy and backup paths need.
+pgBackRest comes from apt. The AWS CLI does not — Ubuntu 24.04 ("noble", what
+Forge provisions) has no working `awscli` package, and `forge-deploy.sh`
+hard-depends on `aws`. Use the official v2 installer and verify the download's
+GPG signature:
 
 ```
 sudo apt-get update
-sudo apt-get install -y awscli pgbackrest
+sudo apt-get install -y pgbackrest unzip
+
+cd /tmp
+curl -fsSLo awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+curl -fsSLo awscliv2.zip.sig https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip.sig
+# Import the AWS CLI signing key first (key text + fingerprint are published
+# in the AWS docs, "Installing the AWS CLI" -> integrity verification):
+gpg --verify awscliv2.zip.sig awscliv2.zip
+unzip -q awscliv2.zip
+sudo ./aws/install
+aws --version   # expect aws-cli/2.x
 ```
 
 ### 2.3 Redis: enable AOF
@@ -104,7 +121,7 @@ Then `sudo systemctl restart redis-server`. Verify:
 `redis-cli config get appendonly` → `yes`.
 
 Staging and production share the Redis process but not data: staging uses
-`REDIS_DB=1` plus its own cache/Horizon prefixes (see 2.7).
+`REDIS_DB=1` plus its own cache/Horizon prefixes (see §2.6 step 4).
 
 ### 2.4 PostgreSQL: production cluster + isolated staging cluster
 
@@ -172,8 +189,8 @@ Create two Forge sites, both from this repo:
 
 | Site | Branch | Notes |
 | --- | --- | --- |
-| `burnfront.com` | `production` | machine-owned pointer branch; deploy.yml force-pushes it to the released tag |
-| `staging.burnfront.com` | `main` | quick-deploy OFF — deploy.yml triggers the hook after the SPA bundle is in R2 |
+| `burnfront.com` | `production` | quick-deploy OFF — machine-owned pointer branch; deploy.yml force-pushes it to the released tag, and quick-deploy would race that push into a double deploy |
+| `staging.burnfront.com` | `main` | quick-deploy OFF — deploy.yml triggers the hook only after the SPA bundle is in R2 |
 
 For each site:
 

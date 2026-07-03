@@ -19,10 +19,13 @@
 #   9 hygiene ........... gate-9 (hygiene.sh, dependency allowlist, gitleaks)
 #
 # Path filtering: scripts/ci-changed.sh classifies the diff. Docs-only diffs
-# skip the heavy legs (skipped jobs satisfy branch protection); contracts/
-# changes always run every leg; an unknown diff base fails open to running
-# everything. contracts-guard and gate-9 are unconditional on purpose —
-# gitleaks must see every change, including docs.
+# skip the heavy legs (skipped jobs satisfy branch protection — so branch
+# protection must also REQUIRE the `changes` job itself; see RUNBOOK §2.1);
+# contracts/ changes always run every consumer leg (TS, conformance, php —
+# reference-selftest keys on reference/ and CI config only, correctly);
+# an unknown diff base fails open to running everything. contracts-guard and
+# gate-9 are unconditional on purpose — gitleaks must see every change,
+# including docs.
 #
 # Caching: pnpm store (setup-node), Turborepo (.turbo via actions/cache; the
 # TS leg force-bypasses the turbo cache when contracts/ or root config changed,

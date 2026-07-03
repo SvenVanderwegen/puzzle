@@ -36,7 +36,12 @@ echo "forge-command: command id $command_id — polling (timeout ${timeout_s}s)"
 deadline=$((SECONDS + timeout_s))
 status="waiting"
 while [ "$SECONDS" -lt "$deadline" ]; do
-  poll="$(curl -fsS -m 30 "${auth[@]}" "$api/servers/$server_id/sites/$site_id/commands/$command_id")"
+  # A transient API blip must not fail the run — the deadline bounds retries.
+  if ! poll="$(curl -fsS -m 30 "${auth[@]}" "$api/servers/$server_id/sites/$site_id/commands/$command_id")"; then
+    echo "forge-command: poll failed (transient?) — retrying" >&2
+    sleep 5
+    continue
+  fi
   status="$(jq -r '.command.status // "unknown"' <<<"$poll")"
   case "$status" in
     finished|failed) break ;;

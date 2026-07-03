@@ -113,7 +113,10 @@ Validation results (this session):
 is blocked on it.** In order (details per step in docs/RUNBOOK.md §2):
 
 1. GitHub repo: rename default branch to `main` (deploy.yml triggers on it),
-   enable branch protection requiring the ci.yml checks, create environment
+   enable branch protection requiring every ci.yml job as a status check —
+   INCLUDING the path-filter `changes` job (if `changes` fails, the heavy legs
+   report "skipped" and would satisfy required checks; requiring `changes`
+   itself closes that fail-closed-to-skip route). Create environment
    `production` with the owner as required reviewer.
 2. Hetzner Cloud account (EU billing).
 3. Laravel Forge account connected to the repo; provision the CPX31 per
