@@ -60,6 +60,7 @@ final class RatingRecompute
                 'solves.hints_s1 as solve_hints_s1',
                 'solves.hints_s2 as solve_hints_s2',
                 'solves.reject_reason as solve_reject_reason',
+                'solves.imported as solve_imported',
             ]);
 
         $replayed = 0;
@@ -114,6 +115,13 @@ final class RatingRecompute
             );
 
         $weight = $isFailedDaily ? 1.0 : Outcome::weightFor(is_string($mode) ? $mode : 'daily');
+
+        // WS-20 imported seeds replayed at the same halved user weight the
+        // live path applied (RatingService::applyImportedSolve); the board
+        // side stays an ordinary weight-1.0 opponent in both paths.
+        if ((bool) $event->getAttribute('solve_imported')) {
+            $weight *= RatingService::IMPORTED_WEIGHT_FACTOR;
+        }
 
         $userId = $event->user_id;
         $puzzleId = $event->puzzle_id;

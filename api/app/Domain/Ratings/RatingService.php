@@ -36,6 +36,13 @@ final class RatingService
 
     public const BOARD_RD_FLOOR = 50.0;
 
+    /**
+     * RATING.md §5: imported solves seed the user's rating by replaying the
+     * §3 outcome and §4 weight at HALF weight. The halved weight (together
+     * with the joined solves.imported flag) is the rating_events mark.
+     */
+    public const IMPORTED_WEIGHT_FACTOR = 0.5;
+
     public function __construct(
         private readonly Glicko2 $glicko2,
         private readonly BoardPriors $priors,
@@ -75,6 +82,56 @@ final class RatingService
 
             if (RatingEvent::query()->where('solve_id', $solve->id)->exists()) {
                 return; // Duplicate delivery (at-least-once).
+            }
+
+            $this->settle($solve, $rating, $score, $weight);
+        });
+    }
+
+    /**
+     * WS-20 /me/import seeding path (RATING.md §5): a stored imported daily
+     * replays the §3 outcome at §4 weight × IMPORTED_WEIGHT_FACTOR. Same
+     * settlement as a live game otherwise — the board side updates as an
+     * ordinary opponent at weight 1.0 (§2 self-calibration; bounded by the
+     * one-valid-daily-per-account index), RD/volatility take the full
+     * update, games += 1, and the audit row records the halved weight.
+     * Idempotent per solve_id like every settlement.
+     *
+     * Only valid, non-suspect, stage-3-free IMPORTED daily solves qualify;
+     * imported endless items are stats-only (no board to re-validate) and
+     * must never reach a rating.
+     */
+    public function applyImportedSolve(int $solveId): void
+    {
+        /** @var Solve|null $solve */
+        $solve = Solve::query()->find($solveId);
+
+        if ($solve === null || $solve->user_id === null) {
+            return;
+        }
+
+        if (! $solve->imported || $solve->puzzle_id === null) {
+            return;
+        }
+
+        if (! $solve->valid || $solve->suspect || $solve->hints_s3 > 0) {
+            return;
+        }
+
+        $userId = $solve->user_id;
+
+        $score = Outcome::solveScore($solve->hints_s1, $solve->hints_s2);
+        $weight = Outcome::weightFor($solve->mode) * self::IMPORTED_WEIGHT_FACTOR;
+
+        DB::transaction(function () use ($solve, $userId, $score, $weight): void {
+            if (! $this->lockedActiveUser($userId)) {
+                return; // Anonymized (checked under the users row lock).
+            }
+
+            $rating = $this->lockedUserRating($userId);
+
+            if (RatingEvent::query()->where('solve_id', $solve->id)->exists()) {
+                return; // Already seeded (idempotent re-entry).
             }
 
             $this->settle($solve, $rating, $score, $weight);

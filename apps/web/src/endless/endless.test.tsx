@@ -283,6 +283,21 @@ describe('guest play-to-contain', () => {
     expect(local.endless.solvedByTier.lookout).toBe(1);
     expect(local.endless.inProgress).toBe(false);
     expect(loadPrefs(storage).history.lookout).toMatchObject({ solved: 1 });
+
+    // WS-20: the guest solve joined the local import log (a later sign-in
+    // merges it as stats via POST /me/import).
+    expect(local.solveLog).toHaveLength(1);
+    const logged = local.solveLog[0];
+    expect(logged).toMatchObject({ mode: 'endless', date: null });
+    expect(logged?.solvedAt).toBe(new Date(NOW).toISOString());
+    expect(logged?.clientSolveId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(logged?.shaded).toHaveLength(25);
+    for (const cell of BREAK_CELLS) {
+      expect(logged?.shaded[cell]).toBe('1');
+    }
+    expect(logged?.shaded.match(/1/g)).toHaveLength(4);
   });
 
   it('flags an invalid full shading with the report copy, then clears it on edit', async () => {
@@ -314,7 +329,7 @@ describe('signed-in play-to-contain (rated, ADR-0006)', () => {
 
   it('submits the endless solve and refreshes the rating chip', async () => {
     const api = fakeApi();
-    await renderPlay({ path: '/play?tier=lookout', state: signedIn, api });
+    const { storage } = await renderPlay({ path: '/play?tier=lookout', state: signedIn, api });
     await containBoard();
 
     const chip = await screen.findByTestId('rating-chip');
@@ -334,6 +349,8 @@ describe('signed-in play-to-contain (rated, ADR-0006)', () => {
     expect(submission.payload).not.toHaveProperty('puzzle_id');
     // No guest nudge for account holders.
     expect(screen.getByTestId('endless-stats')).not.toHaveTextContent(t('streak.guestNote'));
+    // Signed-in solves go up live — nothing joins the WS-20 import log.
+    expect(loadLocalState(storage).solveLog).toEqual([]);
   });
 
   it('shows the calibrating line during the first ten rated solves', async () => {

@@ -46,6 +46,34 @@ export interface RecordState {
 }
 
 /**
+ * One guest solve, recorded exactly as POST /me/import expects it
+ * (contracts/openapi.yaml ImportItem): the anonymous log a sign-in merges
+ * into the account (WS-20). Play surfaces append entries for GUESTS only —
+ * signed-in solves go through POST /solves live.
+ */
+export interface SolveLogEntry {
+  /** UUID v7 (game-core uuidV7) — the server-side idempotency identity. */
+  readonly clientSolveId: string;
+  readonly mode: 'daily' | 'endless';
+  /** Daily items: the UTC incident date; null for endless. */
+  readonly date: string | null;
+  /** Row-major bit string, '1' = firebreak. */
+  readonly shaded: string;
+  readonly clientMs: number;
+  readonly hints: { readonly s1: number; readonly s2: number; readonly s3: number };
+  /** ISO-8601 instant the board was contained locally. */
+  readonly solvedAt: string;
+}
+
+/**
+ * The import cap of POST /me/import (contracts/openapi.yaml: maxItems 100).
+ * Overflow policy: the log keeps the NEWEST entries — streak credit only
+ * ever comes from the newest consecutive run, so the tail is the part that
+ * merges; older history is stats the cap deliberately sheds.
+ */
+export const SOLVE_LOG_LIMIT = 100;
+
+/**
  * Device preferences (product §1 /settings row: sound, reduced motion,
  * hide-timer, high-contrast) — local-only, never synced to the account.
  * Sound is off by default on web until the first solve (product §4).
@@ -69,6 +97,8 @@ export interface LocalState {
   readonly prefs: PrefsState;
   /** Signed-in marker (WS-14 sets it); null = guest chip everywhere. */
   readonly account: { readonly email: string } | null;
+  /** Guest solves awaiting an account merge (WS-20); cleared post-import. */
+  readonly solveLog: readonly SolveLogEntry[];
 }
 
 export interface StorageLike {
@@ -96,6 +126,7 @@ export function defaultLocalState(): LocalState {
     record: { rating: INITIAL_RATING, lastDelta: 0, games: 0, cleanContains: 0 },
     prefs: { sound: false, reducedMotion: false, hideTimer: false, highContrast: false },
     account: null,
+    solveLog: [],
   };
 }
 
@@ -123,6 +154,7 @@ export function loadLocalState(storage: StorageLike): LocalState {
         academy: { ...defaults.academy, ...candidate.academy },
         record: { ...defaults.record, ...candidate.record },
         prefs: { ...defaults.prefs, ...candidate.prefs },
+        solveLog: sanitizeSolveLog(candidate.solveLog),
       };
     }
     return defaultLocalState();
@@ -133,6 +165,62 @@ export function loadLocalState(storage: StorageLike): LocalState {
 
 export function saveLocalState(storage: StorageLike, state: LocalState): void {
   storage.setItem(LOCAL_STATE_KEY, JSON.stringify(state));
+}
+
+/** Structural guard for one persisted log entry (upload-bound: strict). */
+function isSolveLogEntry(value: unknown): value is SolveLogEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Partial<Record<keyof SolveLogEntry, unknown>>;
+  const hints = entry.hints as Partial<Record<'s1' | 's2' | 's3', unknown>> | null | undefined;
+  return (
+    typeof entry.clientSolveId === 'string' &&
+    (entry.mode === 'daily' || entry.mode === 'endless') &&
+    (entry.date === null || typeof entry.date === 'string') &&
+    typeof entry.shaded === 'string' &&
+    /^[01]+$/.test(entry.shaded) &&
+    typeof entry.clientMs === 'number' &&
+    typeof entry.solvedAt === 'string' &&
+    typeof hints === 'object' &&
+    hints !== null &&
+    typeof hints.s1 === 'number' &&
+    typeof hints.s2 === 'number' &&
+    typeof hints.s3 === 'number'
+  );
+}
+
+/** Malformed persisted entries are dropped, never uploaded; newest kept. */
+function sanitizeSolveLog(value: unknown): readonly SolveLogEntry[] {
+  if (!Array.isArray(value)) return [];
+  return (value as readonly unknown[]).filter(isSolveLogEntry).slice(-SOLVE_LOG_LIMIT);
+}
+
+/**
+ * Appends a guest solve to the local import log (WS-20). Re-recording an
+ * entry under the same clientSolveId replaces it; overflow drops the oldest
+ * entries (see SOLVE_LOG_LIMIT).
+ */
+export function withLoggedSolve(state: LocalState, entry: SolveLogEntry): LocalState {
+  const kept = state.solveLog.filter((existing) => existing.clientSolveId !== entry.clientSolveId);
+  return { ...state, solveLog: [...kept, entry].slice(-SOLVE_LOG_LIMIT) };
+}
+
+/**
+ * Drops the merged log ONLY — called once the server has ruled on every
+ * item (WS-20). Streak, record, progress and prefs stay untouched: the
+ * merge protects guest data, it never erases it.
+ */
+export function withClearedSolveLog(state: LocalState): LocalState {
+  return { ...state, solveLog: [] };
+}
+
+/**
+ * Direct-storage log append for play surfaces that persist outside the
+ * runtime store (the endless surface writes storage directly — see
+ * endless/prefs.ts markEndlessInProgress/creditEndlessSolve). Reads the
+ * freshest persisted state so it never clobbers those sibling writes.
+ */
+export function appendSolveLog(storage: StorageLike, entry: SolveLogEntry): void {
+  saveLocalState(storage, withLoggedSolve(loadLocalState(storage), entry));
 }
 
 /** Marks the browser as signed in (WS-14 auth); everything else is untouched. */

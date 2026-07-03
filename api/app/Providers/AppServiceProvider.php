@@ -64,6 +64,16 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perHour(3)->by('me-export:'.$key);
         });
 
+        // Local-record merge (WS-20): one call per sign-in in the real flow;
+        // the ceiling only bounds replayed 100-item batches. 429 documented
+        // on importLocalRecord.
+        RateLimiter::for('me-import', function (Request $request): Limit {
+            $user = $request->user();
+            $key = $user instanceof User ? $user->id : (string) $request->ip();
+
+            return Limit::perHour(10)->by('me-import:'.$key);
+        });
+
         // Solve submissions: 30/min/user (contracts/openapi.yaml submitSolve).
         RateLimiter::for('solves', function (Request $request): Limit {
             $user = $request->user();

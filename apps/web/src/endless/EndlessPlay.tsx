@@ -9,19 +9,20 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { BurnResult } from '@burnfront/engine';
+import { shadingToBits, type BurnResult } from '@burnfront/engine';
 import {
   clearSnapshot,
   loadSnapshot,
   PlaySession,
   revealSequence,
   saveSnapshot,
+  uuidV7,
   type RevealSequence,
 } from '@burnfront/game-core';
 import { Board, BreaksCounter, BurnReplay, uiWebCss } from '@burnfront/ui-web';
 import { recommendedTier, tierLabel, TIERS } from '../hub/tiers';
 import { formatElapsed } from '../state/clock';
-import type { Tier } from '../state/localState';
+import { appendSolveLog, type Tier } from '../state/localState';
 import { useLocalState, useRuntime } from '../state/runtime';
 import { t } from '../strings';
 import { useEndlessDeps } from './deps';
@@ -213,6 +214,24 @@ export function EndlessPlay({ tier }: EndlessPlayProps): ReactElement {
       if (signedIn) {
         void submitEndlessSolve(session, deps.api, deps.recordEnv, runtime.clock, (next) => {
           if (mounted.current) setSubmission(next);
+        });
+      } else {
+        // WS-20: guests keep a local record — a later sign-in merges it via
+        // POST /me/import (endless items count as stats only, RATING.md §5).
+        // Direct-storage append, after creditEndlessSolve's own write.
+        const nowMs = runtime.clock.now();
+        appendSolveLog(runtime.storage, {
+          clientSolveId: uuidV7(nowMs, deps.recordEnv.rng),
+          mode: 'endless',
+          date: null,
+          shaded: shadingToBits(session.shading()),
+          clientMs: Math.min(86_400_000, Math.max(0, Math.round(elapsedMs))),
+          hints: {
+            s1: Math.min(200, hints.s1),
+            s2: Math.min(200, hints.s2),
+            s3: Math.min(200, hints.s3),
+          },
+          solvedAt: new Date(nowMs).toISOString(),
         });
       }
     },
