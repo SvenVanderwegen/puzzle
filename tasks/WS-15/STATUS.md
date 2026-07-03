@@ -3,8 +3,8 @@
 ## Session 2026-07-03 (builder)
 
 ## Done
-(Single commit for the whole workstream — SHA recorded below after commit; all
-work is in this worktree branch.)
+Commit: `8e7d3aa` — WS-15: landing page + /about + /rules + SEO surface (all
+work in this worktree branch.)
 
 - **`/` landing (Blade, logged out)** — product §2 sections in the fixed order
   (asserted by test): hero (h1 `app.tagline`, product sub-copy, CTA `/daily`,
