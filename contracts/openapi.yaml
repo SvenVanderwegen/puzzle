@@ -484,11 +484,11 @@ components:
         replay_sha256:
           type: string
           pattern: '^[0-9a-f]{64}$'
-          description: SHA-256 hex over the UNCOMPRESSED replay JSON bytes (ADR-0012 — server verifies after gunzip).
+          description: SHA-256 hex over the UNCOMPRESSED replay JSON bytes (ADR-0012 — server verifies after gunzip). REQUIRED whenever replay is present (ADR-0020).
         deduction_steps:
           type: integer
           minimum: 1
-          description: Endless only — client-graded chain length feeding the board prior (RATING.md §4).
+          description: REQUIRED for mode=endless, PROHIBITED for daily/pack (ADR-0020; enforced server-side) — client-graded chain length feeding the board prior (RATING.md §4).
 
     SolveResult:
       type: object

@@ -70,3 +70,20 @@
   verified 3.22/2.94); e2e deferrals to WS-10/WS-17 ACCEPTED; conformance CI
   job added (strings/generate/budget checks); CODEMAP api-client row; cosmetic
   notes (sw manifest dupe, state-3 assertion) recorded, no action.
+
+## 2026-07-03 — WS-07 merged
+- Branch worktree-agent-ab799f8deeaf7e877 @ dadd8f3 → merged after verification
+  (PASS; 106/2193 re-measured cold, vector-flip and double Ed25519 tamper
+  mutations both caught, Spectator prefixItems defect reproduced independently,
+  T-48h immutability probed beyond the builder's tests).
+- Lead rulings: (1) ADR-0020 erratas in-range (endless deduction_steps
+  required; replay_sha256 required-with-replay — server enforcement + the
+  untested mapUniqueViolation race branch are RIDERS ON WS-08's brief);
+  (2) idempotent same-key-different-body = replay-original RATIFIED (contract
+  text supports it); (3) rollback's version-total semantics for mutable future
+  days → WS-18 RUNBOOK input; (4) D12 frozen_dates export format change
+  RATIFIED; (5) STATUS overstatement on race-path coverage corrected here;
+  (6) PHP gates accepted from the verifier's cold run on the identical tree
+  (vendor/ not installed in main checkout — WS-08 session installs it).
+- Consumer check: strings/api-client generation unaffected (description-only
+  contract edits; generate:check diff-clean).

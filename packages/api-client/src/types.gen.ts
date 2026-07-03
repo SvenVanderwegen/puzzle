@@ -360,9 +360,9 @@ export interface components {
       undo_count: number;
       /** @description Gzipped event log [t_ms, cellIndex, mark]; retained 90 days (gdpr.md). */
       replay?: string;
-      /** @description SHA-256 hex over the UNCOMPRESSED replay JSON bytes (ADR-0012 — server verifies after gunzip). */
+      /** @description SHA-256 hex over the UNCOMPRESSED replay JSON bytes (ADR-0012 — server verifies after gunzip). REQUIRED whenever replay is present (ADR-0020). */
       replay_sha256?: string;
-      /** @description Endless only — client-graded chain length feeding the board prior (RATING.md §4). */
+      /** @description REQUIRED for mode=endless, PROHIBITED for daily/pack (ADR-0020; enforced server-side) — client-graded chain length feeding the board prior (RATING.md §4). */
       deduction_steps?: number;
     };
     SolveResult: {
