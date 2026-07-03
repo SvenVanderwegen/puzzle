@@ -66,6 +66,8 @@ export const catalog = {
   'streak.days': '{n}-day streak',
   'streak.frozen': 'Controlled burn — your streak held.',
   'streak.protect': "{n}-day streak. One cleared cache and it's gone. Protect it →",
+  'streak.protect.capped':
+    '{n}-day streak in this browser. An account carries the last 7 days forward — and every day after.',
   'streak.guestNote': 'Solving as a guest — your record lives in this browser.',
   'coach.stage1': 'Look at the {m} at {cell}.',
   'coach.stage2.clue_reached_too_fast':

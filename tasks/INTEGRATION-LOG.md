@@ -272,3 +272,35 @@
   tests green on the merged mainline.
 - Unblocked: WS-10 (daily page) and WS-12 (academy) launch off this head;
   og:image 404 noted at WS-15 is now resolvable (PNGs exist in the fixture).
+
+## 2026-07-03 — WS-20 merged (session-limit interruption recovered)
+- Branch worktree-agent-a3bb1b79ba5a5c5a8 @ 03f1233 → merged after full
+  adversarial verification (MERGE-WITH-FIXES). The builder's fix-up round hit
+  the shared session limit mid-Fix-2; the lead recovered it: committed the
+  in-flight work to the worktree branch (frozen-day parity fix + capped nudge,
+  both substantially complete), then re-ran every gate directly rather than
+  relaunch a blocked subagent.
+- Verifier's two findings FIXED and confirmed by the lead: (1) frozen-day
+  streak parity — mergeStreak counted calendar span, not solved days, minting
+  a phantom streak day per bridged freeze (farmable) and undercounting
+  multi-device users; fix counts solved days and reconstructs the range across
+  frozen_dates, with the verifier's two probes turned into regression tests
+  (import-after-frozen → 4 not 5; older run unions to 6). (2) streak.protect
+  >7-day overpromise — new streak.protect.capped nudge states the real
+  7-day carry.
+- Lead rulings via ADR-0026 in-range: (a) board-side rating updates from
+  imported solves RATIFIED + RATING.md §5 amended — an import is
+  BurnValidator-re-validated so the board learning from it is legitimate,
+  bounded to one game/account/board (= archive-play parity); only user-side
+  timing is untrusted, hence its half-weight + percentile-ineligibility.
+  (b) streak.protect.capped adopted into COPY.md ## streak; quarantine
+  dissolved to empty, StringKey back to CatalogKey. Also ratified: decision #2
+  RatingRecompute ×0.5-when-imported (WS-08 seam, interleaved bit-identity
+  proven by verifier); #3 games++ exits calibration on import (noted); #7
+  official_ms NULL; #5 v7-only per item. Non-blocking notes carried to WS-22:
+  tampered-storage whole-batch 422 (self-inflicted), multi-board lock ordering
+  (transient, throttled, idempotent-retry).
+- Gates on merged mainline (lead touches applied): TS 597 tests, PHP
+  285/3555, phpstan L9 clean, pint, format/hygiene/strings/generate/budget/
+  budget:landing (70.45 KB) all green. Consumers regenerated: strings.gen.ts,
+  landing artifact.

@@ -14,11 +14,7 @@
  */
 import type { LocalState } from '../state/localState';
 
-export type PostSolveNudgeKind =
-  | 'guest-note'
-  | 'streak-protect'
-  | 'streak-protect-capped'
-  | null;
+export type PostSolveNudgeKind = 'guest-note' | 'streak-protect' | 'streak-protect-capped' | null;
 
 const PROTECT_FROM_STREAK = 3;
 

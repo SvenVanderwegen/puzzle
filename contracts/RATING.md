@@ -69,8 +69,12 @@ Valid solve → queued job → user update (§3 outcome, §4 weight) → board u
 game, `s_board = 1 − s_user`, weight 1.0, both modes) → `rating_events` row with
 before/after for both sides → `ratings.games += 1`. First 10 rated solves: UI shows
 "Calibrating — n/10" instead of the number. Rating never changes from invalid,
-suspect, imported, or stage-3 solves; imported solves seed a new user's rating by
-replaying §3/§4 with `weight × 0.5` and are marked in `rating_events`.
+suspect, or stage-3 solves. An imported solve (re-validated by BurnValidator,
+ADR-0026) seeds the importing user's rating by replaying §3/§4 with `weight × 0.5`
+AND settles the board side at weight 1.0 as an ordinary opponent (same as live
+play; bounded to one imported game per account per board by `solves_one_valid_daily`);
+both sides are written to `rating_events`, the user row carrying `weight 0.5` joined
+to `solves.imported` as the import mark.
 
 ## 6. Fixtures (normative; reproduce to 4 decimals)
 
