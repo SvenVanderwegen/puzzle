@@ -22,3 +22,13 @@
   pinned as ADR-0012 + openapi description (in this range); (4) CODEMAP row
   applied; (5) repo-level dependency-cruiser still outstanding — assigned to
   WS-09 wiring; (6) minor notes recorded in WS-03 STATUS (no action).
+
+## 2026-07-03 — mainline fix: ADR-0012 consumer update
+- My WS-03 integration amended contracts/openapi.yaml (replay_sha256 description)
+  without updating game-core's drift-tripwire needle in the same commit —
+  violating the freeze rule "consumers are updated in the same integration
+  cycle". Mainline `pnpm -r test` was red until this fix; caught by the WS-04
+  builder. Needle updated to match the expanded lines (and now ALSO pins the
+  ADR-0012 uncompressed-digest wording). Lesson recorded: contract edits at
+  integration must re-run the FULL recursive suite before push — I had run gates
+  before applying the openapi edit, not after.
