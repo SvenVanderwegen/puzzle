@@ -10,6 +10,10 @@ the end-to-end staging deploy, the rollback rehearsal, and the pgBackRest
 restore drill. Run each once, record the result in this file, and remove the
 marker. Do not treat a `REHEARSAL PENDING` procedure as proven.
 
+Status note (WS-18, 2026-07-03): §6–§11 (monitoring, pull-a-daily, CDN-down,
+breach notification, log retention, restore-drill calendar) added. Their own
+`REHEARSAL PENDING` markers are listed per section; the same rule applies.
+
 ---
 
 ## 1. System overview
@@ -595,7 +599,303 @@ observed, operator name. The quarterly cadence starts then.
 
 ---
 
-## 6. Quick reference
+## 6. §monitoring — Nightwatch, health checks, content alerts (WS-18)
+
+### 6.1 What is already wired in code
+
+Everything below ships in the repo and runs without a Nightwatch account.
+The account only adds the dashboards and notifications on top.
+
+| Surface | What it does |
+| --- | --- |
+| `GET /api/v1/health` | `200 {"ok":true,"tomorrow_published":bool}`; `503 {"error":{"code":"degraded",...}}` when the database is unreachable (the failure is also `report()`ed). `tomorrow_published` is true iff a signed calendar covering tomorrow (UTC) was imported and published. |
+| `GET /up` | framework liveness only (no dependencies probed); the deploy pipeline polls it (§3.3) |
+| `GET /deploy.json` | released sha + timestamp, written per release by `forge-deploy.sh` |
+| `php artisan ops:content-freshness` | scheduled 22:00 UTC — alerts when tomorrow's daily is missing at T-2h (critique #17) |
+| `php artisan ops:content-runway` | scheduled 08:30 UTC — alerts when fewer than 21 consecutive future days are covered; a gap in the calendar ends the runway |
+| `php artisan ops:daily-amnesty <date> [--revoke]` | operator command for §7 (pull a daily) |
+| laravel/nightwatch v1.28 | installed (allowlisted, ADR-0010), config published at `api/config/nightwatch.php`, disabled in local/CI/tests; request payloads are never captured (PII posture in the config header) |
+
+The ops:* alert convention — every alert reaches three sinks at once, so
+wiring a real notifier later is configuration, not code:
+
+1. a CRITICAL line on the `ops` log channel (`config/logging.php`; today that
+   lands in `laravel.log`, later `OPS_LOG_CHANNELS=stack,slack` adds Slack);
+2. `report()` of an `App\Domain\Ops\OpsAlert` — once `NIGHTWATCH_TOKEN` is
+   set, every alert appears in Nightwatch as an exception grouped by that
+   class, with no code change;
+3. a non-zero exit — the scheduler marks the run failed, which Nightwatch's
+   scheduled-task monitoring and any cron monitor pick up.
+
+### 6.2 Owner wiring (once the Nightwatch account exists)
+
+1. Create the Nightwatch application (nightwatch.laravel.com), one
+   application with `staging` and `production` environments; copy the token.
+2. Per site, in Forge → Environment:
+
+   | Key | production | staging |
+   | --- | --- | --- |
+   | `NIGHTWATCH_ENABLED` | `true` | `true` |
+   | `NIGHTWATCH_TOKEN` | the token | the token |
+   | `NIGHTWATCH_INGEST_URI` | leave default (`127.0.0.1:2407`) | `127.0.0.1:2408` |
+
+   Environments are told apart by `APP_ENV`; sampling stays at the default
+   1.0 everywhere (rationale in `api/config/nightwatch.php`).
+3. One agent daemon per site (Forge → server → Daemons), same pattern as
+   Horizon (§2.6 step 6):
+
+   ```
+   php /home/forge/<site>-deploy/current/artisan nightwatch:agent
+   ```
+
+   Confirm with `php current/artisan nightwatch:status` on each site. If the
+   two-agents-two-ports layout disagrees with current Nightwatch docs at
+   wire-up time, believe the docs and correct this table.
+4. Refresh config caches (`php current/artisan config:cache` per site, or
+   redeploy).
+
+`REHEARSAL PENDING` — forced exception on staging: after wiring, run
+
+```
+php /home/forge/staging.burnfront.com-deploy/current/artisan ops:content-runway --min=9999
+```
+
+on the staging site (tinker is not installed — not allowlisted). The
+impossible threshold guarantees an `OpsAlert` through the real `report()`
+path; confirm it appears in the Nightwatch staging environment within a
+minute. Record date + who ran it here.
+
+### 6.3 Alert definitions to create in the Nightwatch UI
+
+Click these in once (they live in the Nightwatch account, not in the repo);
+notify the owner's email for all of them. Production environment unless said
+otherwise.
+
+| # | Signal | Definition | Why this threshold |
+| --- | --- | --- | --- |
+| N1 | Slow route | `POST /api/v1/solves` p95 > 200 ms over 5 min | brief-fixed budget; the solve hot path holds BFS validation + aggregates in one transaction |
+| N2 | Exceptions | any new or regressed exception group | low volume is expected; every group is worth a look |
+| N3 | Ops alerts | exception group `App\Domain\Ops\OpsAlert` — alert on EVERY occurrence, staging and production | these are the content freshness/runway alarms of 6.1; never mute this group |
+| N4 | Scheduled task | any miss or failure of the §6.5 watchlist | a missed `streaks:rollover` or purge is silent data damage |
+| N5 | Queue lag | queue wait p95 > 60 s over 5 min | magic-link mail rides the queue; a login link later than a minute is effectively broken |
+| N6 | Command failures | any artisan command exiting non-zero outside the watchlist | catches manual ops mistakes too |
+
+### 6.4 External uptime check
+
+Nightwatch observes from inside the box; a box-wide outage needs an outside
+observer. Owner picks the provider (decision blocker in
+`tasks/WS-18/STATUS.md`; any provider with GET checks + heartbeat monitors
+works). The check to configure:
+
+- `GET https://burnfront.com/api/v1/health` every 60 s, expect HTTP 200 and
+  body containing `"ok":true`; alert after 2 consecutive failures (a 503 is
+  the API saying its database is gone — that page is real).
+- Same check against `https://staging.burnfront.com/api/v1/health` with the
+  basic-auth credentials, notify-only (staging never pages).
+- Optional belt-and-braces once heartbeat monitors exist: append
+  `&& curl -fsS "$HEARTBEAT_URL"` to the two cron lines in §5.2 so a silent
+  pgBackRest failure also trips an alert (closes the "read it by hand
+  weekly" gap noted there).
+
+### 6.5 Scheduled-task watchlist
+
+What a miss means, for triage (all times UTC; defined in
+`api/routes/console.php`):
+
+| Time | Task | A miss means |
+| --- | --- | --- |
+| 00:05 daily | `streaks:rollover` | streak state not judged; the walk self-heals at next credit/rollover (WS-07), but rating failed-daily events are late |
+| 03:10 daily | `retention:purge-solve-artifacts` | GDPR 90-day window slipping (§10) |
+| 03:20 daily | `analytics:purge` | GDPR 90-day/13-month windows slipping (§10) |
+| 06:10 Mon | `analytics:digest` | owner digest missing; no player impact |
+| hourly :15 | `notifications:streak-risk` | streak-protection mail sweep skipped for that hour's timezones |
+| 22:00 daily | `ops:content-freshness` | the freshness alarm itself did not run — treat as the alarm firing |
+| 08:30 daily | `ops:content-runway` | the runway alarm itself did not run |
+
+---
+
+## 7. §pull-a-daily — a published board must be withdrawn (critique #16)
+
+When to pull: the board violates a fairness guarantee (non-unique solution,
+guess required, unwitnessed break), is unsolvable, or its clues are wrong.
+Symptom of non-unique solutions in the wild: `Log::critical` corruption
+tripwire entries from POST /solves (valid shading, mismatched
+`solution_sha256`).
+
+The date's calendar row is immutable inside T-48h (`content:import` refuses
+repointing — critique #32), and a pull almost always happens on the live day.
+So the procedure differs by where the date sits:
+
+**Case A — date is 48 h or more away** (tomorrow+2 or later): repoint it.
+
+1. Produce a corrected calendar manifest (same dates, replacement puzzle id
+   for the bad one, new `content_version`) and publish it: §3.4.
+2. `content:import` repoints the date; the incident number is kept.
+3. No amnesty needed — the board never went live. Done.
+
+**Case B — the date is live or inside T-48h**: the board cannot be swapped.
+The pull is: protect streaks, tell players, leave the row.
+
+1. Declare it. Note detection time and the reason in the incident log.
+2. Set the amnesty flag (on the affected site, as `forge`):
+
+   ```
+   php /home/forge/<site>-deploy/current/artisan ops:daily-amnesty <YYYY-MM-DD>
+   ```
+
+   Effect (all pre-wired in WS-07, asserted by tests): the day can no longer
+   break any streak and consumes no freeze; `streaks:rollover` emits no
+   failed-daily rating events for it; the streak-risk mail sweep skips it;
+   a player who solves it anyway still gets normal credit.
+3. Verify:
+
+   ```
+   curl -s https://burnfront.com/api/v1/daily/<date> | grep '"amnesty":true'
+   ```
+
+4. In-app notice: the `amnesty: true` field in `GET /daily/{date}` IS the
+   client-facing signal today. The web app does not yet render a banner for
+   it — the daily play surface is WS-10's, and a notice string needs a
+   `contracts/COPY.md` key (contract change → ADR). Until that lands, the
+   notice players see is indirect (streaks visibly unharmed). Follow-up is
+   filed in `tasks/WS-18/STATUS.md`; do not promise an on-screen banner in
+   any player communication yet.
+5. Do NOT re-publish a corrected board under the same puzzle id for a live
+   date. It would change bytes under an immutable CDN URL against cached
+   copies, split the day's stats across two boards, and turn the corruption
+   tripwire into noise. The day stands; the next day is a fresh incident.
+6. If the same defect affects future dates (same generator bug), repoint
+   those per Case A now, before they enter their T-48h window.
+7. Revoke (only if the pull itself was a mistake):
+   `... ops:daily-amnesty <date> --revoke`.
+
+`REHEARSAL PENDING` — pull-a-daily has not been rehearsed on staging
+(no staging exists). Rehearse: seed a daily, run steps 2–3, confirm streak
+behavior for a test user across the rollover, record date + operator here.
+
+---
+
+## 8. §CDN-down — serve boards from origin (critique #17)
+
+Board JSON lives on `content.burnfront.com` (R2 + Cloudflare). If that path
+fails while the API is healthy, flip the WS-07 origin fallback: `GET
+/api/v1/daily/{date}` then embeds the full board object as `puzzle` in the
+response, straight from Postgres.
+
+1. Confirm the shape of the outage:
+
+   ```
+   curl -sI https://content.burnfront.com/puzzles/<any-published-id>.json   # failing?
+   curl -s  https://burnfront.com/up                                        # but the site is up?
+   ```
+
+   If burnfront.com itself is down, this is not a CDN incident — §3.3/§4.
+2. Flip the flag: Forge → site → Environment → set
+   `CONTENT_ORIGIN_FALLBACK=true` → save, then rebuild the config cache:
+
+   ```
+   php /home/forge/<site>-deploy/current/artisan config:cache
+   ```
+
+   (Or remotely: `scripts/forge-command.sh <server-id> <site-id> "php ../<site>-deploy/current/artisan config:cache"`.)
+3. Verify the embed:
+
+   ```
+   curl -s https://burnfront.com/api/v1/daily/$(date -u +%F) | grep -c '"puzzle"'   # 1
+   ```
+
+4. Client behavior, truthfully: the `puzzle` embed is the contract's fallback
+   (openapi.yaml documents it) and the API side is tested. The web client
+   that consumes `content_url`/`puzzle` is WS-10's daily play surface, which
+   has not landed at the time of writing — confirm consumption when it does.
+5. Revert once `content.burnfront.com` serves again: set the flag back to
+   `false`, `config:cache` again, re-run step 3 expecting `0`. Do not leave
+   the fallback on — it bypasses CDN caching and puts board bytes on every
+   daily response.
+
+`REHEARSAL PENDING` — CDN-down drill end-to-end on staging (flag flip while
+a client keeps playing) is blocked on staging existing AND on WS-10's play
+surface. Record date + result here when run.
+
+---
+
+## 9. §breach-notification — personal data exposed (GDPR Art. 33/34)
+
+Authority for what data exists and where: `docs/gdpr.md` (Art. 30 record).
+The owner is the controller (sole proprietor, Belgium). The clock: 72 hours
+to the Belgian DPA from AWARENESS, not from the incident.
+
+1. **T0 — aware.** Write the time down. Everything else is measured from it.
+2. **Contain.** Depending on scope: rotate the exposed credential (Forge
+   env, R2 tokens per §2.8, GitHub secrets per WS-16 checklist), disable the
+   affected surface (worst case: Forge → site → disable), block the actor at
+   Cloudflare. Do not destroy evidence; snapshot logs first (§10 locations).
+3. **Assess.** What tables/logs, which subjects, how many, how sensitive.
+   The realistic inventory (gdpr.md): emails + timezones (users), solve
+   rows/replays + peppered ip/ua hashes (90-day window), anon analytics ids,
+   scrubbed error beacons. No payment data exists anywhere.
+4. **Notify the Belgian DPA within 72 h** if there is a risk to subjects:
+   Gegevensbeschermingsautoriteit / Autorité de protection des données,
+   Rue de la Presse 35, 1000 Brussels — breach notification via the online
+   form on gegevensbeschermingsautoriteit.be (Art. 33). Partial information
+   is fine; Art. 33(4) allows notifying in phases. Include: nature, subjects
+   and records affected (approx.), likely consequences, containment taken.
+5. **Notify players without undue delay** when the risk is high (Art. 34) —
+   e.g. the email column or replay/ip-hash rows exfiltrated. Plain language,
+   dispatcher voice, no minimizing: what leaked, when, what we did, what
+   they should do.
+6. **Processors:** if the breach originated at Hetzner, Cloudflare or the
+   ESP, their DPAs oblige them to notify us without undue delay; our 72 h
+   clock still runs from OUR awareness. Keep their incident reference.
+7. **Record** in the incident log (Art. 33(5), mandatory even when not
+   notifying): detection time, scope, containment steps, notifications sent
+   and when, and the reasoning if the DPA was NOT notified.
+
+---
+
+## 10. §log-retention — where each log lives and when it dies
+
+The GDPR retention windows are enforced by scheduled code, not by this table
+(`docs/gdpr.md` is the authority; §6.5 watches the schedulers). This table
+adds the operational logs and their TTLs.
+
+| Log / data | Lives | TTL | Enforced by |
+| --- | --- | --- | --- |
+| `events` rows | Postgres (prod cluster) | 13 months, then rollup + delete | `analytics:purge`, 03:20 UTC daily |
+| `frontend_errors` rows (PII-scrubbed pre-storage) | Postgres | 90 days, deleted | `analytics:purge` |
+| `solves.replay` / `ip_hash` / `ua_hash` | Postgres | 90 days, nulled (solve row survives) | `retention:purge-solve-artifacts`, 03:10 UTC daily |
+| `magic_link_tokens` (sha256 only) | Postgres | 15 min, single use | expiry checked at consume; expired rows deleted |
+| App log `laravel.log` (incl. `ops` channel) | `<site>-deploy/shared/storage/logs/` | 14 days | production/staging MUST set `LOG_CHANNEL=daily` (+`LOG_DAILY_DAYS=14`) in Forge — the local default `stack`→`single` never rotates; this is a provisioning step, add it to §2.6 step 4 values |
+| nginx access/error logs (client IPs — PII) | `/var/log/nginx/` | 14 days | logrotate; Ubuntu's nginx package default is daily/rotate 14 — verify `/etc/logrotate.d/nginx` on the box and pin `rotate 14` if it differs |
+| PostgreSQL server logs | `/var/log/postgresql/` | ~10 weeks (distro logrotate default) | acceptable only because `log_statement` stays `none` (default — verify) so no row data is logged |
+| Horizon job metadata | Redis | minutes–hours | `config/horizon.php` `trim` settings |
+| Backups (encrypted) | R2 `burnfront-backups` | 14 nightly fulls + WAL | pgBackRest `repo1-retention-full=14` (§5.1); purged rows fall out of backup within 14 days, matching gdpr.md's backups row |
+| Forge deploy logs | Forge | Forge-managed | no player data |
+| GitHub Actions logs | GitHub | 90 days (default) | no player data; secrets masked |
+| Nightwatch (once wired) | Nightwatch (SaaS) | per plan | request payloads are never sent (`capture_request_payload=false`); exceptions carry stack + route metadata only |
+
+---
+
+## 11. §quarterly-restore-drill — calendar note
+
+Procedure: §5.4 (WS-16 owns it; do not fork it). This section is only the
+cadence and the log.
+
+- First drill: immediately after the first successful staging deploy
+  (§3.2), which also starts the clock. The owner signs off (playbook P4).
+- Cadence: quarterly — first Monday of January, April, July, October,
+  09:00 UTC, before content work. Put all four in the owner calendar now;
+  the drill is the only proof the backups are restorable.
+- Every drill appends a row here (the §5.4 marker is removed after the
+  first one):
+
+| Date | Restore duration | RPO observed | Within RTO 4h? | Operator |
+| --- | --- | --- | --- | --- |
+| — | — | — | — | — |
+
+---
+
+## 12. Quick reference
 
 | Task | Where |
 | --- | --- |
@@ -606,5 +906,9 @@ observed, operator name. The quarterly cadence starts then.
 | Roll back content | `artisan content:rollback <version>` (§4.4) |
 | Publish content | Actions → content-publish (§3.4) |
 | Backup health | `pgbackrest info` + `pg_stat_archiver` (§5.4) |
-| Logs | `<site>-deploy/shared/storage/logs/laravel.log`; Forge deploy log; Horizon UI `/horizon` |
-| Alerts/monitoring | WS-18 (Nightwatch) — not wired yet |
+| Logs | `<site>-deploy/shared/storage/logs/laravel.log`; Forge deploy log; Horizon UI `/horizon`; retention: §10 |
+| Alerts/monitoring | §6 — code side wired; Nightwatch account + uptime provider pending (owner blockers, tasks/WS-18/STATUS.md) |
+| Pull a bad daily | `artisan ops:daily-amnesty <date>` + §7 |
+| CDN down | flip `CONTENT_ORIGIN_FALLBACK` (§8) |
+| Data breach | §9 — 72 h clock, Belgian DPA |
+| Restore drill | §5.4 procedure, §11 calendar + log |

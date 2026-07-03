@@ -60,6 +60,16 @@ return [
             'ignore_exceptions' => false,
         ],
 
+        // Operational alerts (WS-18): ops:content-freshness, ops:content-runway
+        // and the ops:daily-amnesty audit line write here. Defaults to the
+        // regular stack; wiring a real notifier later is one env change
+        // (e.g. OPS_LOG_CHANNELS=stack,slack plus LOG_SLACK_WEBHOOK_URL).
+        'ops' => [
+            'driver' => 'stack',
+            'channels' => explode(',', (string) env('OPS_LOG_CHANNELS', 'stack')),
+            'ignore_exceptions' => false,
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
