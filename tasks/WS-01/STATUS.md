@@ -122,3 +122,15 @@ Session c next: lead cross-consistency review of the full pack (solve payload �
 db-schema ↔ RATING inputs ↔ engine API ↔ COPY keys ↔ schemas), owner reads and
 approves, commit `docs/adr/0011-contract-freeze.md`, add the CI contracts-guard
 (block `contracts/` diffs without an ADR + `contract-change` label).
+
+## Session b close-out — 2026-07-02
+
+Independent verifier: **16/17 PASS**. Highlights: Glicko-2 re-implemented from
+RATING.md prose alone reproduced all 7 fixtures exactly (the spec is implementable
+by a fresh agent — WS-08's dry run); db-schema.sql executed cleanly on a real
+PostgreSQL 16 cluster (15 tables); all cross-artifact enum/key sets match exactly.
+The single literal FAIL: 'Plausible' appears once in DEPENDENCIES.md's "Explicitly
+rejected" list. **Lead ruling: accepted** — a greppable ban on a vendor is the
+purpose of the rejected-list; the killed-options rule means no *affirmative*
+references. Any future automated killed-options grep must except the
+DEPENDENCIES.md rejected section. Session b CLOSED.
