@@ -13,6 +13,9 @@ export default defineConfig({
         'src/test-setup.ts',
         // DOM bootstrap only; exercised by the build, not unit-testable renderless.
         'src/main.tsx',
+        // Same: the landing hydration entry (WS-15); logic lives in
+        // src/landing/{boardJson,strip,HeroApp}, which are covered.
+        'src/landing/hero.tsx',
       ],
       reporter: ['text-summary'],
       // Playbook §5 gate 3: apps/web floor is 70% lines.

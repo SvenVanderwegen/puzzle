@@ -38,6 +38,12 @@ importers:
       '@burnfront/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@burnfront/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@burnfront/game-core':
+        specifier: workspace:*
+        version: link:../../packages/game-core
       '@burnfront/ui-web':
         specifier: workspace:*
         version: link:../../packages/ui-web

@@ -14,10 +14,14 @@
     "preview": "vite preview",
     "strings:generate": "node scripts/generate-strings.mjs",
     "strings:check": "node scripts/generate-strings.mjs --check",
-    "budget:check": "node scripts/budget-check.mjs"
+    "budget:check": "node scripts/budget-check.mjs",
+    "build:landing": "node scripts/build-landing.mjs",
+    "budget:landing": "node scripts/build-landing.mjs --check"
   },
   "dependencies": {
     "@burnfront/api-client": "workspace:*",
+    "@burnfront/engine": "workspace:*",
+    "@burnfront/game-core": "workspace:*",
     "@burnfront/ui-web": "workspace:*",
     "@tanstack/react-router": "^1.146.5",
     "react": "^19.2.7",

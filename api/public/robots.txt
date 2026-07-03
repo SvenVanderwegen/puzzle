@@ -1,2 +1,8 @@
+# Burnfront — public pages are indexable; the app surface is not (WS-15).
 User-agent: *
-Disallow:
+Disallow: /play
+Disallow: /me
+Disallow: /settings
+Disallow: /hub
+
+Sitemap: https://burnfront.com/sitemap.xml
