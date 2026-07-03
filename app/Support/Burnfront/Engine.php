@@ -364,6 +364,80 @@ final class Engine
     }
 
     /**
+     * A single step of deductionSolve's reasoning, for the hint system: given
+     * a partial state (typically initialState() plus whichever cells the
+     * player has already committed as firebreaks), find one cell whose value
+     * is forced — without touching any of the others. Unlike deductionSolve,
+     * this never guesses ahead or chains cells found earlier in the same
+     * call; it reports the first single-cell deduction available from
+     * exactly what's already committed, which is what a player asking "what
+     * can I prove right now" wants. status is 'forced' (cell/value set),
+     * 'contradiction', 'complete', or 'stuck'.
+     *
+     * @param  array<int, int>  $state
+     * @return array{status: string, cell?: int, value?: int}
+     */
+    public static function nextDeduction(Puzzle $pz, array $state): array
+    {
+        if (! self::feasible($pz, $state)) {
+            return ['status' => 'contradiction'];
+        }
+
+        $shaded = 0;
+        $unknown = 0;
+        foreach ($state as $v) {
+            if ($v === self::SHADED) {
+                $shaded++;
+            } elseif ($v === self::UNKNOWN) {
+                $unknown++;
+            }
+        }
+
+        if ($unknown === 0) {
+            return ['status' => 'complete'];
+        }
+
+        if ($shaded === $pz->breaks) {
+            foreach ($state as $i => $v) {
+                if ($v === self::UNKNOWN) {
+                    return ['status' => 'forced', 'cell' => $i, 'value' => self::OPEN];
+                }
+            }
+        }
+
+        if ($shaded + $unknown === $pz->breaks) {
+            foreach ($state as $i => $v) {
+                if ($v === self::UNKNOWN) {
+                    return ['status' => 'forced', 'cell' => $i, 'value' => self::SHADED];
+                }
+            }
+        }
+
+        foreach ($state as $i => $v) {
+            if ($v !== self::UNKNOWN) {
+                continue;
+            }
+            $state[$i] = self::OPEN;
+            $okOpen = self::feasible($pz, $state);
+            $state[$i] = self::SHADED;
+            $okShaded = self::feasible($pz, $state);
+            $state[$i] = self::UNKNOWN;
+
+            if (! $okOpen && ! $okShaded) {
+                return ['status' => 'contradiction'];
+            }
+            if (! $okOpen) {
+                return ['status' => 'forced', 'cell' => $i, 'value' => self::SHADED];
+            }
+            if (! $okShaded) {
+                return ['status' => 'forced', 'cell' => $i, 'value' => self::OPEN];
+            }
+        }
+
+        return ['status' => 'stuck'];
+    }
+
+    /**
      * True iff every shaded cell, opened alone (the rest staying shaded),
      * changes at least one clue's burn time. A witnessed break is justified
      * by the clues themselves, never by the break count alone.

@@ -137,4 +137,42 @@ class EngineTest extends TestCase
     {
         return [[1], [2], [3], [4], [5]];
     }
+
+    public function test_next_deduction_finds_a_correct_forced_cell_from_a_fresh_state(): void
+    {
+        $pz = $this->demoPuzzle();
+        $breaks = $this->demoBreaks();
+
+        $result = Engine::nextDeduction($pz, Engine::initialState($pz));
+
+        $this->assertSame('forced', $result['status']);
+        if ($result['value'] === Engine::SHADED) {
+            $this->assertArrayHasKey($result['cell'], $breaks);
+        } else {
+            $this->assertArrayNotHasKey($result['cell'], $breaks);
+        }
+    }
+
+    public function test_next_deduction_reports_complete_once_fully_solved(): void
+    {
+        $pz = $this->demoPuzzle();
+        $state = Engine::deductionSolve($pz);
+
+        $result = Engine::nextDeduction($pz, $state);
+
+        $this->assertSame(['status' => 'complete'], $result);
+    }
+
+    public function test_next_deduction_reports_contradiction_when_too_many_cells_are_shaded(): void
+    {
+        $pz = $this->demoPuzzle();
+        $state = Engine::initialState($pz);
+        foreach ([0, 1, 2, 3, 4] as $cell) {
+            $state[$cell] = Engine::SHADED; // 5 shaded cells, but the puzzle only allows 4
+        }
+
+        $result = Engine::nextDeduction($pz, $state);
+
+        $this->assertSame(['status' => 'contradiction'], $result);
+    }
 }

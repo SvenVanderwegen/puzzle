@@ -113,6 +113,12 @@
     content:"";position:absolute;inset:0;margin:auto;width:12%;height:12%;
     border-radius:50%;background:var(--ash);opacity:.9;
   }
+  .cell.hint-cell{
+    box-shadow:0 0 0 2px var(--flame),0 0 12px rgba(255,216,107,.55);
+    animation:hint-pulse 1.3s ease-in-out infinite;
+  }
+  @keyframes hint-pulse{0%,100%{box-shadow:0 0 0 2px var(--flame),0 0 12px rgba(255,216,107,.55)}50%{box-shadow:0 0 0 2px var(--flame),0 0 20px rgba(255,216,107,.85)}}
+  @media (prefers-reduced-motion:reduce){.cell.hint-cell{animation:none}}
   .cell .min{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   }
@@ -244,6 +250,7 @@
         @endforeach
       </div>
       <button type="button" class="btn primary" id="newBtn">New fire</button>
+      <button type="button" class="btn" id="hintBtn">Hint</button>
       <button type="button" class="btn" id="undoBtn" disabled>Undo</button>
       <button type="button" class="btn" id="resetBtn">Reset</button>
       <div class="chips">
