@@ -1,0 +1,175 @@
+# Content publish (WS-16): pipeline dist -> R2 content bucket -> content:import
+# on staging. Production import stays a deliberate operator action
+# (docs/RUNBOOK.md §deploy, "promoting content to production").
+#
+# Owner-triggered only (workflow_dispatch): published dailies are immutable
+# from T-48h (WS-05 brief), so publishing is a decision, not a side effect.
+#
+# The pipeline itself is WS-05 (pipeline/ holds only a README until it lands).
+# This workflow is wired so it becomes executable the day both exist:
+#   - WS-05's `make content` emits pipeline/dist/content/{version}/... with a
+#     signed manifest ({manifest}.sig sibling, Ed25519)
+#   - the signing key arrives via secret CONTENT_SIGNING_PRIVATE_KEY and is
+#     passed as a file path in CONTENT_SIGNING_PRIVATE_KEY_PATH (WS-05's brief
+#     reads the key path from env; confirm the exact variable name when WS-05
+#     lands and adjust here if it differs)
+#   - the dist-dir -> bucket-root sync below assumes puzzle files and manifest
+#     live flat under the version dir, matching CONTENT_CDN_URL_TEMPLATE
+#     (https://content.burnfront.com/puzzles/{id}.json); confirm against
+#     WS-05's real dist layout at integration
+#
+# Secrets guard: same pattern as deploy.yml — missing secrets skip legs green
+# and print which secret names are missing, never values.
+name: content-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest:
+        description: 'Manifest object key within the content bucket'
+        required: false
+        default: 'calendar.v1.json'
+      import_to_staging:
+        description: 'Run content:import on staging after the R2 sync'
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: content-publish
+  cancel-in-progress: false
+
+env:
+  CONTENT_BASE_URL: https://content.burnfront.com
+  # artisan of the live staging release (forge-deploy.sh layout), relative to
+  # the Forge site directory where site commands run.
+  STAGING_ARTISAN: php ../staging.burnfront.com-deploy/current/artisan
+
+jobs:
+  preflight:
+    name: secrets present
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CONTENT_SIGNING_PRIVATE_KEY: ${{ secrets.CONTENT_SIGNING_PRIVATE_KEY }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_CONTENT_BUCKET: ${{ secrets.R2_CONTENT_BUCKET }}
+      FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
+      FORGE_SERVER_ID: ${{ secrets.FORGE_SERVER_ID }}
+      FORGE_STAGING_SITE_ID: ${{ secrets.FORGE_STAGING_SITE_ID }}
+    outputs:
+      signing_ready: ${{ steps.check.outputs.signing_ready }}
+      r2_ready: ${{ steps.check.outputs.r2_ready }}
+      forge_ready: ${{ steps.check.outputs.forge_ready }}
+    steps:
+      - name: Check which legs can run (prints missing secret NAMES only)
+        id: check
+        run: |
+          check() {
+            local out="$1" ok=true name
+            shift
+            for name in "$@"; do
+              if [ -z "${!name}" ]; then
+                echo "::notice::secret $name is not set (owner checklist: tasks/WS-16/STATUS.md)"
+                ok=false
+              fi
+            done
+            echo "$out=$ok" >> "$GITHUB_OUTPUT"
+          }
+          check signing_ready CONTENT_SIGNING_PRIVATE_KEY
+          check r2_ready R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_CONTENT_BUCKET
+          check forge_ready FORGE_API_TOKEN FORGE_SERVER_ID FORGE_STAGING_SITE_ID
+
+  build-content:
+    name: pipeline dist (generate, grade, curate, sign, emit)
+    needs: preflight
+    if: needs.preflight.outputs.signing_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      content_version: ${{ steps.emit.outputs.content_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet pynacl pillow jsonschema
+      - name: Emit signed content
+        id: emit
+        env:
+          SIGNING_KEY: ${{ secrets.CONTENT_SIGNING_PRIVATE_KEY }}
+          MANIFEST: ${{ inputs.manifest }}
+        run: |
+          if [ ! -f pipeline/Makefile ]; then
+            echo '::error::pipeline/ has no Makefile — WS-05 (content pipeline) has not landed yet.'
+            exit 1
+          fi
+          keyfile="$RUNNER_TEMP/content-signing.key"
+          install -m 600 /dev/null "$keyfile"
+          printf '%s' "$SIGNING_KEY" > "$keyfile"
+          trap 'rm -f "$keyfile"' EXIT
+          CONTENT_SIGNING_PRIVATE_KEY_PATH="$keyfile" make -C pipeline content
+
+          versions=(pipeline/dist/content/*/)
+          if [ "${#versions[@]}" -ne 1 ] || [ ! -d "${versions[0]}" ]; then
+            echo "::error::expected exactly one version dir under pipeline/dist/content/, found: ${versions[*]}"
+            exit 1
+          fi
+          version="$(basename "${versions[0]}")"
+          echo "content_version=$version" >> "$GITHUB_OUTPUT"
+
+          # Refuse to publish unsigned or empty output.
+          test -f "pipeline/dist/content/$version/$MANIFEST"
+          test -f "pipeline/dist/content/$version/$MANIFEST.sig"
+          find "pipeline/dist/content/$version" -name '*.json' | grep -q . || {
+            echo '::error::dist contains no JSON — refusing to publish'; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: content-dist
+          path: pipeline/dist/content/
+          retention-days: 14
+          if-no-files-found: error
+
+  publish-r2:
+    name: sync dist to the R2 content bucket
+    needs: [preflight, build-content]
+    if: needs.preflight.outputs.r2_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_REGION: auto
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: content-dist
+          path: content-dist
+      - name: Sync (additive only — published dates are immutable, never --delete)
+        env:
+          VERSION: ${{ needs.build-content.outputs.content_version }}
+        run: |
+          aws s3 sync "content-dist/$VERSION/" \
+            "s3://${{ secrets.R2_CONTENT_BUCKET }}/" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
+            --only-show-errors
+
+  import-staging:
+    name: content:import on staging
+    needs: [preflight, publish-r2]
+    if: needs.preflight.outputs.forge_ready == 'true' && inputs.import_to_staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import the published manifest (verifies signature + sha256s server-side)
+        env:
+          FORGE_API_TOKEN: ${{ secrets.FORGE_API_TOKEN }}
+          MANIFEST: ${{ inputs.manifest }}
+        run: |
+          bash scripts/forge-command.sh \
+            "${{ secrets.FORGE_SERVER_ID }}" \
+            "${{ secrets.FORGE_STAGING_SITE_ID }}" \
+            "$STAGING_ARTISAN content:import $CONTENT_BASE_URL/$MANIFEST"

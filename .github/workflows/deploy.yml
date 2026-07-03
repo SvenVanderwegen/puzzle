@@ -1,0 +1,217 @@
+# Deploy pipeline (WS-16, ADR-0010).
+#
+#   staging     auto on every push to main (also manual via workflow_dispatch)
+#   production  push a v* tag, then approve the run (GitHub environment
+#               "production" — the owner configures themselves as required
+#               reviewer); re-deploys via workflow_dispatch FROM A TAG REF with
+#               the confirmation phrase
+#
+# Shape: CI-built SPA tarball -> R2 deploy bucket keyed by commit SHA ->
+# Forge deploy hook -> scripts/forge-deploy.sh on the server builds an atomic
+# release (composer install, migrate --force, config:cache, SPA extracted into
+# public/), flips the current symlink, restarts Horizon. The deploy script
+# refuses any commit whose SPA bundle is missing, so the gated bytes are the
+# deployed bytes and API/client never skew. docs/RUNBOOK.md §deploy is the
+# operator guide; §rollback is the recovery guide.
+#
+# Forge deploys branches, not tags, so production is a machine-owned pointer
+# branch ("production") that this workflow force-pushes to the tag commit
+# before hitting the production deploy hook.
+#
+# Secrets guard: every external call sits behind a preflight job that maps
+# secrets to boolean outputs (the secrets context is not usable in job-level
+# `if`). Until the owner provisions the secrets (tasks/WS-16/STATUS.md has the
+# exact list) the deploy jobs skip green; the build job always runs so the SPA
+# bundle stays provably buildable.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy target'
+        type: choice
+        options: [staging, production]
+        required: true
+      confirm:
+        description: 'Production only: type exactly "deploy production"'
+        required: false
+        default: ''
+
+permissions:
+  contents: write # production pointer-branch push; everything else is read
+
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+env:
+  STAGING_URL: https://staging.burnfront.com
+  PRODUCTION_URL: https://burnfront.com
+
+jobs:
+  preflight:
+    name: resolve target + secrets present
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only names of missing secrets are ever printed, never values.
+    env:
+      FORGE_STAGING_DEPLOY_URL: ${{ secrets.FORGE_STAGING_DEPLOY_URL }}
+      FORGE_PRODUCTION_DEPLOY_URL: ${{ secrets.FORGE_PRODUCTION_DEPLOY_URL }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_DEPLOY_BUCKET: ${{ secrets.R2_DEPLOY_BUCKET }}
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      r2_ready: ${{ steps.resolve.outputs.r2_ready }}
+      staging_ready: ${{ steps.resolve.outputs.staging_ready }}
+      production_ready: ${{ steps.resolve.outputs.production_ready }}
+    steps:
+      - name: Resolve target
+        id: resolve
+        # Dispatch inputs come in via env, not inline interpolation (no script
+        # injection through the confirm field).
+        env:
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          target=none
+          case "${{ github.event_name }}" in
+            push)
+              if [ "${{ github.ref_type }}" = "tag" ]; then target=production; else target=staging; fi
+              ;;
+            workflow_dispatch)
+              target="$INPUT_ENVIRONMENT"
+              if [ "$target" = "production" ]; then
+                if [ "$INPUT_CONFIRM" != "deploy production" ]; then
+                  echo '::error::Production dispatch requires the exact confirmation phrase: deploy production'
+                  exit 1
+                fi
+                if [ "${{ github.ref_type }}" != "tag" ]; then
+                  echo '::error::Production deploys run from a v* tag ref. Pick the tag in the dispatch UI.'
+                  exit 1
+                fi
+              fi
+              ;;
+          esac
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+
+          r2_ready=true
+          for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_DEPLOY_BUCKET; do
+            if [ -z "${!name}" ]; then
+              echo "::notice::secret $name is not set — deploy legs will skip (owner checklist: tasks/WS-16/STATUS.md)"
+              r2_ready=false
+            fi
+          done
+          staging_ready=$r2_ready
+          production_ready=$r2_ready
+          if [ -z "$FORGE_STAGING_DEPLOY_URL" ]; then
+            echo '::notice::secret FORGE_STAGING_DEPLOY_URL is not set — staging deploy will skip'
+            staging_ready=false
+          fi
+          if [ -z "$FORGE_PRODUCTION_DEPLOY_URL" ]; then
+            echo '::notice::secret FORGE_PRODUCTION_DEPLOY_URL is not set — production deploy will skip'
+            production_ready=false
+          fi
+          {
+            echo "r2_ready=$r2_ready"
+            echo "staging_ready=$staging_ready"
+            echo "production_ready=$production_ready"
+          } >> "$GITHUB_OUTPUT"
+          echo "deploy target: $target (r2=$r2_ready staging=$staging_ready production=$production_ready)"
+
+  build:
+    # Always runs: proves the SPA builds at this commit even before any
+    # account exists. The tarball is the exact deploy unit.
+    name: build SPA release bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @burnfront/web build
+      - name: Pack the bundle (extracted into the release's public/ on the server)
+        run: |
+          test -f apps/web/dist/index.html
+          tar -czf "spa-${{ github.sha }}.tar.gz" -C apps/web/dist .
+          ls -l "spa-${{ github.sha }}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spa-bundle
+          path: spa-*.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
+  push-spa-bundle:
+    name: publish SPA bundle to R2
+    needs: [preflight, build]
+    if: needs.preflight.outputs.r2_ready == 'true' && needs.preflight.outputs.target != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_REGION: auto
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: spa-bundle
+      - name: Upload spa-<sha>.tar.gz (immutable, keyed by commit)
+        run: |
+          aws s3 cp "spa-${{ github.sha }}.tar.gz" \
+            "s3://${{ secrets.R2_DEPLOY_BUCKET }}/spa/spa-${{ github.sha }}.tar.gz" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
+            --only-show-errors
+
+  deploy-staging:
+    name: deploy staging
+    needs: [preflight, push-spa-bundle]
+    if: needs.preflight.outputs.target == 'staging' && needs.preflight.outputs.staging_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trigger the Forge deploy hook (staging)
+        env:
+          HOOK_URL: ${{ secrets.FORGE_STAGING_DEPLOY_URL }}
+        run: curl -fsS -m 30 -o /dev/null -X POST "$HOOK_URL"
+      - name: Wait for the release to go live (deploy.json sha + /up)
+        env:
+          HEALTH_BASIC_AUTH: ${{ secrets.STAGING_BASIC_AUTH }}
+        run: bash scripts/wait-deployed.sh "$STAGING_URL" "${{ github.sha }}" 600
+
+  deploy-production:
+    name: deploy production
+    needs: [preflight, push-spa-bundle]
+    if: needs.preflight.outputs.target == 'production' && needs.preflight.outputs.production_ready == 'true'
+    # The owner configures this GitHub environment with themselves as required
+    # reviewer: a tag push then pauses here until approved (ADR-0010's
+    # "prod deploys on tag with owner dispatch").
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Point the production release branch at this tag commit
+        # Machine-owned pointer branch; force is deliberate so an older tag can
+        # be re-deployed (rollback by re-deploy). Forge tracks this branch.
+        run: git push --force origin "HEAD:refs/heads/production"
+      - name: Trigger the Forge deploy hook (production)
+        env:
+          HOOK_URL: ${{ secrets.FORGE_PRODUCTION_DEPLOY_URL }}
+        run: curl -fsS -m 30 -o /dev/null -X POST "$HOOK_URL"
+      - name: Wait for the release to go live (deploy.json sha + /up)
+        run: bash scripts/wait-deployed.sh "$PRODUCTION_URL" "${{ github.sha }}" 600
