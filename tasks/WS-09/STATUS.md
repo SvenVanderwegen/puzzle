@@ -2,8 +2,9 @@
 
 ## Done (session 1, 2026-07-03)
 
-Commit: `957dbf9` (amended to include this ledger) on branch
-`worktree-agent-a3d23364b4c8b7e39`, on top of `210c1d2` (WS-04 integration).
+Commits: `c80b01c` (all WS-09 code + tests + this ledger) followed by a one-line
+SHA-recording fixup, on branch `worktree-agent-a3d23364b4c8b7e39`, on top of `210c1d2`
+(WS-04 integration).
 
 - **packages/api-client** — `src/types.gen.ts` 100% generated from `contracts/openapi.yaml`
   by openapi-typescript (`pnpm --filter @burnfront/api-client generate`), CI-freshness gate
