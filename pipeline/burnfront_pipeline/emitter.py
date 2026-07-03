@@ -285,6 +285,11 @@ def verify_content(version_dir, verify_key):
     calendar_doc = json.loads(calendar_path.read_bytes())
     _validate(_load_schema("calendar.v1.json"), calendar_doc, "calendar")
 
+    for day in calendar_doc["days"]:
+        if f"puzzles/{day['puzzle']}.json" not in calendar_doc["files"]:
+            raise RefusalError(
+                f"day {day['date']}: puzzle {day['puzzle']} not in file map")
+
     verified = ["calendar.json"]
     for rel, expected in calendar_doc["files"].items():
         data = (version_dir / rel).read_bytes()

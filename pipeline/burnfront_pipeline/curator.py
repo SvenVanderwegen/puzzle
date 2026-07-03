@@ -256,8 +256,9 @@ PACK_DESCRIPTION = ("Two practice boards per lesson. Each board is filtered "
 def curate_lesson(cfg, lesson, per_lesson=2):
     """Two practice boards for one lesson. Acceptance predicates are tried
     in order over the same deterministic seed stream: if the primary
-    predicate finds nothing within budget (e.g. open_cell_unreachable is
-    not producible — GRADING.md §5), the documented fallback is used."""
+    predicate cannot fill the pair within budget (e.g. open_cell_unreachable
+    is not producible — GRADING.md §5), the documented fallback re-scans
+    the stream so both boards of the pair share one criterion."""
     base = cfg.master_seed + ACADEMY_BASE + LESSON_STRIDE * lesson.number
     for accept in _LESSON_ACCEPT[lesson.number]:
         found = []

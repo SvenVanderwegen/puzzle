@@ -21,6 +21,9 @@ def _cmd_emit(args):
         print(f"emit: --date must be YYYYMMDD, got {args.date!r}",
               file=sys.stderr)
         return 2
+    if args.days < 1 or args.seq < 1:
+        print("emit: --days and --seq must be >= 1", file=sys.stderr)
+        return 2
     content_version = f"v{args.date}-{args.seq}"
     cfg = curator.load_seeds(args.seeds)
     key = signer.load_signing_key(args.key)
