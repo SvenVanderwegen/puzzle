@@ -24,3 +24,11 @@ Schedule::command('analytics:digest')->weeklyOn(1, '06:10');
 // contains exactly one hourly tick per local day. The deadline the mail warns
 // about stays UTC midnight (ADR-0002).
 Schedule::command('notifications:streak-risk')->hourlyAt(15);
+
+// Content ops checks (WS-18). Freshness runs at 22:00 UTC — T-2h before
+// tomorrow's daily goes live at 00:00 UTC (critique #17). Runway runs in the
+// owner's daytime; it asks for new content, not for a midnight scramble.
+// Both alert by failing: ops log channel + report(OpsAlert) + non-zero exit,
+// so Nightwatch scheduled-task monitoring and any cron monitor see the miss.
+Schedule::command('ops:content-freshness')->dailyAt('22:00');
+Schedule::command('ops:content-runway')->dailyAt('08:30');
