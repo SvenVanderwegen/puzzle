@@ -189,3 +189,30 @@
 - Verifier cosmetic notes accepted without action: builder test harness not
   under StrictMode (verifier probed StrictMode itself); genuine back-nav to a
   consumed link shows "expired" + retry form (single-use UX, correct).
+
+## 2026-07-03 — WS-21 merged
+- Branch worktree-agent-a4294686b3a88c14a @ 2f0eb4d → merged after verification
+  (MERGE, no code fixes; 56 verifier probes green: hand-computed timezone
+  edges UTC+14/−11 with the UTC day never localizing, cache-flush duplicate
+  bias verified both directions, cross-user and cross-route signature replays
+  rejected, retryUntil proven through queue serialization, wire-level
+  List-Unsubscribe RFC 8058).
+- Lead rulings via ADR-0025 in-range: (1) 14 email/unsubscribe copy keys
+  added to COPY.md verbatim from the verifier's inventory; (2)
+  email.streak.subject plural errata ("1 hours" bug confirmed in output —
+  ICU plural in the contract, PHP-side expansion + COPY-reading pin updated
+  by the lead); (3) shipped opt-in flow RATIFIED over strict double opt-in
+  (verified-by-construction address + authenticated toggle + confirmation
+  mail with one-click revoke); openapi streak_alert_opt_in description
+  amended to match. Consumers regenerated same cycle: strings.gen.ts,
+  api-client types.gen.ts, landing artifact (70.40 KB gz), game-core
+  tripwire green.
+- Also ratified: cache-marker once-per-day (miss-over-duplicate bias),
+  WS-06 assertQueued conversions (behavior-preserving, forced by ShouldQueue),
+  MeController/UserAnonymizer seams (post-commit receipt cannot touch
+  erasure). Notes: queued deletion receipt transiently holds the pre-erasure
+  address in the queue store (necessary, accepted); streak==1 dies unwarned
+  (brief's explicit floor — product note, not a defect); no mailto in
+  List-Unsubscribe (RFC 8058 https-only — on the owner's ESP checklist).
+- Owner blockers stand: ESP account + DPA, SMTP creds in Forge, SPF/DKIM/
+  DMARC records (exact set in tasks/WS-21/STATUS.md).

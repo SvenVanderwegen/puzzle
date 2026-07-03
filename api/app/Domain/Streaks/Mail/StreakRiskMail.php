@@ -44,8 +44,12 @@ final class StreakRiskMail extends TransactionalMail
 
     public function envelope(): Envelope
     {
+        // email.streak.subject pluralizes {hours} via ICU (ADR-0025); the api
+        // side expands it here, pinned to COPY.md by CopyPinningTest.
         return new Envelope(subject: sprintf(
-            'Your %d-day streak has %d hours.',
+            $this->hoursLeft === 1
+                ? 'Your %d-day streak has %d hour.'
+                : 'Your %d-day streak has %d hours.',
             $this->streakLength,
             $this->hoursLeft,
         ));

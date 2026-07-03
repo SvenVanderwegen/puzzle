@@ -125,9 +125,26 @@ export const catalog = {
   'endless.new': 'New incident · {tier}',
   'endless.rating.pending': 'Rating update queued',
   'email.magic.subject': 'Your Burnfront sign-in link',
-  'email.streak.subject': 'Your {n}-day streak has {hours} hours.',
+  'email.streak.subject': 'Your {n}-day streak has {hours, plural, one {# hour} other {# hours}}.',
   'email.streak.body':
     'Incident #{incident} is still burning. Your streak ends at midnight UTC. — Burnfront dispatch',
+  'email.streak.play': 'Contain it: {playUrl}',
+  'email.streak.unsubscribe': 'One click turns these alerts off: {unsubscribeUrl}',
+  'email.subscribed.subject': 'Streak protection alerts are on.',
+  'email.subscribed.body':
+    'Streak protection alerts are on for this account. One email, only on days your streak would end unsolved, sent near 20:00 your local time. The day itself still ends at midnight UTC.',
+  'email.subscribed.unsubscribe': 'One click turns them off: {unsubscribeUrl}',
+  'email.deleted.subject': 'Your Burnfront account is deleted.',
+  'email.deleted.body':
+    'Deletion confirmed. This account and its identifying data are erased. Anonymous aggregate statistics survive without a link to you; the details are in the privacy policy: {privacyUrl}',
+  'email.deleted.noFurther': 'No further email will be sent to this address.',
+  'email.export.subject': 'Your Burnfront data export is ready',
+  'email.signature': '— Burnfront dispatch',
+  'email.unsubscribed.title': 'Streak protection alerts are off',
+  'email.unsubscribed.body':
+    'No further alert email will be sent to this account. Alerts can be turned back on from the in-game settings.',
+  'email.unsubscribed.back': 'Back to the front page',
+  'email.unsubscribed.confirm': 'Streak protection alerts are off.',
   'a11y.cell.empty': '{cell}, empty',
   'a11y.cell.break': '{cell}, firebreak',
   'a11y.cell.dot': '{cell}, marked clear',

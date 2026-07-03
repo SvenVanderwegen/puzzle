@@ -98,7 +98,7 @@ paths:
               additionalProperties: false
               properties:
                 timezone: { type: string, maxLength: 64, description: IANA zone; streak-risk email send time only (ADR-0002) }
-                streak_alert_opt_in: { type: boolean, description: Double opt-in starts on true (WS-21) }
+                streak_alert_opt_in: { type: boolean, description: Opt-in with verified-address confirmation email and one-click revoke (ADR-0025) }
       responses:
         '200':
           description: Updated profile.

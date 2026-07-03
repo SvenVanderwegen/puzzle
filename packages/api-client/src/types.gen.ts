@@ -640,7 +640,7 @@ export interface operations {
         'application/json': {
           /** @description IANA zone; streak-risk email send time only (ADR-0002) */
           timezone?: string;
-          /** @description Double opt-in starts on true (WS-21) */
+          /** @description Opt-in with verified-address confirmation email and one-click revoke (ADR-0025) */
           streak_alert_opt_in?: boolean;
         };
       };

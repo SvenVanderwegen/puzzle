@@ -41,10 +41,31 @@ test('the magic-link subject is email.magic.subject verbatim', function (): void
     expect($mail->envelope()->subject)->toBe(ws21CopyKey('email.magic.subject'));
 });
 
-test('the streak alert subject is email.streak.subject with {n}/{hours} filled', function (): void {
-    $expected = strtr(ws21CopyKey('email.streak.subject'), ['{n}' => '6', '{hours}' => '5']);
+/**
+ * Expand a single ICU `{param, plural, one {...} other {...}}` clause the way
+ * the web icu.ts would (ADR-0025) — the api pins its PHP expansion to it.
+ */
+function ws21ExpandPlural(string $copy, string $param, int $value): string
+{
+    $pattern = '/\{'.preg_quote($param, '/').', plural, one \{([^}]*)\} other \{([^}]*)\}\}/u';
+    $hit = preg_match($pattern, $copy, $m);
+    expect($hit)->toBe(1, "no ICU plural clause for {{$param}} in COPY.md text");
 
-    expect(ws21StreakRiskMail()->envelope()->subject)->toBe($expected);
+    $branch = str_replace('#', (string) $value, $value === 1 ? $m[1] : $m[2]);
+
+    return (string) preg_replace($pattern, $branch, $copy);
+}
+
+test('the streak alert subject is email.streak.subject with {n}/{hours} filled', function (): void {
+    foreach ([5 => '5 hours', 1 => '1 hour'] as $hours => $unit) {
+        $expected = strtr(
+            ws21ExpandPlural(ws21CopyKey('email.streak.subject'), 'hours', $hours),
+            ['{n}' => '6'],
+        );
+
+        expect($expected)->toContain($unit)
+            ->and(ws21StreakRiskMail(hours: $hours)->envelope()->subject)->toBe($expected);
+    }
 });
 
 test('the streak alert body carries email.streak.body with {incident} filled', function (): void {
