@@ -1,0 +1,138 @@
+{
+  "$schema": "https://burnfront.com/schemas/design-tokens (informal)",
+  "$comment": "Night incident map. Source of truth for ALL color/spacing/type/motion in apps/. Raw hex outside this file is a lint error (CLAUDE.md rule 7). Values extracted from the frozen prototype (reference/index.html).",
+  "color": {
+    "soot": {
+      "value": "#171310",
+      "role": "page ground"
+    },
+    "char": {
+      "value": "#221c15",
+      "role": "cell / panel ground"
+    },
+    "char2": {
+      "value": "#2c2519",
+      "role": "raised ground: clue cells, chips, toasts"
+    },
+    "line": {
+      "value": "#3b3325",
+      "role": "hairline borders"
+    },
+    "ash": {
+      "value": "#a89d8c",
+      "role": "body text"
+    },
+    "ashDim": {
+      "value": "#6e6558",
+      "role": "secondary text, labels"
+    },
+    "paper": {
+      "value": "#f3ead9",
+      "role": "primary text, clue numbers"
+    },
+    "ember": {
+      "value": "#ff8a3d",
+      "role": "THE accent. burnt cells, active states"
+    },
+    "emberDeep": {
+      "value": "#e06a1f",
+      "role": "accent borders"
+    },
+    "flame": {
+      "value": "#ffd86b",
+      "role": "spark star, streak flame, highlights"
+    },
+    "danger": {
+      "value": "#e5484d",
+      "role": "errors, over-budget counter. never the accent"
+    },
+    "breakHatchLight": {
+      "value": "#564b38",
+      "role": "firebreak hatch stroke"
+    },
+    "breakHatchDark": {
+      "value": "#241f16",
+      "role": "firebreak hatch gap"
+    },
+    "breakBorder": {
+      "value": "#6e6146",
+      "role": "firebreak cell border"
+    },
+    "sparkOnBurn": {
+      "value": "#5a1d00",
+      "role": "spark glyph on burnt ground"
+    }
+  },
+  "burnRamp": {
+    "$comment": "Burnt-cell background by minute t on a board whose max minute is T. Per RGB channel: c = flame + (ember - flame) * f, f = 0.25 + 0.6 * (t/T). Early minutes read flame-hot, late minutes deep ember.",
+    "from": "#ffd86b",
+    "to": "#ff8a3d",
+    "fMin": 0.25,
+    "fSpan": 0.6
+  },
+  "type": {
+    "display": {
+      "family": "Staatliches, system-ui, sans-serif",
+      "$comment": "Embedded via base64 @font-face (16KB woff2, prototype). Masthead, cell numbers, CONTAINED stamp."
+    },
+    "body": {
+      "family": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    },
+    "numerals": "tabular-nums",
+    "scale": {
+      "cell": "min(84vw/cols, 540px/cols) * 0.44",
+      "h1": "clamp(52px, 11vw, 76px)",
+      "lede": "16px",
+      "body": "14px",
+      "label": "11px",
+      "hint": "13px"
+    },
+    "labelTracking": "0.09em",
+    "eyebrowTracking": "0.22em"
+  },
+  "space": {
+    "unit": 4,
+    "scale": [
+      4,
+      8,
+      12,
+      16,
+      24,
+      32,
+      48,
+      64
+    ],
+    "boardGap": 5,
+    "boardMax": 540
+  },
+  "radius": {
+    "cell": 5,
+    "control": 5,
+    "panel": 6
+  },
+  "motion": {
+    "$comment": "prefers-reduced-motion replaces all of these with step/instant variants.",
+    "cellPaintMs": 0,
+    "cellSettleMs": 80,
+    "cellTransitionMs": 300,
+    "replayMinuteMs": 320,
+    "replayMinuteFastMs": 180,
+    "replayAccelAfterMinute": 8,
+    "replayFlashMs": 80,
+    "containedStampMs": 200,
+    "containedBeatMs": 400,
+    "toastMs": 250,
+    "boardShakeMs": 150,
+    "veilPulseMs": 1200
+  },
+  "sound": {
+    "$comment": "Off by default until first solve, then one-time opt-in toast. One sample per verb, \u00b13% random pitch.",
+    "verbs": [
+      "shade",
+      "dot",
+      "unmark",
+      "replayTick",
+      "contained"
+    ]
+  }
+}

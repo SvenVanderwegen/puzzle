@@ -71,3 +71,54 @@ reference/ diff (purely additive apart from the argparse elif). Remote CI green 
 1f4e3e5 for both workflows; vectors-fresh regenerated all 609 vectors
 byte-identically on GitHub's runner. One README ambiguity the verifier surfaced
 (shaded spark ⇒ all times -1) clarified pre-freeze. Session a CLOSED.
+
+## Session b — 2026-07-02 (platform contracts; lead agent)
+
+## Done
+- `contracts/openapi.yaml` (OpenAPI 3.1): 15 operations — magic-link auth
+  (ADR-0003 constraints in-spec), /me CRUD + GDPR export/delete, **POST /me/import**
+  (anti-fabrication caps in-description), one daily endpoint with embedded stats +
+  CDN-fallback `puzzle` field + amnesty flag, POST /solves (Idempotency-Key required,
+  both official_ms clamps documented, endless_spec for ADR-0006), first-party
+  /events + /errors, /health with tomorrow_published. `redocly lint`: **zero errors,
+  zero warnings**. No leaderboard endpoints; no /solves/batch; Me schema exposes no
+  handle.
+- `contracts/db-schema.sql`: full ADR-0005 baseline + users.timezone + streak freeze
+  columns + operational tables (magic_link_tokens, daily_stats, events,
+  frontend_errors — blessed by the upcoming freeze ADR); partial unique index for
+  one-valid-daily-solve; retention notes inline; no partitioning.
+- `contracts/RATING.md`: Glicko-2 frozen (τ=0.5, per-solve periods, full precision
+  normative); board priors formula; outcome function (hints decide, time never);
+  endless w=0.5 on the delta only; **7 numeric fixtures computed with an
+  implementation validated against Glickman's published example** (paper check
+  1464.0507/151.5165 ✓); F3 = exactly half of F1's delta by construction.
+- `contracts/design-tokens.json`: every color/motion/type value extracted from the
+  frozen prototype incl. the burn-ramp formula and hatch colors.
+- `contracts/COPY.md`: voice guide + ~80 keyed strings (rules verbatim, hub Play
+  decision-table labels, coach templates for all 7 DeductionKinds, spoiler-free
+  share format, a11y announcements, email bodies). CONTAINED adopted over the
+  prototype's FIRE MAPPED (product-spec wording; prototype divergence noted).
+- `contracts/DEPENDENCIES.md`: runtime TS list is 3 packages; PHP list; explicit
+  rejected-list (fetch wrappers, state libs, CSS frameworks, date libs, SSR,
+  third-party telemetry).
+- Decisions cross-check (all 10 + cuts + additions) performed item-by-item — zero
+  contradictions; killed-options grep clean.
+- Gates 1–3 + 9 green; engine-api.d.ts still compiles standalone; selftest passes.
+
+## Decisions made (lead audit trail)
+1. **Outcome function drops time entirely in v1** (RATING.md §3): product design
+   sketched par-time outcomes, but honest pars don't exist pre-launch and
+   decisions.md only mandates hint rules + endless weight. Time prestige lives in
+   percentiles. Revisit = ADR.
+2. Board prior formula frozen: base(tier) + 4×grade_score, RD 200, floor RD 50.
+3. Endless board rating derives from client-reported deduction_steps clamped to
+   tier bounds (WS-08 sets bounds from pipeline distributions).
+4. Failed-daily scores 0.25 only with a start record, applied at rollover, max one
+   per day.
+5. `Me` schema deliberately omits `handle` (ADR-0007: exists in DB, never exposed).
+
+## Resume instructions
+Session c next: lead cross-consistency review of the full pack (solve payload ↔
+db-schema ↔ RATING inputs ↔ engine API ↔ COPY keys ↔ schemas), owner reads and
+approves, commit `docs/adr/0011-contract-freeze.md`, add the CI contracts-guard
+(block `contracts/` diffs without an ADR + `contract-change` label).

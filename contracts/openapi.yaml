@@ -1,0 +1,597 @@
+openapi: 3.1.0
+info:
+  title: Burnfront API
+  version: 1.0.0
+  license:
+    name: Proprietary
+    url: https://burnfront.com/terms
+  description: |
+    The FE/BE handshake (FROZEN after ADR-0011). `packages/api-client` is GENERATED
+    from this file (openapi-typescript); Laravel responses are validated against it
+    in feature tests (Spectator). Change process: ADR + `contract-change` label.
+
+    **Auth model (ADR-0003):** Sanctum stateful same-origin cookie sessions. The SPA
+    first calls `GET /sanctum/csrf-cookie` (outside this spec's base path, provided
+    by the framework) and sends `X-XSRF-TOKEN` on mutating requests. Identity is
+    email magic-link only: single-use tokens, 15-minute TTL, hashed at rest,
+    constant responses (no account enumeration), throttled 3/hour/email + 5/min/IP.
+
+    **Conventions:** UTC day boundaries everywhere (ADR-0002). Times in ms.
+    Positions `[r,c]`; clue definitions `{r,c,m}` (contracts/vectors/README.md).
+    Errors use the envelope below; rate limits return 429 with `Retry-After`.
+servers:
+  - url: https://burnfront.com/api/v1
+  - url: https://staging.burnfront.com/api/v1
+
+security:
+  - session: []
+
+paths:
+  /auth/magic-link:
+    post:
+      operationId: requestMagicLink
+      summary: Request a sign-in link (constant response; throttled 3/h/email, 5/min/IP)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: Always returned for well-formed requests, account or not.
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/magic-link/consume:
+    post:
+      operationId: consumeMagicLink
+      summary: Exchange a link token for a session (single use; session id rotated)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, minLength: 32, maxLength: 128 }
+      responses:
+        '204': { description: Session established (cookie set). }
+        '410': { description: 'Token invalid, expired, or already used.' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: End the session
+      responses:
+        '204': { description: Session ended. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me:
+    get:
+      operationId: getMe
+      summary: Profile + progress summary
+      responses:
+        '200':
+          description: Profile + progress summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      operationId: updateMe
+      summary: Update profile preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                timezone: { type: string, maxLength: 64, description: IANA zone; streak-risk email send time only (ADR-0002) }
+                streak_alert_opt_in: { type: boolean, description: Double opt-in starts on true (WS-21) }
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    delete:
+      operationId: deleteMe
+      summary: GDPR erasure — queued anonymization (profile erased, aggregates survive)
+      responses:
+        '202': { description: Anonymization queued; session ended. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/export:
+    get:
+      operationId: requestExport
+      summary: GDPR portability — queued; emailed signed URL (24h, single download)
+      responses:
+        '202': { description: Export queued; link arrives by email. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/import:
+    post:
+      operationId: importLocalRecord
+      summary: Anonymous→account merge (WS-20; anti-fabrication caps server-side)
+      description: |
+        Idempotent per item via `client_solve_id`. Every daily item is re-validated
+        against the known board. Streak credit is capped at 7 days and only granted
+        for dates whose boards were published before the claimed solve time.
+        Imported solves are percentile-ineligible; rating seeds at half weight
+        (RATING.md §5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { $ref: '#/components/schemas/ImportItem' }
+      responses:
+        '200':
+          description: Per-item results + credited summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me/solves:
+    get:
+      operationId: listMySolves
+      summary: Solve history (newest first, cursor-paged)
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: Newest-first solve history.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SolveSummary' }
+                  next_cursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/streak:
+    get:
+      operationId: getMyStreak
+      summary: Streak state (UTC semantics)
+      responses:
+        '200':
+          description: Streak state (UTC semantics).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Streak' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /me/rating:
+    get:
+      operationId: getMyRating
+      summary: Fire Rating (Glicko-2 per RATING.md)
+      responses:
+        '200':
+          description: Fire Rating (Glicko-2 per RATING.md).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rating' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /daily/{date}:
+    get:
+      operationId: getDaily
+      summary: Daily metadata + embedded stats (one endpoint — decisions #3)
+      security: []
+      parameters:
+        - { name: date, in: path, required: true, schema: { type: string, format: date }, description: UTC day }
+      responses:
+        '200':
+          description: |
+            Board content normally lives on the CDN (`content_url`); `puzzle` is
+            embedded only when the origin fallback flag is active (CDN outage).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Daily' }
+        '404': { description: No incident published for this date (incl. future dates). }
+
+  /daily/{date}/start:
+    post:
+      operationId: startDaily
+      summary: Stamp the anti-cheat fetch anchor (idempotent; first stamp wins)
+      parameters:
+        - { name: date, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '204': { description: Fetch anchor recorded. }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { description: No incident for this date. }
+
+  /solves:
+    post:
+      operationId: submitSolve
+      summary: Submit a complete shading (idempotent via Idempotency-Key)
+      description: |
+        Validation is authoritative server-side (PHP BFS re-check; verdicts per
+        contracts/vectors/README.md). `official_ms = min(client_ms, received_at −
+        fetched_at)` and must be ≥ the replay duration and ≥ `n_breaks × 250`,
+        otherwise the solve is stored valid-but-`suspect` (percentile-ineligible).
+        Rate limit 30/min/user.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated UUID (v7); doubles as `client_solve_id`.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolveSubmission' }
+      responses:
+        '201':
+          description: First acceptance of this key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SolveResult' }
+        '200':
+          description: Idempotent replay — the stored original response.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SolveResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /events:
+    post:
+      operationId: recordEvents
+      summary: First-party analytics (ADR-0008; anonymous allowed; 60/min/session)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [anon_id, events]
+              properties:
+                anon_id: { type: string, minLength: 8, maxLength: 64 }
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 25
+                  items: { $ref: '#/components/schemas/AnalyticsEvent' }
+      responses:
+        '202': { description: Accepted (fire-and-forget). }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /errors:
+    post:
+      operationId: recordFrontendError
+      summary: First-party error beacon (sampled client-side; 10/min/session)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 2000 }
+                stack: { type: string, maxLength: 8000 }
+                route: { type: string, maxLength: 200 }
+      responses:
+        '202': { description: Filed. }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /health:
+    get:
+      operationId: health
+      summary: Liveness + content freshness
+      security: []
+      responses:
+        '200':
+          description: Liveness + content freshness snapshot (WS-18 alerts read this).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [ok, tomorrow_published]
+                properties:
+                  ok: { type: boolean }
+                  tomorrow_published: { type: boolean }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: Degraded — a dependency is down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: burnfront_session
+      description: Sanctum stateful session; CSRF per info.description.
+
+  responses:
+    Unauthenticated:
+      description: No valid session.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Request shape rejected.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Throttled; retry after the indicated delay.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+    Me:
+      type: object
+      additionalProperties: false
+      required: [id, email, timezone, plan, streak, rating, streak_alert_opt_in]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        timezone: { type: string }
+        plan: { type: string, enum: [free, pro] }
+        pro_until: { type: [string, 'null'], format: date-time }
+        streak_alert_opt_in: { type: boolean }
+        streak: { $ref: '#/components/schemas/Streak' }
+        rating: { $ref: '#/components/schemas/Rating' }
+
+    Position:
+      type: array
+      prefixItems:
+        - { type: integer, minimum: 0 }
+        - { type: integer, minimum: 0 }
+      minItems: 2
+      maxItems: 2
+
+    ClueDef:
+      type: object
+      additionalProperties: false
+      required: [r, c, m]
+      properties:
+        r: { type: integer, minimum: 0 }
+        c: { type: integer, minimum: 0 }
+        m: { type: integer, minimum: 1 }
+
+    Board:
+      description: burnfront.puzzle/1 `board` object (contracts/schemas/puzzle.v1.json).
+      type: object
+      additionalProperties: false
+      required: [rows, cols, spark, breaks, clues]
+      properties:
+        rows: { type: integer, minimum: 3, maximum: 12 }
+        cols: { type: integer, minimum: 3, maximum: 12 }
+        spark: { $ref: '#/components/schemas/Position' }
+        breaks: { type: integer, minimum: 1 }
+        clues:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/ClueDef' }
+
+    Daily:
+      type: object
+      additionalProperties: false
+      required: [date, incident_number, puzzle_id, grade_tier, content_url, stats]
+      properties:
+        date: { type: string, format: date }
+        incident_number: { type: integer, minimum: 1 }
+        puzzle_id: { type: string }
+        grade_tier: { type: string, enum: [lookout, crew, hotshot] }
+        content_url: { type: string, format: uri, description: Immutable CDN JSON (burnfront.puzzle/1). }
+        amnesty: { type: boolean, default: false, description: Pulled-daily streak amnesty (WS-18). }
+        stats:
+          type: object
+          additionalProperties: false
+          required: [solved_count]
+          properties:
+            solved_count: { type: integer, minimum: 0 }
+            p50_ms: { type: [integer, 'null'] }
+        puzzle:
+          $ref: '#/components/schemas/Board'
+          description: Present ONLY when the CDN-fallback flag is active.
+
+    HintCounts:
+      type: object
+      additionalProperties: false
+      required: [s1, s2, s3]
+      properties:
+        s1: { type: integer, minimum: 0, maximum: 200 }
+        s2: { type: integer, minimum: 0, maximum: 200 }
+        s3: { type: integer, minimum: 0, maximum: 200 }
+
+    SolveSubmission:
+      type: object
+      additionalProperties: false
+      required: [mode, shaded, client_ms, started_at, hints, undo_count]
+      properties:
+        mode: { type: string, enum: [daily, pack, endless] }
+        puzzle_id:
+          type: string
+          description: Required for daily/pack; absent for endless.
+        endless_spec:
+          $ref: '#/components/schemas/Board'
+          description: Required for endless; server re-validates with the PHP BFS (ADR-0006).
+        shaded:
+          type: string
+          pattern: '^[01]+$'
+          maxLength: 144
+          description: Row-major bit string, '1' = firebreak (vectors/README.md).
+        client_ms: { type: integer, minimum: 0, maximum: 86400000 }
+        started_at: { type: string, format: date-time }
+        hints: { $ref: '#/components/schemas/HintCounts' }
+        undo_count: { type: integer, minimum: 0, maximum: 100000 }
+        replay:
+          type: string
+          contentEncoding: base64
+          maxLength: 262144
+          description: Gzipped event log [t_ms, cellIndex, mark]; retained 90 days (gdpr.md).
+        replay_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        deduction_steps:
+          type: integer
+          minimum: 1
+          description: Endless only — client-graded chain length feeding the board prior (RATING.md §4).
+
+    SolveResult:
+      type: object
+      additionalProperties: false
+      required: [solve_id, valid, suspect]
+      properties:
+        solve_id: { type: string }
+        valid: { type: boolean }
+        reason:
+          type: string
+          enum: [ok, spark_shaded, clue_shaded, wrong_break_count, unreachable_cell, clue_time_mismatch]
+          description: BurnVerdictReason (frozen order — vectors/README.md).
+        official_ms: { type: [integer, 'null'] }
+        suspect: { type: boolean }
+        streak: { $ref: '#/components/schemas/Streak' }
+        rating_pending: { type: boolean, description: Glicko-2 update is queued (WS-08). }
+        daily:
+          type: object
+          additionalProperties: false
+          properties:
+            rank: { type: [integer, 'null'], minimum: 1 }
+            percentile: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+            solved_count: { type: integer, minimum: 0 }
+
+    SolveSummary:
+      type: object
+      additionalProperties: false
+      required: [solve_id, mode, valid, received_at]
+      properties:
+        solve_id: { type: string }
+        mode: { type: string, enum: [daily, pack, endless] }
+        puzzle_id: { type: [string, 'null'] }
+        date: { type: [string, 'null'], format: date }
+        incident_number: { type: [integer, 'null'] }
+        valid: { type: boolean }
+        official_ms: { type: [integer, 'null'] }
+        clean: { type: boolean, description: Zero hints. }
+        received_at: { type: string, format: date-time }
+
+    Streak:
+      type: object
+      additionalProperties: false
+      required: [current, best]
+      properties:
+        current: { type: integer, minimum: 0 }
+        best: { type: integer, minimum: 0 }
+        last_daily_date: { type: [string, 'null'], format: date }
+        freeze_available: { type: boolean, description: One auto-freeze per calendar month (WS-07). }
+        safe_until: { type: [string, 'null'], format: date-time, description: UTC instant the streak dies if today stays unsolved. }
+
+    Rating:
+      type: object
+      additionalProperties: false
+      required: [rating, rd, volatility, games, calibrating]
+      properties:
+        rating: { type: number }
+        rd: { type: number }
+        volatility: { type: number }
+        games: { type: integer, minimum: 0 }
+        calibrating: { type: boolean, description: True for the first 10 rated solves (RATING.md §5). }
+        sparkline:
+          type: array
+          maxItems: 30
+          items: { type: number }
+          description: Recent post-solve ratings, oldest first.
+
+    ImportItem:
+      type: object
+      additionalProperties: false
+      required: [client_solve_id, mode, shaded, client_ms, solved_at]
+      properties:
+        client_solve_id: { type: string, format: uuid }
+        mode: { type: string, enum: [daily, endless] }
+        date: { type: [string, 'null'], format: date, description: Daily items — the UTC incident date. }
+        shaded: { type: string, pattern: '^[01]+$', maxLength: 144 }
+        client_ms: { type: integer, minimum: 0, maximum: 86400000 }
+        hints: { $ref: '#/components/schemas/HintCounts' }
+        solved_at: { type: string, format: date-time }
+
+    ImportResult:
+      type: object
+      additionalProperties: false
+      required: [results, streak, credited_days]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [client_solve_id, status]
+            properties:
+              client_solve_id: { type: string, format: uuid }
+              status: { type: string, enum: [credited, duplicate, invalid, board_unknown, date_ineligible, stats_only] }
+        credited_days: { type: integer, minimum: 0, maximum: 7 }
+        streak: { $ref: '#/components/schemas/Streak' }
+
+    AnalyticsEvent:
+      type: object
+      additionalProperties: false
+      required: [name, ts]
+      properties:
+        name:
+          type: string
+          enum: [first_seen, tutorial_step, solve_start, solve_complete, board_abandoned, hint_used, replay_watched, share_clicked, account_created]
+        ts: { type: string, format: date-time }
+        props:
+          type: object
+          maxProperties: 12
+          additionalProperties: true
