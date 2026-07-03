@@ -1,5 +1,54 @@
 # WS-08 STATUS
 
+## Session 2026-07-03 (builder, follow-up pass) — lead re-verification fixes
+
+## Done (follow-up)
+- `dcc08e0` — reserved-namespace idempotency keys, GDPR lock race, hardening
+  (all four lead items + two small ones):
+  1. **D1 flaw (verifier-proven) fixed with a reserved namespace, not
+     secrets**: POST /solves now accepts Idempotency-Key = **UUID version 7
+     only** (`Str::isUuid($key, 7)`; contract description already said v7 and
+     game-core emits v7) — v4, arbitrary uuid-shaped hex (the old-style
+     sha-derived shape) and the anchor namespace are rejected 422.
+  2. `RatingService::failedDailyKey` now emits **RFC 9562 UUID version 8**
+     (version nibble forced to 8, RFC variant 10xx), still deterministically
+     derived from (user_id, date) so rollover re-runs stay idempotent; the
+     (user_id, client_solve_id) unique backstop is unchanged. The pre-claim
+     attack (posting the derived key before rollover to void the s=0.25
+     penalty) and the anchor-leak replay are both structurally impossible and
+     regression-tested.
+  3. **Second fence**: `replayForUser` filters out
+     `reject_reason='failed_daily'` rows — an anchor can never replay as a
+     player submission even if the version fence were bypassed; ordinary
+     invalid solves still replay (tested).
+  4. **GDPR millisecond race closed**: the anonymized-user guard moved
+     INSIDE the settlement transaction as `lockedActiveUser()` — it takes the
+     users row lock, the same lock `UserAnonymizer` takes first, so an
+     in-flight anonymization either blocks behind the settlement (its
+     ratings-row delete then lands after our commit) or is already visible.
+     Lock order everywhere: users → ratings → board_ratings.
+  5. Unit dataset renamed: 'F3 endless clean, w = 0.5' → **'F3 half-delta
+     (literal weight)'** (endless plumbing coverage lives in
+     RatingUpdateTest; both kept).
+  6. `tests/bench-solves.sh` generates v7 keys; re-run green
+     (n=10: p50 29.0 ms, p95 48.5 ms, rating landed only after drain).
+
+  New tests (`tests/Feature/Solves/IdempotencyKeyNamespaceTest.php`):
+  - "the solve endpoint accepts only UUIDv7 idempotency keys" (v4 rejected,
+    reserved v8 anchor rejected, old-style raw-hash shape rejected, v7 → 201)
+  - "failedDailyKey emits the reserved v8 namespace, deterministically"
+  - "a failed-daily anchor cannot pre-empt or leak through the pre-rollover
+    claim" (the exact verifier attack; rollover still books the penalty)
+  - "replayForUser never surfaces a failed-daily bookkeeping row (second
+    fence)" (and ordinary invalid solves still replay)
+
+  Gates re-run on final code: `php artisan test` **139 passed (2475
+  assertions)** · `pint --test` passed · `phpstan` level 9 no errors ·
+  `bash scripts/hygiene.sh` exit 0.
+
+  Note: contracts/ untouched per the lead's instruction (ADR-0021 carries the
+  RATING.md failed-daily-games and db-schema comment erratas at merge).
+
 ## Session 2026-07-03 (builder)
 
 ## Done
@@ -166,8 +215,9 @@ Delivered, all verified in-session:
    tasks/WS-06/STATUS.md decisions 6/10), `.env` from `.env.example` +
    `php artisan key:generate`; for the bench also set DB → burnfront_dev,
    `QUEUE_CONNECTION=database`, `SESSION_DRIVER=file`, `MAIL_MAILER=log`.
-3. Gates: `php artisan test` (135) · `vendor/bin/pint --test` ·
-   `vendor/bin/phpstan analyse` · `bash scripts/hygiene.sh` (repo root).
+3. Gates: `php artisan test` (139 after the follow-up pass) ·
+   `vendor/bin/pint --test` · `vendor/bin/phpstan analyse` ·
+   `bash scripts/hygiene.sh` (repo root).
 4. Bench: `php artisan migrate:fresh --force && php artisan serve --port=8000`
    then `bash tests/bench-solves.sh`; afterwards `php artisan
    ratings:recompute` must leave the ratings row bit-identical.
