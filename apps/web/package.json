@@ -3,12 +3,36 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The Burnfront SPA (hub, daily, endless, academy, coach). Implemented in WS-09+.",
-  "main": "src/index.ts",
+  "description": "The Burnfront SPA shell: routing, chrome, keyed strings, hub (WS-09). Feature internals land in WS-10..14.",
+  "main": "src/main.tsx",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --coverage",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "strings:generate": "node scripts/generate-strings.mjs",
+    "strings:check": "node scripts/generate-strings.mjs --check",
+    "budget:check": "node scripts/budget-check.mjs"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@burnfront/api-client": "workspace:*",
+    "@burnfront/ui-web": "workspace:*",
+    "@tanstack/react-router": "^1.146.5",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@lhci/cli": "^0.15.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "happy-dom": "^20.10.6",
+    "vite": "7.3.6",
+    "vite-plugin-pwa": "^1.0.4"
+  }
 }

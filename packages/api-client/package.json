@@ -3,12 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "GENERATED from contracts/openapi.yaml \u2014 never hand-edited. Generated in WS-09.",
+  "description": "Typed API client. types.gen.ts is GENERATED from contracts/openapi.yaml (openapi-typescript) — never hand-edited; client.ts is a thin zero-dependency fetch wrapper type-locked to the generated paths.",
   "main": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --coverage",
+    "generate": "node scripts/generate.mjs",
+    "generate:check": "node scripts/generate.mjs --check"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1"
+  }
 }
