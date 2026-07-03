@@ -39,7 +39,11 @@ importers:
 
   packages/engine: {}
 
-  packages/game-core: {}
+  packages/game-core:
+    dependencies:
+      '@burnfront/engine':
+        specifier: workspace:*
+        version: link:../engine
 
   packages/ui-web: {}
 
