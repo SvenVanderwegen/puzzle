@@ -5,6 +5,8 @@ import {
   loadLocalState,
   memoryStorage,
   saveLocalState,
+  withAccount,
+  withoutAccount,
 } from './localState';
 
 describe('localState — anonymous-first store', () => {
@@ -52,5 +54,28 @@ describe('localState — anonymous-first store', () => {
     expect(loaded.streak.current).toBe(2);
     expect(loaded.streak.best).toBe(0);
     expect(loaded.record.rating).toBe(1200);
+    // Pre-WS-14 payloads gain the preference defaults (sound off, product §4).
+    expect(loaded.prefs).toEqual({
+      sound: false,
+      reducedMotion: false,
+      hideTimer: false,
+      highContrast: false,
+    });
+  });
+
+  it('withAccount/withoutAccount touch ONLY the signed-in marker', () => {
+    const guest = {
+      ...defaultLocalState(),
+      firstShiftDone: true,
+      streak: { current: 3, best: 5, lastDailyDate: '2026-07-02' },
+      prefs: { sound: true, reducedMotion: false, hideTimer: true, highContrast: false },
+    };
+    const signedIn = withAccount(guest, 'crew@example.com');
+    expect(signedIn.account).toEqual({ email: 'crew@example.com' });
+    expect({ ...signedIn, account: null }).toEqual(guest);
+
+    // Deletion/sign-out semantics: the guest record survives untouched.
+    const after = withoutAccount(signedIn);
+    expect(after).toEqual(guest);
   });
 });

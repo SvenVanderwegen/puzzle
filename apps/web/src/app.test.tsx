@@ -102,28 +102,29 @@ describe('route smoke — every route renders chrome, heading and strings', () =
     expect(screen.getByText('reading-the-numbers')).toBeInTheDocument();
   });
 
-  it('/me renders the record stub with the guest note', async () => {
+  it('/me renders the guest record with the guest note', async () => {
     await renderApp('/me');
     expect(
       screen.getByRole('heading', { level: 1, name: t('hub.lane.record') }),
     ).toBeInTheDocument();
     expect(screen.getByText(t('streak.guestNote'))).toBeInTheDocument();
-    expect(document.querySelector('main [data-ws="WS-14"]')).not.toBeNull();
   });
 
-  it('/settings renders the GDPR items', async () => {
+  it('/settings renders the device preferences and the guest pointer (WS-14)', async () => {
     await renderApp('/settings');
     expect(
       screen.getByRole('heading', { level: 1, name: t('settings.title') }),
     ).toBeInTheDocument();
-    expect(screen.getByText(t('settings.export'))).toBeInTheDocument();
-    expect(screen.getByText(t('settings.delete'))).toBeInTheDocument();
-    expect(screen.getByText(t('settings.delete.explain'))).toBeInTheDocument();
+    expect(screen.getByLabelText(t('settings.sound'))).toBeInTheDocument();
+    expect(screen.getByLabelText(t('settings.highContrast'))).toBeInTheDocument();
+    // Account rows (export/delete) require a session — SettingsPage.test.tsx.
+    expect(screen.getByRole('link', { name: t('streak.guestNote') })).toBeInTheDocument();
   });
 
-  it('/login renders the magic-link stub', async () => {
+  it('/login renders the magic-link request form', async () => {
     await renderApp('/login');
     expect(screen.getByRole('heading', { level: 1, name: t('auth.request') })).toBeInTheDocument();
+    expect(screen.getByLabelText(t('auth.email'))).toBeInTheDocument();
   });
 
   it('unknown routes render the not-found surface inside the chrome', async () => {

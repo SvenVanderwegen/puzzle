@@ -213,6 +213,159 @@ body {
   font-size: var(--bf-type-hint);
 }
 
+.bf-toast {
+  background: var(--bf-color-char2);
+  border: 1px solid var(--bf-color-ember-deep);
+  border-radius: var(--bf-radius-panel);
+  color: var(--bf-color-paper);
+  margin: var(--bf-space-3) 0 0;
+  padding: var(--bf-space-2) var(--bf-space-3);
+}
+
+.bf-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--bf-space-2);
+  margin-top: var(--bf-space-3);
+}
+
+.bf-field__label {
+  color: var(--bf-color-ash);
+  display: block;
+  font-size: var(--bf-type-label);
+  letter-spacing: var(--bf-tracking-label);
+  text-transform: uppercase;
+}
+
+.bf-input {
+  background: var(--bf-color-char);
+  border: 1px solid var(--bf-color-line);
+  border-radius: var(--bf-radius-control);
+  color: var(--bf-color-paper);
+  font: inherit;
+  max-width: 100%;
+  padding: var(--bf-space-2);
+}
+
+.bf-input:focus-visible {
+  outline: 2px solid var(--bf-color-flame);
+  outline-offset: 1px;
+}
+
+.bf-button {
+  background: var(--bf-color-char2);
+  border: 1px solid var(--bf-color-line);
+  border-radius: var(--bf-radius-control);
+  color: var(--bf-color-paper);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--bf-type-label);
+  letter-spacing: var(--bf-tracking-label);
+  padding: var(--bf-space-2) var(--bf-space-3);
+  text-transform: uppercase;
+}
+
+.bf-button:focus-visible {
+  outline: 2px solid var(--bf-color-flame);
+  outline-offset: 2px;
+}
+
+.bf-button:disabled {
+  color: var(--bf-color-ash);
+  cursor: default;
+}
+
+.bf-button--danger {
+  border-color: var(--bf-color-danger);
+  color: var(--bf-color-danger);
+}
+
+.bf-error {
+  color: var(--bf-color-danger);
+  font-size: var(--bf-type-hint);
+  margin: var(--bf-space-1) 0 0;
+}
+
+.bf-settings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bf-settings li {
+  border-top: 1px solid var(--bf-color-line);
+  padding: var(--bf-space-3) 0;
+}
+
+.bf-settings__row {
+  align-items: center;
+  display: flex;
+  gap: var(--bf-space-2);
+}
+
+.bf-dialog__backdrop {
+  background: var(--bf-color-soot);
+  inset: 0;
+  opacity: 0.97;
+  position: fixed;
+  z-index: 10;
+}
+
+.bf-dialog {
+  background: var(--bf-color-char);
+  border: 1px solid var(--bf-color-line);
+  border-radius: var(--bf-radius-panel);
+  margin: 15vh auto 0;
+  max-width: 420px;
+  padding: var(--bf-space-4);
+}
+
+.bf-dialog__title {
+  color: var(--bf-color-paper);
+  font-size: var(--bf-type-lede);
+  margin: 0 0 var(--bf-space-2);
+}
+
+.bf-dialog__actions {
+  display: flex;
+  gap: var(--bf-space-2);
+  margin-top: var(--bf-space-3);
+}
+
+.bf-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bf-history__row {
+  border-top: 1px solid var(--bf-color-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bf-space-2);
+  padding: var(--bf-space-2) 0;
+}
+
+.bf-sparkline {
+  display: block;
+  height: 32px;
+  margin-top: var(--bf-space-2);
+  width: 160px;
+}
+
+.bf-nudge {
+  margin: var(--bf-space-2) 0 0;
+}
+
+/* WS-14 high-contrast theme: secondary text steps up to full contrast and
+   hairlines to the brighter break-border token; everything stays inside the
+   token palette (no raw hex — tripwire). */
+.bf-app[data-contrast='high'] {
+  --bf-color-ash: var(--bf-color-paper);
+  --bf-color-line: var(--bf-color-break-border);
+}
+
 a { color: var(--bf-color-ember); }
 `;
 

@@ -11,6 +11,8 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.{ts,tsx}',
         'src/test-setup.ts',
+        // Test-only harness (mock contract client + render helper, WS-14).
+        'src/testing/**',
         // DOM bootstrap only; exercised by the build, not unit-testable renderless.
         'src/main.tsx',
         // Same: the landing hydration entry (WS-15); logic lives in
