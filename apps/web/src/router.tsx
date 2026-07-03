@@ -8,6 +8,7 @@ import {
   createRoute,
   createRouter,
   type RouterHistory,
+  redirect,
 } from '@tanstack/react-router';
 import { AppChrome } from './chrome/AppChrome';
 import { HubPage } from './hub/HubPage';
@@ -67,6 +68,18 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+const hubAliasRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/hub',
+  // Laravel's landing controller redirects authenticated users here (WS-15);
+  // '/' is the canonical hub inside the SPA (integration fix, see
+  // tasks/INTEGRATION-LOG.md 2026-07-03 WS-15 entry).
+  beforeLoad: () => {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack's documented redirect idiom throws a Redirect object
+    throw redirect({ to: '/' });
+  },
+});
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
@@ -82,6 +95,7 @@ const routeTree = rootRoute.addChildren([
   meRoute,
   settingsRoute,
   loginRoute,
+  hubAliasRoute,
 ]);
 
 export function createAppRouter(history?: RouterHistory) {

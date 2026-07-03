@@ -112,6 +112,7 @@ export const catalog = {
   'replay.nextMinute': 'Next minute',
   'replay.previousMinute': 'Previous minute',
   'a11y.board': 'Terrain',
+  'landing.hero.solved': "That's the game. A new one drops every midnight →",
   'error.offline': "You're offline. The board still works; syncing resumes later.",
   'error.generic': 'Something failed on our side. The report is filed.',
   'error.rateLimited': 'Too many requests — give it a minute.',

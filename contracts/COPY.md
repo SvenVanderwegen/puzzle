@@ -143,6 +143,10 @@ Interpolations use `{braces}`. Pluralization via ICU MessageFormat where marked.
 - `replay.previousMinute` — Previous minute
 - `a11y.board` — Terrain
 
+## landing (client-rendered only; Blade marketing copy is exempt — ADR-0022)
+
+- `landing.hero.solved` — That's the game. A new one drops every midnight →
+
 ## errors
 
 - `error.offline` — You're offline. The board still works; syncing resumes later.

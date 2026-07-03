@@ -54,6 +54,7 @@ jobs:
       - run: pnpm --filter @burnfront/web strings:check
       - run: pnpm --filter @burnfront/api-client generate:check
       - run: pnpm --filter @burnfront/web budget:check
+      - run: pnpm --filter @burnfront/web budget:landing
 
   contracts-guard:
     name: contracts frozen (ADR-0011)

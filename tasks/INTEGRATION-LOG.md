@@ -98,3 +98,17 @@
 - Lead rulings: ADR-0021 in-range (key namespace + RATING failed-daily-games
   errata + schema comment errata); D2/D4/D6/D7 ratified; lead re-ran the
   attack tests cold pre-merge.
+
+## 2026-07-03 — WS-15 merged
+- Branch worktree-agent-afd0d83775ba87854 @ 2730a96 → merged after verification
+  (PASS; 141/2370 + 130 web tests cold, budgets re-measured 5.4KB/69.4KB gz,
+  Lighthouse 100/100 + LCP 1.1s reproduced through a gzip front, 14/14
+  Puppeteer checks, freshness mutation caught).
+- Lead fixes at integration: (1) /hub DEAD-END (verifier priority probe):
+  SPA router gains /hub → redirect '/' — the Laravel redirect now lands on a
+  real route once WS-16 serves the shell; follow-the-redirect e2e assigned to
+  WS-17. (2) SPA shell noindex meta (brief item; all indexable content is
+  Blade-side). (3) budget:landing added to the CI conformance job.
+  (4) ADR-0022 in-range: landing.hero.solved key + Blade marketing-copy
+  exemption. (5) og:image 404 until WS-05 PNGs; sitemap /daily URLs 404 until
+  WS-10 unfurl shells — both tracked in briefs.
