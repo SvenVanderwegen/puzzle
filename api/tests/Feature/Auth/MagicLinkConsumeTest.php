@@ -23,7 +23,7 @@ function requestToken(string $email): string
 
     test()->postJson('/api/v1/auth/magic-link', ['email' => $email])->assertStatus(202);
 
-    Mail::assertSent(MagicLinkMail::class, function (MagicLinkMail $mail) use (&$token): bool {
+    Mail::assertQueued(MagicLinkMail::class, function (MagicLinkMail $mail) use (&$token): bool {
         $token = $mail->token;
 
         return true;

@@ -29,4 +29,20 @@ return [
         'manifest_archive_dir' => 'content/manifests',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Streak-protection alerts (WS-21)
+    |--------------------------------------------------------------------------
+    |
+    | The hourly notifications:streak-risk sweep mails users whose LOCAL clock
+    | (users.timezone — its only use, ADR-0002) is inside this evening hour on
+    | a day their streak would die unsolved. The deadline itself stays UTC
+    | midnight; only the send moment is local. Brief-fixed at 20 (= 20:00).
+    |
+    */
+
+    'streak_alert' => [
+        'local_hour' => 20,
+    ],
+
 ];

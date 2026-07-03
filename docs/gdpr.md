@@ -25,7 +25,7 @@ third-party analytics, zero third-party requests from any page (ADR-0008).
 |---|---|---|
 | Hetzner Online GmbH | hosting (app, Postgres, Redis) | Falkenstein, Germany — EU, no transfer |
 | Cloudflare, Inc. (DNS/CDN + R2) | traffic proxy, content CDN, encrypted backups | EU edge; US entity under the EU–US Data Privacy Framework, with SCCs as fallback |
-| EU ESP — to be appointed in WS-21 | transactional email delivery | EU placeholder; the DPA is signed before the first production send |
+| EU ESP — TODO(owner): appoint the vendor. The WS-21 integration is ESP-agnostic SMTP, so the choice is an .env change; candidates with EU entity + EU data residency: Scaleway TEM, Brevo, Mailjet (owner checklist in tasks/WS-21/STATUS.md) | transactional email delivery: magic links, GDPR receipts, opt-in streak alerts | EU entity + EU data residency required; the DPA is signed and SPF/DKIM/DMARC published before the first production send |
 | Laravel Forge | server management (no customer-data access in normal operation) | US entity, DPF; holds deploy credentials, not player data |
 
 ## Retention schedule
