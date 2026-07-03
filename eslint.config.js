@@ -21,4 +21,17 @@ export default tseslint.config(
     files: ['**/*.test.ts'],
     rules: { 'no-console': 'off' },
   },
+  {
+    // Determinism law (CLAUDE.md rule 8): clock and RNG are injected.
+    files: ['packages/engine/src/**', 'packages/game-core/src/**'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        { object: 'Date', property: 'now', message: 'Inject the clock (CLAUDE.md rule 8).' },
+        { object: 'Math', property: 'random', message: 'Inject the RNG (CLAUDE.md rule 8).' },
+        { object: 'performance', property: 'now', message: 'Inject the clock (CLAUDE.md rule 8).' },
+      ],
+    },
+  },
 );
