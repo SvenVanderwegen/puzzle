@@ -31,7 +31,7 @@ hint usage, streak, rating).
 **Solve replays and abuse prevention.** Move-by-move replays of your solves
 and hashed network addresses (used for rate limiting and anti-abuse) are
 kept for at most 90 days, then deleted. Raw usage events are aggregated into
-anonymous statistics and then purged.
+anonymous statistics and purged after at most 13 months (decisions.md #7).
 
 **Cookies.** A session cookie and a CSRF token, both strictly necessary for
 signed-in sessions. No tracking cookies.

@@ -25,7 +25,7 @@
   <h2>What we store, and why</h2>
   <p><strong>Playing as a guest.</strong> The daily puzzle, endless mode and the Academy work without an account. Your progress, streak, provisional rating and device preferences live in your browser's local storage — strictly necessary storage, so no consent banner is required. We receive anonymized usage events (for example "a puzzle was started") tied to a random identifier, never to your name or email. Analytics are first-party only: no third-party trackers, no advertising pixels, no external fonts or CDNs.</p>
   <p><strong>With an account.</strong> Accounts protect your record; they never gate play. We store your email address (sign-in is by emailed magic link — we never store passwords), your timezone if set (used only to time streak protection alerts), your alert preference, and your solve record (times, hint usage, streak, rating).</p>
-  <p><strong>Solve replays and abuse prevention.</strong> Move-by-move replays of your solves and hashed network addresses (rate limiting, anti-abuse) are kept for at most 90 days, then deleted. Raw usage events are aggregated into anonymous statistics and then purged.</p>
+  <p><strong>Solve replays and abuse prevention.</strong> Move-by-move replays of your solves and hashed network addresses (rate limiting, anti-abuse) are kept for at most 90 days, then deleted. Raw usage events are aggregated into anonymous statistics and purged after at most 13 months.</p>
   <p><strong>Cookies.</strong> A session cookie and a CSRF token, both strictly necessary for signed-in sessions. No tracking cookies.</p>
 
   <h2>Email</h2>

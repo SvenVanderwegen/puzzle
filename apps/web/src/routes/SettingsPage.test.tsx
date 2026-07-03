@@ -192,6 +192,42 @@ describe('/settings — delete account (type-to-confirm)', () => {
     expect(screen.getAllByRole('button', { name: t('settings.delete') })[1]).toBeDisabled();
   });
 
+  it('traps Tab inside the dialog: wraps at both edges, background never reached', async () => {
+    await renderSignedIn({});
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: t('settings.delete') }));
+    const dialog = await screen.findByRole('dialog');
+    const input = screen.getByLabelText(
+      t('settings.delete.typeToConfirm', { word: t('settings.delete.word') }),
+    );
+    const cancel = screen.getByRole('button', { name: t('common.cancel') });
+    expect(input).toHaveFocus();
+
+    // Confirm is disabled → cancel is the trailing edge. Shift+Tab from the
+    // first focusable wraps backwards to it, never into the page behind.
+    await user.tab({ shift: true });
+    expect(cancel).toHaveFocus();
+    // Tab from the trailing edge wraps forward to the first focusable.
+    await user.tab();
+    expect(input).toHaveFocus();
+
+    // Enable confirm: the trailing edge moves to the destructive button.
+    await user.keyboard(t('settings.delete.word'));
+    const confirm = screen.getAllByRole('button', { name: t('settings.delete') })[1];
+    await user.tab(); // input → cancel
+    await user.tab(); // cancel → confirm
+    expect(confirm).toHaveFocus();
+    await user.tab(); // confirm (last) → wraps to input, not the background
+    expect(input).toHaveFocus();
+    await user.tab({ shift: true }); // and backwards from first → confirm
+    expect(confirm).toHaveFocus();
+
+    // At no point did focus leave the dialog.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(screen.getByLabelText(t('settings.sound'))).not.toHaveFocus();
+  });
+
   it('Escape closes the dialog and returns focus to the opener', async () => {
     await renderSignedIn({});
     const user = userEvent.setup();

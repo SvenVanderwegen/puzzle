@@ -93,6 +93,14 @@ export interface ApiClientOptions {
    * X-XSRF-TOKEN on mutating requests. Injected so this package stays DOM-free.
    */
   readonly getCsrfToken?: () => string | null;
+  /**
+   * Sanctum session-bootstrap endpoint, hit (GET, deduped while in flight)
+   * before a mutating request whenever `getCsrfToken` yields null — a fresh
+   * browser has no XSRF-TOKEN cookie until this sets it. Default
+   * '/sanctum/csrf-cookie' (framework-provided, origin-root). See the note
+   * on the bootstrap inside `createApiClient`.
+   */
+  readonly csrfBootstrapUrl?: string;
 }
 
 interface RawOptions {
@@ -149,9 +157,41 @@ export interface ApiClient {
 
 const MUTATING = new Set<HttpMethod>(['post', 'patch', 'delete', 'put']);
 
+const DEFAULT_CSRF_BOOTSTRAP_URL = '/sanctum/csrf-cookie';
+
 export function createApiClient(clientOptions: ApiClientOptions = {}): ApiClient {
   const baseUrl = clientOptions.baseUrl ?? '/api/v1';
   const doFetch = clientOptions.fetch ?? globalThis.fetch;
+  const csrfBootstrapUrl = clientOptions.csrfBootstrapUrl ?? DEFAULT_CSRF_BOOTSTRAP_URL;
+  let csrfBootstrap: Promise<void> | null = null;
+
+  /**
+   * Sanctum session bootstrap — the ONE sanctioned hand-written request in
+   * the frontend stack (lead ruling, WS-14; ADR recorded at integration).
+   * `GET /sanctum/csrf-cookie` is framework session plumbing outside the
+   * contract's `paths` (openapi.yaml info.description), so it cannot go
+   * through the typed surface. Fired only when a mutating call finds no
+   * token, deduped while in flight (concurrent mutations share one GET),
+   * re-armed after settling so a still-missing cookie is retried on the
+   * next mutating call. Failures are swallowed: the mutating request that
+   * triggered the bootstrap surfaces the real error.
+   */
+  function bootstrapCsrfCookie(): Promise<void> {
+    csrfBootstrap ??= (async () => {
+      try {
+        await doFetch(csrfBootstrapUrl, {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          credentials: 'include',
+        });
+      } catch {
+        /* the caller's own request reports the failure */
+      } finally {
+        csrfBootstrap = null;
+      }
+    })();
+    return csrfBootstrap;
+  }
 
   async function request(method: HttpMethod, path: string, options: RawOptions): Promise<unknown> {
     const headers = new Headers({ accept: 'application/json' });
@@ -167,8 +207,13 @@ export function createApiClient(clientOptions: ApiClientOptions = {}): ApiClient
       headers.set('content-type', 'application/json');
       init.body = JSON.stringify(options.body);
     }
-    if (MUTATING.has(method)) {
-      const token = clientOptions.getCsrfToken?.() ?? null;
+    const getCsrfToken = clientOptions.getCsrfToken;
+    if (MUTATING.has(method) && getCsrfToken !== undefined) {
+      let token = getCsrfToken();
+      if (token === null) {
+        await bootstrapCsrfCookie();
+        token = getCsrfToken();
+      }
       if (token !== null) headers.set('x-xsrf-token', token);
     }
     if (options.signal !== undefined) init.signal = options.signal;

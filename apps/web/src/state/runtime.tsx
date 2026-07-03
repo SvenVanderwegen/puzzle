@@ -42,11 +42,11 @@ export function RuntimeProvider(props: {
 
 /**
  * Sanctum CSRF double-submit token, read from the XSRF-TOKEN cookie the
- * same-origin Laravel app sets (openapi.yaml info.description). The
- * bootstrap endpoint `GET /sanctum/csrf-cookie` is framework-provided and
- * OUTSIDE the contract's `paths`, so the type-locked client cannot model it
- * (documented seam — tasks/WS-14/STATUS.md): the SPA relies on the cookie
- * arriving with the document/session responses of the same origin.
+ * same-origin Laravel app sets (openapi.yaml info.description). A fresh
+ * browser has no cookie yet: the client wrapper itself then runs the
+ * lead-sanctioned `GET /sanctum/csrf-cookie` bootstrap before the mutating
+ * call — see `bootstrapCsrfCookie` in packages/api-client/src/client.ts
+ * (tasks/WS-14/STATUS.md decision #2).
  */
 function xsrfCookieToken(): string | null {
   const match = /(?:^|;\s*)XSRF-TOKEN=([^;]+)/.exec(document.cookie);

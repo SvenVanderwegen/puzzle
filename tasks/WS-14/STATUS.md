@@ -191,3 +191,85 @@ Commit: (this worktree branch `worktree-agent-aa23aa1115a199a7c`, single commit 
    feature-level equivalents are listed under Done/Remaining.
 3. Lead: ADR for the proposed copy keys (Decisions #1) and a home for the
    CSP report-only header (Remaining).
+
+---
+
+## Session 2026-07-03 (builder — fix-up after verification, lead-directed)
+
+## Done
+Commit: (fix-up commit on this branch, on top of `e73e94e` — SHA in `git log -1`)
+
+1. **Delete-dialog focus trap** (verifier gap: `aria-modal` alone let Tab
+   escape) — `SettingsPage.tsx` `trapTab`: Tab/Shift+Tab wrap at the dialog
+   edges (focusables = enabled `a[href]/button/input/select/textarea`
+   inside the dialog, so the trailing edge moves when the confirm button
+   enables); stray focus outside the dialog is pulled back to the first
+   focusable. Escape/focus-in-on-open/focus-return-on-close/focus-to-done-
+   notice all unchanged. New test (SettingsPage.test.tsx): wraps forward
+   and backward at both edges, disabled-confirm and enabled-confirm
+   states, background (sound toggle) never focused.
+2. **Sanctum CSRF bootstrap** (lead ruling: one hand-written
+   `GET /sanctum/csrf-cookie` sanctioned as transport plumbing; ADR at
+   integration) — homed in **`packages/api-client/src/client.ts`**
+   (`bootstrapCsrfCookie` inside `createApiClient`; scope grant used;
+   types.gen.ts untouched). Behavior: runs only when a MUTATING call finds
+   `getCsrfToken() === null` (and only when a token source is injected —
+   bare node/test clients never fire it); in-flight promise deduped so
+   concurrent mutations share one GET; re-armed after settling so a
+   still-missing cookie is retried on the next mutating call; failures
+   swallowed (the caller's request surfaces the real error); token re-read
+   after bootstrap. New option `csrfBootstrapUrl` (default
+   '/sanctum/csrf-cookie'). 5 new unit tests in client.test.ts: no-op with
+   cookie present · fires-once-then-fresh-token · concurrent dedupe (gated
+   fetch, exactly one bootstrap, both mutations carry the fresh token) ·
+   never for GET / never without a token source · failed bootstrap
+   swallowed + re-armed. `runtime.tsx` seam comment updated (decision #2
+   of the first session is RESOLVED by this ruling).
+3. **Privacy retention figure** — "aggregated into anonymous statistics and
+   purged after at most 13 months" (decisions.md #7) in
+   `docs/legal/privacy.md` + `legal/privacy.blade.php` (kept in sync);
+   LegalPagesTest now asserts the 13-month claim. TODO(owner) markers kept.
+4. **`api/resources/landing/hero.js` untouched** per lead instruction —
+   `budget:landing` freshness failure remains lead-owned (rebuilt at
+   integration with the COPY.md key ADR).
+
+## Gates (re-run, all green except the known lead-owned one)
+- `pnpm -r typecheck` ✓ · `pnpm -r lint` ✓ · `pnpm -r test` ✓ —
+  apps/web **173** (94.74% lines) · api-client **17** (98.97%) · engine 52
+  (99.33%) · game-core 143 (99.26%) · ui-web 58 (98.67%)
+- `pnpm format:check` ✓ · `pnpm hygiene` ✓ · `strings:check` ✓
+- `budget:check` ✓ — initial JS **99.00 KB gz** ≤ 200 KB (was 98.71;
+  +~0.3 KB from the bootstrap)
+- `php artisan test` ✓ **191 passed / 2705 assertions** · `pint --test` ✓ ·
+  `phpstan` level 9 ✓
+- `budget:landing`: NOT run/fixed — expected to fail on hero.js freshness
+  (strings quarantine); lead rebuilds at integration.
+
+## Blockers
+- None.
+
+## Decisions made (lead: please audit)
+11. Bootstrap homed in the api-client wrapper (not runtime.tsx): apps/web
+    lint bans `fetch` outright (CLAUDE.md rule 2 guard), the wrapper already
+    owns transport (headers/credentials/CSRF header), and the dedupe must
+    sit beside the request path to cover ALL mutating callers. Only fires
+    when `getCsrfToken` is injected — the browser runtime injects it;
+    plain test clients keep exact prior behavior.
+12. Dedupe re-arms after settling (in-flight-only dedupe, per the ruling's
+    wording): sequential mutating calls with a still-absent cookie retry
+    the bootstrap; a successful bootstrap makes later calls no-ops via the
+    cookie itself.
+
+## Files touched (this session)
+- `packages/api-client/src/client.ts` (+ client.test.ts) — scope grant
+- `apps/web/src/routes/SettingsPage.tsx` (+ SettingsPage.test.tsx)
+- `apps/web/src/state/runtime.tsx` (comment only)
+- `docs/legal/privacy.md`, `api/resources/views/legal/privacy.blade.php`,
+  `api/tests/Feature/Legal/LegalPagesTest.php`
+- `tasks/WS-14/STATUS.md`
+
+## Resume instructions
+1. Branch committed, not pushed (lead instruction). All gates green except
+   the lead-owned `budget:landing` (expected).
+2. Integration (lead): COPY.md key ADR + hero.js rebuild + the CSRF
+   bootstrap ADR (ruling recorded above).

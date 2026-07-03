@@ -13,7 +13,14 @@
  * Guests see the device preferences and the sign-in pointer only.
  */
 import { Link } from '@tanstack/react-router';
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+} from 'react';
 import type { components } from '@burnfront/api-client';
 import { PageHeading } from '../chrome/PageHeading';
 import { timezoneOptions } from '../account/timezone';
@@ -63,6 +70,7 @@ function DeleteDialog(props: {
   const api = useApi();
   const titleId = useId();
   const inputId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [confirmText, setConfirmText] = useState('');
   const [phase, setPhase] = useState<'idle' | 'deleting' | 'failed'>('idle');
@@ -86,6 +94,34 @@ function DeleteDialog(props: {
     }
   }
 
+  /**
+   * Focus trap (aria-modal alone does not stop Tab): wrap Tab/Shift+Tab at
+   * the dialog edges so the background chrome is unreachable while open.
+   * Disabled controls (the confirm button before the word matches) are not
+   * tab stops, so the trailing edge moves with the confirm state.
+   */
+  function trapTab(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const dialog = dialogRef.current;
+    if (dialog === null) return;
+    const focusables = [
+      ...dialog.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea'),
+    ].filter((element) => !element.hasAttribute('disabled'));
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (first === undefined || last === undefined) return;
+    const active = document.activeElement;
+    if (active === null || !dialog.contains(active)) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
     <div className="bf-dialog__backdrop">
       <div
@@ -93,8 +129,10 @@ function DeleteDialog(props: {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        ref={dialogRef}
         onKeyDown={(event) => {
           if (event.key === 'Escape') props.onClose();
+          else if (event.key === 'Tab') trapTab(event);
         }}
       >
         <h2 className="bf-dialog__title" id={titleId}>

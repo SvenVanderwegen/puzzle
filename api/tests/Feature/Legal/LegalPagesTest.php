@@ -43,6 +43,7 @@ test('the privacy page states the self-service rights the API actually offers', 
         ->assertSee('Delete my account')
         ->assertSee('works once and expires after 24 hours')
         ->assertSee('90 days')
+        ->assertSee('purged after at most 13 months')
         ->assertSee('gegevensbeschermingsautoriteit.be');
 });
 
