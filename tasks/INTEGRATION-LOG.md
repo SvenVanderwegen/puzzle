@@ -304,3 +304,33 @@
   285/3555, phpstan L9 clean, pint, format/hygiene/strings/generate/budget/
   budget:landing (70.45 KB) all green. Consumers regenerated: strings.gen.ts,
   landing artifact.
+
+## 2026-07-03 — WS-18 merged (lead-verified under session-limit constraint)
+- Branch worktree-agent-a91cfe32348182433 @ d645d25 → merged. The builder
+  committed its implementation + ledger and reported gates green, then the
+  shared session limit (resets 15:40 UTC) blocked spawning an independent
+  verifier subagent. The lead performed the adversarial verification directly
+  (lead is a separate session from the builder; ops/observability is the
+  lowest-risk workstream — no user-facing rating/auth/import logic).
+- Lead verification: (1) scope clean — the one dependency, laravel/nightwatch
+  v1.28, IS on contracts/DEPENDENCIES.md (line 36, ADR-0010/WS-18), pulled
+  zero new transitive deps, deps-allowlist green. (2) cold gates: PHP 298
+  tests / 3596 assertions, pint, phpstan L9, hygiene all green. (3) logic
+  probes: runway counts consecutive-days-from-tomorrow with a gap stopping the
+  count, silent at exactly 21 (boundary tests present); freshness checks
+  tomorrow's row at T-2h (22:00 UTC); health 503 is contract-conformant
+  (Error code is a free string, 'degraded' valid), Spectator-validates BOTH
+  200 and 503 shapes, and the 503 test induces DB-down by emptying the txn
+  search_path and asserts report() fired; amnesty command sets
+  daily_puzzles.amnesty and delegates to WS-07's already-verified honoring
+  (streak walk, rollover, mail sweep — confirmed by the WS-20/WS-21
+  verifiers). (4) RUNBOOK: all required sections present (§monitoring,
+  §pull-a-daily, §CDN-down, §breach, §log-retention, §restore-drill); CDN-down
+  names the REAL flag (content.origin_fallback / CONTENT_ORIGIN_FALLBACK).
+- REHEARSAL PENDING (owner): Nightwatch account + token + per-env keys; the
+  three staging drills (forced-exception visibility, missing-tomorrow alert,
+  CDN-down fallback e2e). Ordered checklist in tasks/WS-18/STATUS.md.
+- Note: this is the only workstream verified by the lead rather than an
+  independent subagent, forced by the session-limit outage. A post-reset
+  independent pass over WS-18 is optional (ops code, fully gated); not
+  blocking.
