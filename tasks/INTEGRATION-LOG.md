@@ -60,3 +60,13 @@
   composer not installed here); accepted the verifier's clean pint run on the
   identical tree — the next PHP workstream (WS-07) installs vendor here and CI
   (WS-16) will own the PHP gates.
+
+## 2026-07-03 — WS-09 merged
+- Branch worktree-agent-a3d23364b4c8b7e39 @ e65a35a → merged after verification
+  (PASS; 370 tests cold across workspace, bundle 94.4KB gz independently
+  measured, Lighthouse a11y 100 re-run, all four guards teeth-tested).
+- Lead rulings: ADR-0016 (type-locked client pattern), ADR-0017 (3 COPY keys),
+  ADR-0018 (ashDim role restriction — builder-found AA failure, numbers
+  verified 3.22/2.94); e2e deferrals to WS-10/WS-17 ACCEPTED; conformance CI
+  job added (strings/generate/budget checks); CODEMAP api-client row; cosmetic
+  notes (sw manifest dupe, state-3 assertion) recorded, no action.
