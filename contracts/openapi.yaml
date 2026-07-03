@@ -481,7 +481,10 @@ components:
           contentEncoding: base64
           maxLength: 262144
           description: Gzipped event log [t_ms, cellIndex, mark]; retained 90 days (gdpr.md).
-        replay_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        replay_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 hex over the UNCOMPRESSED replay JSON bytes (ADR-0012 — server verifies after gunzip).
         deduction_steps:
           type: integer
           minimum: 1
