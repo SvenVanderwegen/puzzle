@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { t } from '../strings';
 import { useLocalState } from '../state/runtime';
 import { appCssText } from './appCss';
-import { flashKeyOf } from './flash';
+import { flashOf } from './flash';
 import { useOnline } from './useOnline';
 
 /**
@@ -45,7 +45,7 @@ export function AppChrome(): ReactElement {
   const announcement = useRouteFocus();
   const online = useOnline();
   const state = useLocalState();
-  const flash = useRouterState({ select: (routerState) => flashKeyOf(routerState.location.state) });
+  const flash = useRouterState({ select: (routerState) => flashOf(routerState.location.state) });
 
   return (
     <div
@@ -75,7 +75,7 @@ export function AppChrome(): ReactElement {
       </header>
       {flash === null ? null : (
         <p className="bf-toast" role="status">
-          {t(flash)}
+          {t(flash.key, flash.params)}
         </p>
       )}
       {online ? null : (

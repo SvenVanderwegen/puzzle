@@ -7,7 +7,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { defaultLocalState, loadLocalState } from '../state/localState';
+import { defaultLocalState, loadLocalState, type SolveLogEntry } from '../state/localState';
 import { t } from '../strings';
 import { mockApi } from '../testing/mockApi';
 import { renderAppAt } from '../testing/renderApp';
@@ -145,4 +145,153 @@ describe('/login?token=… — consumed-link landing', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(t('auth.expired'));
     expect(loadLocalState(storage).streak.current).toBe(4);
   });
+});
+
+// WS-20: the anonymous→account merge attached to the consume landing.
+describe('/login?token=… — local-record merge (WS-20)', () => {
+  function guestLogEntry(i: number, date: string): SolveLogEntry {
+    return {
+      clientSolveId: `01980000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+      mode: 'daily',
+      date,
+      shaded: '000010010',
+      clientMs: 61_000,
+      hints: { s1: 0, s2: 0, s3: 0 },
+      solvedAt: `${date}T20:00:00.000Z`,
+    };
+  }
+
+  function guestWithLog() {
+    return {
+      ...defaultLocalState(),
+      firstShiftDone: true,
+      streak: { current: 3, best: 3, lastDailyDate: '2026-07-03' },
+      solveLog: [
+        guestLogEntry(1, '2026-07-01'),
+        guestLogEntry(2, '2026-07-02'),
+        guestLogEntry(3, '2026-07-03'),
+      ],
+    };
+  }
+
+  function importResult(days: number) {
+    return {
+      results: [
+        { client_solve_id: '01980000-0000-7000-8000-000000000001', status: 'credited' },
+        { client_solve_id: '01980000-0000-7000-8000-000000000002', status: 'credited' },
+        { client_solve_id: '01980000-0000-7000-8000-000000000003', status: 'credited' },
+      ],
+      credited_days: days,
+      streak: { current: days, best: days, last_daily_date: '2026-07-03' },
+    };
+  }
+
+  it('uploads the guest log, clears it, and shows the merge summary (streak 3)', async () => {
+    const { api, callsTo } = mockApi({
+      'POST /auth/magic-link/consume': { status: 204 },
+      'GET /me': { status: 200, data: meFixture() },
+      'POST /me/import': { status: 200, data: importResult(3) },
+    });
+    const state = guestWithLog();
+    const { router, storage } = await renderAppAt(`/login?token=${TOKEN}`, { api, state });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/');
+    });
+
+    // The full local log went up, in the ImportItem wire shape.
+    const uploads = callsTo('POST /me/import');
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.body).toEqual({
+      items: state.solveLog.map((entry) => ({
+        client_solve_id: entry.clientSolveId,
+        mode: entry.mode,
+        date: entry.date,
+        shaded: entry.shaded,
+        client_ms: entry.clientMs,
+        hints: entry.hints,
+        solved_at: entry.solvedAt,
+      })),
+    });
+
+    // The merge summary toast, interpolated: "3 solves merged. 3-day streak protected."
+    expect(
+      await screen.findByText(t('account.merge.summary', { solves: 3, days: 3 })),
+    ).toBeInTheDocument();
+
+    // The log cleared; the rest of the guest record survived byte-for-byte.
+    const after = loadLocalState(storage);
+    expect(after.solveLog).toEqual([]);
+    expect(after.streak).toEqual(state.streak);
+    expect(after.firstShiftDone).toBe(true);
+    expect(after.account).toEqual({ email: 'crew@example.com' });
+  });
+
+  it('skips the upload entirely when the log is empty', async () => {
+    const { api, callsTo } = mockApi({
+      'POST /auth/magic-link/consume': { status: 204 },
+      'GET /me': { status: 200, data: meFixture() },
+    });
+    const { router } = await renderAppAt(`/login?token=${TOKEN}`, { api });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/');
+    });
+    expect(callsTo('POST /me/import')).toEqual([]);
+    expect(await screen.findByText(t('auth.consumed'))).toBeInTheDocument();
+  });
+
+  it('keeps the log for a later sign-in when the merge call fails', async () => {
+    const { api } = mockApi({
+      'POST /auth/magic-link/consume': { status: 204 },
+      'GET /me': { status: 200, data: meFixture() },
+      'POST /me/import': () => {
+        throw new Error('HTTP 500');
+      },
+    });
+    const state = guestWithLog();
+    const { router, storage } = await renderAppAt(`/login?token=${TOKEN}`, { api, state });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/');
+    });
+    // Signed in fine, calm landing, nothing merged, nothing lost.
+    expect(await screen.findByText(t('auth.consumed'))).toBeInTheDocument();
+    const after = loadLocalState(storage);
+    expect(after.account).toEqual({ email: 'crew@example.com' });
+    expect(after.solveLog).toEqual(state.solveLog);
+  });
+
+  it('clears the log but lands calm when the server merged nothing', async () => {
+    const { api } = mockApi({
+      'POST /auth/magic-link/consume': { status: 204 },
+      'GET /me': { status: 200, data: meFixture() },
+      'POST /me/import': {
+        status: 200,
+        data: {
+          results: state0Results(),
+          credited_days: 0,
+          streak: { current: 0, best: 0 },
+        },
+      },
+    });
+    const state = guestWithLog();
+    const { router, storage } = await renderAppAt(`/login?token=${TOKEN}`, { api, state });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/');
+    });
+    // The server ruled (all duplicates/dropped): the log clears, but a
+    // "0 solves merged" toast would be noise — the plain consumed line shows.
+    expect(await screen.findByText(t('auth.consumed'))).toBeInTheDocument();
+    expect(loadLocalState(storage).solveLog).toEqual([]);
+  });
+
+  function state0Results() {
+    return [
+      { client_solve_id: '01980000-0000-7000-8000-000000000001', status: 'duplicate' },
+      { client_solve_id: '01980000-0000-7000-8000-000000000002', status: 'invalid' },
+      { client_solve_id: '01980000-0000-7000-8000-000000000003', status: 'board_unknown' },
+    ];
+  }
 });

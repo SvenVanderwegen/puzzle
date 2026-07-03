@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\EventController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\FrontendErrorController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\MagicLinkController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\RatingController;
@@ -44,6 +45,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::get('/me/export', [ExportController::class, 'request'])
         ->middleware('throttle:me-export');
+
+    Route::post('/me/import', [ImportController::class, 'store'])
+        ->middleware('throttle:me-import');
 
     Route::post('/daily/{date}/start', [DailyController::class, 'start'])
         ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');

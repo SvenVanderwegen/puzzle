@@ -7,16 +7,18 @@
  * - Consumed-link landing: /login?token=… POSTs /auth/magic-link/consume;
  *   204 stamps the local signed-in marker (email from GET /me), seeds the
  *   browser-detected timezone while the profile is at the server default,
- *   and returns to the hub with the auth.consumed toast. 410 (expired or
- *   already used) explains and falls back to the form — the retry path is
- *   requesting a fresh link.
+ *   merges the guest solve log via POST /me/import (WS-20 — summary toast
+ *   account.merge.summary; the log clears once the server has ruled), and
+ *   returns to the hub. 410 (expired or already used) explains and falls
+ *   back to the form — the retry path is requesting a fresh link.
  */
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { uploadLocalRecord } from '../account/merge';
 import { detectedTimezone } from '../account/timezone';
 import { flashState } from '../chrome/flash';
 import { PageHeading } from '../chrome/PageHeading';
-import { withAccount } from '../state/localState';
+import { withAccount, withClearedSolveLog } from '../state/localState';
 import { useApi, useLocalState, useLocalStateUpdate } from '../state/runtime';
 import { t } from '../strings';
 
@@ -91,6 +93,7 @@ function RequestForm(): ReactElement {
 
 function ConsumeLanding(props: { readonly token: string }): ReactElement {
   const api = useApi();
+  const local = useLocalState();
   const update = useLocalStateUpdate();
   const navigate = useNavigate();
   const [phase, setPhase] = useState<ConsumePhase>('consuming');
@@ -124,19 +127,35 @@ function ConsumeLanding(props: { readonly token: string }): ReactElement {
         }
         const email = me.data.email;
         update((state) => withAccount(state, email));
-        // WS-20 seam: the anonymous→account merge (POST /me/import of the
-        // local record + account.merge.summary toast) attaches here, before
-        // the hub redirect. See tasks/WS-14/STATUS.md.
-        await navigate({ to: '/', state: flashState('auth.consumed') });
+        // WS-20: merge the anonymous record into the account. The server
+        // re-validates everything; a 200 is a final ruling on every item,
+        // so the local log clears (the rest of the guest record stays).
+        // A failed upload keeps the log — the next sign-in retries.
+        let flash = flashState('auth.consumed');
+        try {
+          const summary = await uploadLocalRecord(api, local.solveLog);
+          if (summary !== null) {
+            update(withClearedSolveLog);
+            if (summary.solves > 0) {
+              flash = flashState('account.merge.summary', {
+                solves: summary.solves,
+                days: summary.days,
+              });
+            }
+          }
+        } catch {
+          // Signed in fine; the merge alone failed. Keep the log, land calm.
+        }
+        await navigate({ to: '/', state: flash });
       } catch {
         setPhase('failed');
       }
     })();
-  }, [api, navigate, props.token, update]);
+  }, [api, local, navigate, props.token, update]);
 
   if (phase === 'consuming') {
     return (
-      <p className="bf-lane__meta" role="status" data-ws="WS-20" data-auth="consuming">
+      <p className="bf-lane__meta" role="status" data-auth="consuming">
         {t('auth.consuming')}
       </p>
     );

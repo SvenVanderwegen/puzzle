@@ -14,10 +14,16 @@ export function PostSolveNudge(): ReactElement | null {
   const state = useLocalState();
   const nudge = decidePostSolveNudge(state);
   if (nudge === null) return null;
-  if (nudge === 'streak-protect') {
+  if (nudge === 'streak-protect' || nudge === 'streak-protect-capped') {
+    // Past 7 days the capped variant states the real WS-20 merge behavior
+    // (the last 7 days carry forward) — the plain line would overpromise.
     return (
-      <p className="bf-nudge" data-nudge="streak-protect">
-        <Link to="/login">{t('streak.protect', { n: state.streak.current })}</Link>
+      <p className="bf-nudge" data-nudge={nudge}>
+        <Link to="/login">
+          {t(nudge === 'streak-protect-capped' ? 'streak.protect.capped' : 'streak.protect', {
+            n: state.streak.current,
+          })}
+        </Link>
       </p>
     );
   }
