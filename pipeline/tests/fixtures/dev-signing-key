@@ -1,0 +1,5 @@
+# DEV SIGNING KEY - NOT A SECRET. Committed on purpose for pipeline tests
+# (WS-05). Never use for published content; production keys live in Forge
+# and are set by the owner (CLAUDE.md rule 5).
+# Format: 32-byte Ed25519 seed, hex.
+d6eb439c4491a24bb584ca700c8f623f26fd0875fad979b027febaa621b6482e

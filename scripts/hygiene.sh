@@ -9,7 +9,7 @@ for d in "${SRC_DIRS[@]}"; do [ -d "$d" ] && EXISTING+=("$d"); done
 # no stray debug output or task markers in source
 if grep -rn --include='*.ts' --include='*.tsx' --include='*.php' --include='*.py' \
      -E 'console\.log|var_dump\(|\bdd\(|TODO|FIXME|HACK\b|XXX' \
-     "${EXISTING[@]}" --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist --exclude='*.test.ts' 2>/dev/null; then
+     "${EXISTING[@]}" --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist --exclude-dir='.venv' --exclude='*.test.ts' 2>/dev/null; then
   echo 'HYGIENE FAIL: debug output or TODO/FIXME/HACK markers in source'; fail=1
 fi
 # no focused/skipped tests
