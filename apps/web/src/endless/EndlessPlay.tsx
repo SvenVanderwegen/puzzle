@@ -250,7 +250,7 @@ export function EndlessPlay({ tier }: EndlessPlayProps): ReactElement {
             {t('error.generic')}
           </p>
           <button type="button" className="bf-chip" onClick={regenerate}>
-            {t('hub.play.endless', { tier: tierLabel(tier) })}
+            {t('endless.new', { tier: tierLabel(tier) })}
           </button>
         </div>
       ) : null}
@@ -263,7 +263,7 @@ export function EndlessPlay({ tier }: EndlessPlayProps): ReactElement {
               strings={HUD_STRINGS}
             />
             <button type="button" className="bf-chip" onClick={regenerate}>
-              {t('hub.play.endless', { tier: tierLabel(tier) })}
+              {t('endless.new', { tier: tierLabel(tier) })}
             </button>
           </div>
           <Board
@@ -297,7 +297,7 @@ export function EndlessPlay({ tier }: EndlessPlayProps): ReactElement {
             <RatingLine submission={submission} />
             {signedIn ? null : <p className="bf-hint">{t('streak.guestNote')}</p>}
             <button type="button" className="bf-play" onClick={regenerate}>
-              {t('hub.play.endless', { tier: tierLabel(tier) })}
+              {t('endless.new', { tier: tierLabel(tier) })}
             </button>
           </section>
         </>
@@ -331,12 +331,10 @@ function RatingLine(props: { readonly submission: SubmissionState }): ReactEleme
       </p>
     );
   }
-  // Submitting/pending: the Glicko-2 job is queued (rating_pending). No
-  // COPY.md key exists for this state yet (flagged in tasks/WS-11/STATUS.md);
-  // a glyph-only ellipsis chip stands in until the lead adds one.
+  // Submitting/pending: the Glicko-2 job is queued (rating_pending).
   return (
     <p className="bf-lane__meta" role="status" data-testid="rating-pending">
-      <span className="bf-chip">…</span>
+      <span className="bf-chip">{t('endless.rating.pending')}</span>
     </p>
   );
 }

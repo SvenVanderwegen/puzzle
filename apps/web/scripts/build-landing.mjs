@@ -63,6 +63,10 @@ const server = await createServer({
   root: appDir,
   logLevel: 'warn',
   server: { middlewareMode: true },
+  // SSR-only helper server: without this, vite dep-scans the SPA's index.html
+  // in the background and server.close() races the scan — under load the
+  // "server is being restarted or closed" rejection fails the gate flakily.
+  optimizeDeps: { noDiscovery: true },
 });
 let boardCss;
 let burnColor;

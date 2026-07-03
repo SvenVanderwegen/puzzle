@@ -164,3 +164,28 @@
 - Gates re-run on mainline post-merge: TS 525 tests green, budgets
   107.56/200 KB + landing fresh, strings/generate/format/hygiene/lint green,
   PHP 205/3182 re-confirmed.
+
+## 2026-07-03 — WS-14 merged
+- Branch worktree-agent-aa23aa1115a199a7c @ a29b202 → merged after verification
+  (MERGE-WITH-FIXES → fixed; verifier confirmed no-enumeration, StrictMode
+  single-consume, field-by-field guest-state survival through delete, guest
+  zero-API, timezone seeding can't loop, tokens-only styling; then two fixes:
+  probe-proven focus-trap gap closed with an edge-wrapping trap + test, and
+  the production first-POST 419 closed by the sanctioned CSRF bootstrap).
+- Lead rulings/actions in this range: (1) ADR-0023 — COPY.md gains the 23
+  keys (WS-14's 21 quarantined + WS-11's endless.new / endless.rating.pending);
+  strings.gen.ts regenerated, quarantine dissolved to empty, endless stand-ins
+  (reused hub.play.endless label, "…" a11y-gap chip) swapped to the new keys,
+  landing artifact rebuilt (70.05 KB gz ≤ 90). (2) ADR-0024 — the sanctum
+  CSRF bootstrap is transport plumbing homed in the api-client wrapper;
+  rule 2 otherwise unchanged; WS-17 owes the cold-browser e2e. (3) e2e
+  deferrals signed off and appended to tasks/WS-17/brief.md (mailpit auth
+  loop, delete-anonymization); CSP report-only header + beacon CSRF
+  exemptions + per-IP ceilings appended to tasks/WS-22/brief.md. (4) Legal
+  drafts pend owner/lawyer review (docs/legal/*, TODO(owner) markers; privacy
+  now states the 13-month figure). (5) Tooling fix: build-landing.mjs SSR
+  helper server no longer dep-scans the SPA entry (noDiscovery) — under load
+  the scan raced server.close() and flaked the budget:landing gate.
+- Verifier cosmetic notes accepted without action: builder test harness not
+  under StrictMode (verifier probed StrictMode itself); genuine back-nav to a
+  consumed link shows "expired" + retry form (single-use UX, correct).

@@ -355,7 +355,9 @@ describe('signed-in play-to-contain (rated, ADR-0006)', () => {
     await renderPlay({ path: '/play?tier=lookout', state: signedIn, api });
     await containBoard();
     // Glyph-only until a COPY.md key lands (see tasks/WS-11/STATUS.md).
-    expect(await screen.findByTestId('rating-pending')).toHaveTextContent('…');
+    expect(await screen.findByTestId('rating-pending')).toHaveTextContent(
+      t('endless.rating.pending'),
+    );
     expect(screen.queryByTestId('rating-chip')).not.toBeInTheDocument();
   });
 
@@ -376,7 +378,7 @@ describe('next board and regenerate', () => {
     expect(worker.requests).toHaveLength(2);
 
     fireEvent.click(
-      screen.getByRole('button', { name: t('hub.play.endless', { tier: 'Lookout 5×5' }) }),
+      screen.getByRole('button', { name: t('endless.new', { tier: 'Lookout 5×5' }) }),
     );
     // The cached board mounts; only the NEXT prefetch hits the worker.
     expect(await screen.findByRole('grid')).toBeInTheDocument();
@@ -391,7 +393,7 @@ describe('next board and regenerate', () => {
     await screen.findByRole('grid');
     const before = worker.requests.length;
     fireEvent.click(
-      screen.getByRole('button', { name: t('hub.play.endless', { tier: 'Lookout 5×5' }) }),
+      screen.getByRole('button', { name: t('endless.new', { tier: 'Lookout 5×5' }) }),
     );
     expect(await screen.findByRole('grid')).toBeInTheDocument();
     await waitFor(() => {
@@ -401,7 +403,7 @@ describe('next board and regenerate', () => {
 
   it('survives rapid sequential regenerates without a stale board or crash', async () => {
     const { worker } = await renderPlay({ path: '/play?tier=lookout' });
-    const name = t('hub.play.endless', { tier: 'Lookout 5×5' });
+    const name = t('endless.new', { tier: 'Lookout 5×5' });
     for (let i = 0; i < 3; i++) {
       const button = await screen.findByRole('button', { name });
       fireEvent.click(button);

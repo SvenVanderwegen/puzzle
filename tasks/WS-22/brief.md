@@ -28,3 +28,11 @@ Findings report in `tasks/WS-22/STATUS.md`, fix-up briefs, enforced security hea
 
 ## Non-goals
 No external pentest procurement (post-revenue), no bug bounty.
+
+## Items queued for this review at integration (lead)
+- CSP report-only header for the SPA shell (declared WS-14 output, deferred
+  here — legal pages shipped controller-free).
+- Beacon-path CSRF exemptions (/api/v1/events, /api/v1/errors — WS-19) and
+  the ADR-0024 sanctum bootstrap: review the CSRF posture end-to-end.
+- Per-IP beacon ceilings (events 240/min, errors 40/min): confirm numbers
+  against production traffic assumptions.

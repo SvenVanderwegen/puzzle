@@ -97,6 +97,33 @@ export const catalog = {
   'settings.streakAlert':
     'Streak protection alerts — one email, only on days your streak would end unsolved.',
   'settings.title': 'Settings',
+  'auth.email': 'Email address',
+  'auth.consuming': 'Verifying your sign-in link…',
+  'auth.expired':
+    'That link is no longer valid — links work once, for 15 minutes. Request a new one below.',
+  'auth.signOut': 'Sign out',
+  'settings.sound': 'Sound',
+  'settings.reducedMotion': 'Reduced motion',
+  'settings.hideTimer': 'Hide the timer',
+  'settings.highContrast': 'High-contrast theme',
+  'settings.timezone': 'Timezone',
+  'settings.timezone.hint':
+    'Sets when streak protection alerts are sent. The daily still flips at midnight UTC.',
+  'settings.export.sent':
+    'Export queued. A download link is on its way to your email. It works once, for 24 hours.',
+  'settings.delete.typeToConfirm': 'Type {word} to confirm.',
+  'settings.delete.word': 'DELETE',
+  'settings.delete.done':
+    'Deletion queued. Your local record stays in this browser; you are solving as a guest again.',
+  'common.cancel': 'Cancel',
+  'me.history': 'Solve history',
+  'me.history.empty': 'No solves on record yet.',
+  'me.history.more': 'Load more',
+  'me.mode.endless': 'Endless',
+  'me.mode.pack': 'Pack',
+  'me.distributions.pending': 'Solve-time distributions build as more incidents are contained.',
+  'endless.new': 'New incident · {tier}',
+  'endless.rating.pending': 'Rating update queued',
   'email.magic.subject': 'Your Burnfront sign-in link',
   'email.streak.subject': 'Your {n}-day streak has {hours} hours.',
   'email.streak.body':

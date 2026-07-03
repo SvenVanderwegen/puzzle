@@ -23,3 +23,10 @@ Merged features on the compose stack (PG + Laravel + built SPA + mailpit).
 
 ## Non-goals
 No cross-browser matrix in v1 (Chromium; WebKit smoke only), no load testing.
+
+## Deferred items assigned at integration (lead)
+- Follow-the-/hub-redirect e2e; axe scans; offline e2e (WS-15 integration).
+- Cold-browser magic-link loop against mailpit: request → email → consume →
+  signed-in hub; covers the ADR-0024 CSRF bootstrap end-to-end (WS-14).
+- Delete-account e2e proving server-side anonymization + local guest state
+  preserved (WS-14).
