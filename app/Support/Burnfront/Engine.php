@@ -200,20 +200,33 @@ final class Engine
      * pruning means the count is exact whenever the node budget isn't
      * exhausted; `aborted` signals "don't know" so callers stay conservative.
      *
+     * $deadlineMs, if given, is an absolute `microtime(true) * 1000`
+     * timestamp: the search also aborts once past it, independent of the
+     * node budget. A single call can otherwise run for as long as the node
+     * budget takes regardless of how much of a caller's own time budget is
+     * left — on a server, that can tie up a worker well past the deadline
+     * the caller thought it was enforcing (see generate()).
+     *
      * @return array{count: int, aborted: bool}
      */
-    public static function countSolutions(Puzzle $pz, int $limit = 2, int $nodeBudget = 300000): array
+    public static function countSolutions(Puzzle $pz, int $limit = 2, int $nodeBudget = 300000, ?float $deadlineMs = null): array
     {
         $state = self::initialState($pz);
         $count = 0;
         $aborted = false;
         $budget = $nodeBudget;
+        $sinceDeadlineCheck = 0;
 
-        $dfs = function () use (&$dfs, &$state, &$count, &$aborted, &$budget, $pz, $limit): void {
+        $dfs = function () use (&$dfs, &$state, &$count, &$aborted, &$budget, &$sinceDeadlineCheck, $pz, $limit, $deadlineMs): void {
             if ($count >= $limit || $aborted) {
                 return;
             }
             if (--$budget < 0) {
+                $aborted = true;
+
+                return;
+            }
+            if ($deadlineMs !== null && (++$sinceDeadlineCheck & 511) === 0 && microtime(true) * 1000 >= $deadlineMs) {
                 $aborted = true;
 
                 return;
@@ -570,7 +583,7 @@ final class Engine
                     }
 
                     $trial = new Puzzle($rows, $cols, $terrain['spark'], $trialClues, $breaks);
-                    $res = self::countSolutions($trial, 2, 60000);
+                    $res = self::countSolutions($trial, 2, 60000, $t0 + $budgetMs);
                     if (! $res['aborted'] && $res['count'] === 1 && self::deductionSolve($trial) !== null) {
                         $clues = $trialClues;
                         $pz = $trial;

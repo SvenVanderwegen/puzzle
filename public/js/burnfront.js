@@ -293,6 +293,12 @@
       updateChrome();
       startClock();
     } catch (e) {
+      if (token === genToken) {
+        /* Restore whatever board was already up rather than leaving it
+           locked forever: tap/undo/reset all bail out while locked. */
+        locked = false;
+        if (game) updateChrome();
+      }
       showToast("Couldn't reach the incident desk. Try again.");
     } finally {
       if (token === genToken) veil.classList.remove("show");
