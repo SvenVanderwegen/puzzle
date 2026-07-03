@@ -15,9 +15,15 @@ for the premise and lore.
     `random` callable (what a future daily puzzle would seed from the date).
   - `PuzzleService.php` — difficulty tiers and wire-format serialization; the
     seam a future scoreboard or daily-puzzle feature would build on.
-  - `public/js/burnfront.js` handles the board UI and validates a player's
-    marking locally (instant feedback, no round trip); puzzle generation
-    itself is server-authoritative via `GET /puzzle?difficulty=...`.
+  - The frontend is Inertia + Vue 3, styled with Tailwind CSS 4:
+    - `resources/js/Pages/Burnfront/Index.vue` — the board, toolbar and page
+      chrome. `resources/js/lib/burnfront-engine.js` validates a player's
+      marking locally (instant feedback, no round trip); puzzle generation
+      itself is server-authoritative via `GET /puzzle?difficulty=...`.
+    - `resources/js/Pages/Burnfront/HowItWorksDemo.vue` — the scripted
+      walkthrough on the page, with no dependency on the real engine.
+    - `resources/css/app.css` — the Tailwind theme (colors, fonts) and the
+      `bf-*` component classes the board/demo use.
 - `reference/` — the frozen prototype (`firebreak.py` + a self-contained
   `index.html`) that `app/Support/Burnfront/Engine.php` is ported from. Do not
   edit; it's the ground truth other implementations are checked against.
@@ -27,10 +33,12 @@ for the premise and lore.
 
 ```bash
 composer install
+npm install
 cp .env.example .env
 php artisan key:generate
 touch database/database.sqlite
 php artisan migrate
+npm run build # or `npm run dev` alongside `php artisan serve`
 php artisan serve
 ```
 

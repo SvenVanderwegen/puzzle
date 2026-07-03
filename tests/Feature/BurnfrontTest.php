@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Support\Burnfront\PuzzleService;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class BurnfrontTest extends TestCase
@@ -11,7 +13,14 @@ class BurnfrontTest extends TestCase
         $response = $this->get('/');
 
         $response->assertStatus(200);
-        $response->assertSee('BURNFRONT', false);
+        $response->assertSee('Burnfront', false);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Index')
+            ->where('defaultDifficulty', PuzzleService::DEFAULT_DIFFICULTY)
+            ->has('difficulties.lookout')
+            ->has('difficulties.crew')
+            ->has('difficulties.hotshot')
+        );
     }
 
     public function test_puzzle_endpoint_generates_a_lookout_incident(): void
