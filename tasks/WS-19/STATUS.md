@@ -4,6 +4,23 @@
 
 ## Done
 Commit `2d309a6` on `worktree-agent-a3bd56de1eabb2d40` (ledger commit follows it).
+Fix-up commit `c8132b3` (post-verification): per-IP throttle ceiling, below.
+
+- **Fix-up `c8132b3` — per-IP rate-limit bypass closed (verifier finding,
+  medium)**: the events throttle was keyed only by anon_id, so rotating a
+  fresh anon_id per request from one IP inserted rows without ceiling. Both
+  beacon limiters now return an array of limits: events = 60/min per anon_id
+  AND 240/min per IP (`events-ip:` key); errors = 10/min per session AND
+  40/min per IP (`errors-ip:` key). Regression tests reproduce the attack:
+  >240 rotated anon_ids from one IP → 429 once the ceiling trips, row count
+  stops exactly at 240, further rotation stays 429, and two distinct
+  anon_ids under the cap are both accepted (RecordEventsTest); rotating
+  fresh sessions on /errors → 429 at 40, rows capped at 40
+  (RecordFrontendErrorTest). docs/gdpr.md notes that throttle keys —
+  including the IP-derived ceilings — are transient ~1-minute cache entries,
+  never persisted to analytics tables (no-IP-stored guarantee unchanged).
+  Gates re-run after the fix: `php artisan test` 205 passed (3182
+  assertions), `pint --test` clean, `phpstan` level 9 clean.
 
 - **POST /api/v1/events** (`recordEvents`, `security: []`): contract shape via
   validator (anon_id 8–64, events 1–25, name in enum, ts RFC 3339, props ≤12
@@ -124,7 +141,13 @@ Commit `2d309a6` on `worktree-agent-a3bd56de1eabb2d40` (ledger commit follows it
    are live credentials for 15 minutes.
 9. **Throttle keys**: events keyed strictly by anon_id when plausible
    (8–64 chars), IP-keyed fallback otherwise; errors keyed by session id,
-   IP fallback. IPs never persisted.
+   IP fallback. IPs never persisted. **Superseded in `c8132b3`** — verifier
+   confirmed a per-IP bypass (anon_id rotation from one IP: 1,750 rows/min,
+   no ceiling). Resolution per lead instruction: both limiters now stack a
+   per-IP ceiling on top of the per-key limit (events 240/min/IP, errors
+   40/min/IP). The per-key limits and the never-stored-IP posture are
+   unchanged; the ceilings live only in throttle cache (~1min TTL),
+   documented in gdpr.md.
 10. **`config/analytics.php` + `config/landing.php`** created (existing
     burnfront.php is WS-07 content config; landing flag was read by WS-15's
     LandingController from the `landing.` namespace).
@@ -161,9 +184,10 @@ Commit `2d309a6` on `worktree-agent-a3bd56de1eabb2d40` (ledger commit follows it
 2. `cd api && composer install` (this environment needs git-source installs —
    tasks/WS-06/STATUS.md decisions 6/10), `.env` from `.env.example`,
    `php artisan key:generate`.
-3. Gates: `php artisan test` (203) · `vendor/bin/pint --test` ·
-   `vendor/bin/phpstan analyse` · `bash scripts/hygiene.sh` (repo root).
-4. Next: a separate verifier session executes the brief acceptance checklist
-   adversarially; the abuse/digest/retention coverage map is in Done above.
-   Then the frontend beacon client (separate ruling/brief) can consume
+3. Gates: `php artisan test` (205 after fix-up `c8132b3`) ·
+   `vendor/bin/pint --test` · `vendor/bin/phpstan analyse` ·
+   `bash scripts/hygiene.sh` (repo root).
+4. Verifier pass complete: one confirmed finding (per-IP throttle bypass),
+   fixed in `c8132b3` per lead instruction. Next: lead merge; then the
+   frontend beacon client (separate ruling/brief) can consume
    POST /api/v1/events and /errors as shipped.
