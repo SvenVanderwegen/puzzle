@@ -220,6 +220,7 @@ async function newGame() {
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
         boardDone.value = false;
+        clearHint();
         locked.value = false;
         startClock();
     } catch (e) {
