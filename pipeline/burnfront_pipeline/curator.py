@@ -23,6 +23,12 @@ ACADEMY_BASE = 900_000_000
 LESSON_STRIDE = 1_000_000
 MAX_ATTEMPTS_DAILY = 200
 MAX_ATTEMPTS_LESSON = 150
+# Non-final lesson predicates (lesson 5's open_cell_unreachable primary,
+# unproducible in every measurement run — GRADING.md §5) probe a bounded
+# prefix of the stream before the documented fallback takes over: an
+# unbounded probe would spend ~150 board generations per emit on a kind
+# that cannot occur.
+PROBE_ATTEMPTS_LESSON = 40
 
 
 class CurationError(Exception):
@@ -260,9 +266,12 @@ def curate_lesson(cfg, lesson, per_lesson=2):
     is not producible — GRADING.md §5), the documented fallback re-scans
     the stream so both boards of the pair share one criterion."""
     base = cfg.master_seed + ACADEMY_BASE + LESSON_STRIDE * lesson.number
-    for accept in _LESSON_ACCEPT[lesson.number]:
+    predicates = _LESSON_ACCEPT[lesson.number]
+    for i, accept in enumerate(predicates):
+        budget = (MAX_ATTEMPTS_LESSON if i == len(predicates) - 1
+                  else PROBE_ATTEMPTS_LESSON)
         found = []
-        for attempt in range(MAX_ATTEMPTS_LESSON):
+        for attempt in range(budget):
             if len(found) == per_lesson:
                 break
             seed = base + attempt

@@ -5,13 +5,23 @@ Grade = **(rule tier, chain length)**. RATING.md §2 consumes
 grade_score`); the player-facing tier enum (lookout/crew/hotshot) is frozen
 in `contracts/schemas/puzzle.v1.json` and derives from board size (§4).
 
-All numbers below are measured over **200 generated boards per profile**
-(seeds 0..199), reproducible with:
+All numbers below are measured over generated boards from sequential seeds
+(a contiguous prefix starting at seed 0), reproducible with:
 
 ```sh
 .venv/bin/python -m burnfront_pipeline.cli measure --profile <name> \
-    --count 200 --jobs 4 --out <name>.jsonl
+    --count <n> --jobs 4 --out <name>.jsonl
 ```
+
+Sample sizes: **n=200 for the 5x5 and 6x6 profiles; n=93 for 7x7-minimal
+and n=66 for 8x8-floor28** (lead-authorized reduction, 2026-07-03: a
+7x7/8x8 board costs 0.5–5 CPU-minutes to generate and the full n=200 runs
+kept outliving the session's compute window; both partials are contiguous
+seed prefixes and exceed the authorized minimum of 30). Confidence: at
+n=93/n=66 a measured proportion carries a 95% interval of roughly ±10/±12
+percentage points at worst — the two bands consuming these numbers (Sat
+94.6%, Sun 100% acceptance) stay comfortably viable even at the interval
+floor, and the score quantiles are stable to ±1 at these sizes.
 
 ## 1. Rule tiers
 
@@ -38,9 +48,9 @@ Notes pinned by construction (and asserted in tests):
   count-fill fires at the top of the next pass. Tier A/B solvability is
   therefore unaffected by their absence from the A/B rule sets.
 - Tier A only solves degenerate over-clued boards (every non-clue cell a
-  break); no generated board in any 200-board run graded A.
+  break); no generated board in any measurement run graded A.
 
-## 2. Measured distributions (200 boards per profile)
+## 2. Measured distributions
 
 score = chain length; detour = max over final clues of
 (minute − Manhattan distance from spark).
@@ -50,20 +60,20 @@ score = chain length; detour = max over final clues of
 | 5x5-minimal (N=4) | B 1.5% · C 98.5% | 15/18/19/20/21/21/22 | 34% / 0.5% |
 | 5x5-floor10 (N=4, redundant) | B 14% · C 86% | score fixed at 14 | 35.5% / 0.5% |
 | 6x6-minimal (N=8) | C 100% | 20/25/26/27/28/29/31 | 76.5% / 38% |
-| 7x7-minimal (N=12) | «7X7_TIERS» | «7X7_SCORES» | «7X7_DETOUR» |
-| 8x8-floor28 (N=16, redundant) | «8X8_TIERS» | score fixed at 35 (floor always reached: «8X8_FLOOR») | «8X8_DETOUR» |
+| 7x7-minimal (N=12, n=93) | C 100% | 25/30/34/36/38/39/41 | 94.6% / 71% |
+| 8x8-floor28 (N=16, redundant, n=66) | C 100% | 27/35/35/35/35/35/35 (floor reached in 60/66; the rest stalled above it — more clues, lower score, still accepted) | 100% / 92.4% |
 
 Reason-kind presence per board (percent of boards whose certified steps
 contain the kind at least once):
 
 | Kind | 5x5-min | 5x5-fl10 | 6x6-min | 7x7-min | 8x8-fl28 |
 |---|---|---|---|---|---|
-| clue_reached_too_fast | 100 | 100 | 100 | «K7A» | «K8A» |
-| clue_unreachable_in_time | 98.5 | 91 | 100 | «K7B» | «K8B» |
-| too_many_breaks | 96 | 90 | 94 | «K7C» | «K8C» |
-| all_breaks_placed | 97 | 95 | 94 | «K7D» | «K8D» |
-| open_cell_unreachable | 0 | 0 | 0 | «K7E» | «K8E» |
-| not_enough_breaks_left / rest_must_be_breaks | 0 | 0 | 0 | «K7F» | «K8F» |
+| clue_reached_too_fast | 100 | 100 | 100 | 100 | 100 |
+| clue_unreachable_in_time | 98.5 | 91 | 100 | 100 | 100 |
+| too_many_breaks | 96 | 90 | 94 | 95.7 | 89.4 |
+| all_breaks_placed | 97 | 95 | 94 | 93.5 | 81.8 |
+| open_cell_unreachable | 0 | 0 | 0 | 0 | 0 |
+| not_enough_breaks_left / rest_must_be_breaks | 0 | 0 | 0 | 0 | 0 |
 
 `open_cell_unreachable` never occurs in generated content (same finding as
 the frozen vector set): the feasibility check tests
@@ -96,8 +106,8 @@ Player tier from size: 5x5 lookout · 6x6 crew · 7x7 hotshot · 8x8 crew
 | Wed | Crew 6x6 | N=8 | 25 <= score <= 28 | 146/200 (73%) |
 | Thu | Crew 6x6, deeper detours | N=8 | detour >= 12 | 76/200 (38%) |
 | Fri | Crew 6x6, minimal | N=8 | tier C and score >= 29 | 40/200 (20%) |
-| Sat | Hotshot 7x7, minimal | N=12 | tier C and detour >= 8 | «SAT_ACC» |
-| Sun | Sunday Burn 8x8, redundant | N=16, floor 28 | score <= 35 (structural: floor implies it) | «SUN_ACC» |
+| Sat | Hotshot 7x7, minimal | N=12 | tier C and detour >= 8 | 88/93 (94.6%) |
+| Sun | Sunday Burn 8x8, redundant | N=16, floor 28 | score <= 35 (structural: the floor implies it) | 66/66 (100%) |
 
 Curation draws candidates from the per-day seed stream until the predicate
 accepts (`curator.py`; caps at 200 candidates, then hard failure — never a
@@ -123,9 +133,9 @@ exactly that lesson's argument". Acceptance rates measured over the first
 | 2 Too Fast Means Walls | 5x5 minimal | has + requires `clue_reached_too_fast` | clue_reached_too_fast | 80/80 |
 | 3 Too Slow Means Roads | 5x5 minimal | open-step justified by `clue_unreachable_in_time` + requires it | clue_unreachable_in_time | 79/80 |
 | 4 Chains to the Spark | 5x5 minimal | >= 2 open-steps citing the *same clue* via `clue_unreachable_in_time` with minute > 1, + requires it | clue_unreachable_in_time | 69/80 |
-| 5 Nothing Is Spared | 6x6 minimal | `open_cell_unreachable` **if exercised**; fallback below | clue_unreachable_in_time | primary 0/80 -> fallback |
+| 5 Nothing Is Spared | 6x6 minimal | `open_cell_unreachable` **if exercised** (probed over the stream's first 40 candidates); fallback below | clue_unreachable_in_time | primary 0/80 measured -> fallback |
 | 6 Counting the Endgame | 5x5 minimal | count-fill cascade >= 6 consecutive steps | all_breaks_placed | 42/80 |
-| 7 The Long Way Around | 7x7 minimal | some clue with minute >= Manhattan(spark) + 8 ("max-time >= L1+8") | — (untagged) | «L7_ACC» |
+| 7 The Long Way Around | 7x7 minimal | some clue with minute >= Manhattan(spark) + 8 ("max-time >= L1+8") | — (untagged) | 88/93 |
 
 Documented gaps and choices (not faked):
 
@@ -136,7 +146,8 @@ Documented gaps and choices (not faked):
   the *requires* clause plus the same-clue chain is what distinguishes the
   practice boards from lesson 3's single-step boards.
 - **Lesson 5:** `open_cell_unreachable` is **not producible by generation
-  filtering** (0/600+ boards across all profiles, 0 in the frozen vectors).
+  filtering** (0/759 boards across all five profiles, 0 in the frozen
+  vectors).
   Reason: the frozen check order tests clue starvation first, so sealed
   pockets surface as `clue_unreachable_in_time`. Per the brief this is
   documented, not faked: the practice boards use the nearest exercised
