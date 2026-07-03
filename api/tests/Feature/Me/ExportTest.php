@@ -27,7 +27,7 @@ function exportAndGrabUrl(User $user): string
     test()->actingAs($user)->getJson('/api/v1/me/export')->assertStatus(202);
 
     $url = null;
-    Mail::assertSent(ExportReadyMail::class, function (ExportReadyMail $mail) use (&$url, $user): bool {
+    Mail::assertQueued(ExportReadyMail::class, function (ExportReadyMail $mail) use (&$url, $user): bool {
         $url = $mail->url;
 
         return $mail->hasTo((string) $user->email);

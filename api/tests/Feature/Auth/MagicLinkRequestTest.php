@@ -19,14 +19,14 @@ test('a well-formed request returns a constant 202 and mails a link', function (
     $response->assertStatus(202)->assertValidResponse(202);
     expect($response->getContent())->toBe('');
 
-    Mail::assertSent(MagicLinkMail::class, fn (MagicLinkMail $mail): bool => $mail->hasTo('new-crew@example.test'));
+    Mail::assertQueued(MagicLinkMail::class, fn (MagicLinkMail $mail): bool => $mail->hasTo('new-crew@example.test'));
 });
 
 test('the stored token is sha256-hashed with a 15-minute expiry', function (): void {
     $this->postJson('/api/v1/auth/magic-link', ['email' => 'crew@example.test'])->assertStatus(202);
 
     $raw = null;
-    Mail::assertSent(MagicLinkMail::class, function (MagicLinkMail $mail) use (&$raw): bool {
+    Mail::assertQueued(MagicLinkMail::class, function (MagicLinkMail $mail) use (&$raw): bool {
         $raw = $mail->token;
 
         return true;
@@ -42,7 +42,7 @@ test('the stored token is sha256-hashed with a 15-minute expiry', function (): v
         ->and($row->expires_at->diffInMinutes(now()->addMinutes(15)))->toBeLessThan(1);
 
     // The emailed link points at the SPA consume screen.
-    Mail::assertSent(MagicLinkMail::class, fn (MagicLinkMail $mail): bool => str_contains($mail->url(), '/auth/consume?token='));
+    Mail::assertQueued(MagicLinkMail::class, fn (MagicLinkMail $mail): bool => str_contains($mail->url(), '/auth/consume?token='));
 });
 
 test('known and unknown emails get an indistinguishable response', function (): void {
@@ -59,7 +59,7 @@ test('known and unknown emails get an indistinguishable response', function (): 
     expect(MagicLinkToken::query()->where('email', 'veteran@example.test')->count())->toBe(1)
         ->and(MagicLinkToken::query()->where('email', 'stranger@example.test')->count())->toBe(1);
 
-    Mail::assertSent(MagicLinkMail::class, 2);
+    Mail::assertQueued(MagicLinkMail::class, 2);
 });
 
 test('a malformed email is rejected with the error envelope', function (): void {

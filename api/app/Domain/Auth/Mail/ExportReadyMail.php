@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace App\Domain\Auth\Mail;
 
-use Illuminate\Mail\Mailable;
+use App\Domain\Email\TransactionalMail;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 
 /**
- * GDPR export delivery: signed URL, 24-hour expiry, single download.
+ * GDPR export delivery: signed URL, 24-hour expiry, single download. Queued
+ * with backoff (WS-21); the link outlives the retry window comfortably.
  */
-final class ExportReadyMail extends Mailable
+final class ExportReadyMail extends TransactionalMail
 {
     public function __construct(public readonly string $url) {}
 

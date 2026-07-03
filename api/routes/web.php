@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\ExportDownloadController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\StreakAlertUnsubscribeController;
 use Illuminate\Support\Facades\Route;
 
 // The public marketing surface (WS-15; ADR-0009: Blade owns these). `/`
@@ -33,3 +34,13 @@ Route::get('/exports/{userId}/{file}', ExportDownloadController::class)
     ->middleware('signed')
     ->where(['userId' => '[0-9A-Za-z]+', 'file' => '[0-9A-Za-z._-]+'])
     ->name('exports.download');
+
+// Streak-alert unsubscribe (WS-21): target of the mailed link (GET) and of the
+// RFC 8058 List-Unsubscribe-Post header (POST). The signature is the whole
+// credential — one-click, no login, single-purpose. Outside the /api/v1
+// contract surface, same pattern as exports.download. The POST leg is CSRF-
+// exempt in bootstrap/app.php (mailbox providers post without a session).
+Route::match(['get', 'post'], '/email/streak-alert/unsubscribe/{userId}', StreakAlertUnsubscribeController::class)
+    ->middleware('signed')
+    ->where('userId', '[0-9A-Za-z]+')
+    ->name('email.streak-alert.unsubscribe');

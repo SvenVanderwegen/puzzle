@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Auth\Jobs\AnonymizeUser;
 use App\Domain\Ratings\RatingStore;
+use App\Domain\Streaks\Mail\StreakAlertSubscribedMail;
 use App\Domain\Streaks\StreakStore;
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * GET/PATCH/DELETE /me (contracts/openapi.yaml #/components/schemas/Me).
@@ -42,7 +44,16 @@ final class MeController extends Controller
         ]);
 
         $user = $this->user($request);
+        $wasOptedIn = $user->streak_alert_opt_in;
         $user->fill($validated)->save();
+
+        // Opt-in consent trail (WS-21): turning alerts ON queues a confirmation
+        // mail carrying a one-click, no-login off switch. The address is
+        // already proven owned — magic-link-only auth (ADR-0003) — so the
+        // toggle itself completes the opt-in; see WS-21 STATUS decisions.
+        if (! $wasOptedIn && $user->streak_alert_opt_in && $user->email !== null) {
+            Mail::to($user->email)->queue(new StreakAlertSubscribedMail($user->id));
+        }
 
         return new JsonResponse($this->payload($user));
     }

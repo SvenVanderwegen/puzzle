@@ -27,9 +27,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // XSRF header, so the stateful-origin CSRF check is waived for these
         // two anonymous fire-and-forget writes. The session cookie is
         // SameSite=Lax, so cross-site POSTs carry no session to abuse.
+        //
+        // The streak-alert unsubscribe POST (WS-21) is the RFC 8058 one-click
+        // target: mailbox providers post to it with no session or token. The
+        // route is signed-URL-guarded and can only ever switch alerts off.
         $middleware->validateCsrfTokens(except: [
             'api/v1/events',
             'api/v1/errors',
+            'email/streak-alert/unsubscribe/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

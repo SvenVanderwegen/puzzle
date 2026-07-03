@@ -17,3 +17,10 @@ Schedule::command('analytics:purge')->dailyAt('03:20');
 
 // Weekly owner digest (ADR-0008), Mondays after the UTC day settles.
 Schedule::command('analytics:digest')->weeklyOn(1, '06:10');
+
+// Streak-protection alerts (WS-21): hourly sweep. Each user is matched in the
+// hour their LOCAL clock (users.timezone) reads the configured evening hour;
+// IANA offsets are 15-minute multiples, so every zone's 60-minute window
+// contains exactly one hourly tick per local day. The deadline the mail warns
+// about stays UTC midnight (ADR-0002).
+Schedule::command('notifications:streak-risk')->hourlyAt(15);
