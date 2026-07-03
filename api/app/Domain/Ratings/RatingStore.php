@@ -8,8 +8,9 @@ use App\Models\Rating;
 use App\Models\RatingEvent;
 
 /**
- * The only writer of ratings / board_ratings / rating_events (arch-tested).
- * Glicko-2 updates themselves are WS-08; WS-06 needs summaries and GDPR paths.
+ * Read/GDPR surface of the rating tables (only Domain\Ratings touches the
+ * rating models — arch-tested). The Glicko-2 write path is RatingService;
+ * deterministic replay is RatingRecompute.
  */
 final class RatingStore
 {
@@ -21,10 +22,14 @@ final class RatingStore
 
     public const CALIBRATION_GAMES = 10;
 
+    public const SPARKLINE_LENGTH = 30;
+
     /**
      * Rating summary per contracts/openapi.yaml #/components/schemas/Rating.
+     * `calibrating` is true for the first 10 rated solves (RATING.md §5); the
+     * sparkline is the last 30 post-solve ratings, oldest first.
      *
-     * @return array{rating: float, rd: float, volatility: float, games: int, calibrating: bool}
+     * @return array{rating: float, rd: float, volatility: float, games: int, calibrating: bool, sparkline: list<float>}
      */
     public function summaryFor(string $userId): array
     {
@@ -39,7 +44,25 @@ final class RatingStore
             'volatility' => $row->volatility ?? self::DEFAULT_VOLATILITY,
             'games' => $games,
             'calibrating' => $games < self::CALIBRATION_GAMES,
+            'sparkline' => $this->sparklineFor($userId),
         ];
+    }
+
+    /**
+     * @return list<float>
+     */
+    public function sparklineFor(string $userId): array
+    {
+        $recent = RatingEvent::query()
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->limit(self::SPARKLINE_LENGTH)
+            ->pluck('user_after')
+            ->reverse()
+            ->map(fn (mixed $after): float => is_numeric($after) ? (float) $after : 0.0)
+            ->all();
+
+        return array_values($recent);
     }
 
     /**
