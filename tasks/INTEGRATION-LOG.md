@@ -44,3 +44,19 @@
   already on main pre-merge; (5) longPressMs stays a code constant (token
   candidate noted), hatch px literals accepted (ported geometry), CODEMAP row
   applied.
+
+## 2026-07-03 — WS-06 merged
+- Branch worktree-agent-a859f992597a79684 @ 7eaa797 → merged after verification
+  (PASS; 46/227 re-measured cold, schema-mutation and Spectator probes both have
+  teeth, auth audited line-by-line against ADR-0003, secrets sweep clean).
+- Lead rulings: (1) Laravel 13 RATIFIED (ADR-0015; DEPENDENCIES aside updated
+  in-range); (2) mockery already amended via ADR-0013; (3) inert stock
+  api/.github workflows DELETED at merge; (4) hygiene.sh vendor exclusion
+  applied (lead infra); (5) builder decisions 4–11 all ratified as
+  silence-interpretations; (6) docs/gdpr.md remains a WS-19 deliverable.
+- Post-merge notes: api/ added to .prettierignore (formatter jurisdiction: Pint
+  owns api/, Prettier owns the TS workspace — merged Laravel skeleton files were
+  being flagged). Pint not runnable in the main checkout (vendor/ gitignored,
+  composer not installed here); accepted the verifier's clean pint run on the
+  identical tree — the next PHP workstream (WS-07) installs vendor here and CI
+  (WS-16) will own the PHP gates.

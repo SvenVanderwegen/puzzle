@@ -30,7 +30,7 @@ typescript-eslint · eslint-plugin-boundaries · prettier · turbo · playwright
 
 | Package | Why |
 |---|---|
-| laravel/framework | the framework (Laravel 12) |
+| laravel/framework | the framework (Laravel 13 — ADR-0015) |
 | laravel/sanctum | SPA cookie sessions (ADR-0003) |
 | laravel/horizon | Redis queues (rating jobs, GDPR jobs) |
 | laravel/nightwatch | monitoring (ADR-0010 / WS-18) |

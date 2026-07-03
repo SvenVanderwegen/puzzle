@@ -7,3 +7,4 @@ docs/design/
 pnpm-lock.yaml
 *.md
 contracts/
+api/

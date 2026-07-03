@@ -20,7 +20,7 @@ burnfront/
 ├─ packages/game-core/        # framework-agnostic state machines; imports engine only
 ├─ packages/ui-web/           # board + burn-replay React components
 ├─ packages/api-client/       # GENERATED from contracts/openapi.yaml; never hand-edited
-├─ api/                       # Laravel 12 app: Sanctum SPA auth, app/Domain/{Auth,Solves,
+├─ api/                       # Laravel app (13, ADR-0015): Sanctum SPA auth, app/Domain/{Auth,Solves,
 │                             #   Ratings,Streaks,Content}, thin controllers, Blade public pages
 ├─ pipeline/                  # Python: generate → grade v2 → curate → sign → emit content
 │  └─ tools/make_vectors.py   # sole producer of contracts/vectors/
