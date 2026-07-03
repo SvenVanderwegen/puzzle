@@ -19,7 +19,7 @@ package imports.
 
 ## TypeScript — build & test (never shipped)
 
-typescript · vite · vite-plugin-pwa · @vitejs/plugin-react · vitest ·
+typescript · @types/react · @types/react-dom (ADR-0013) · vite · vite-plugin-pwa · @vitejs/plugin-react · vitest ·
 @vitest/coverage-v8 · happy-dom · @testing-library/react ·
 @testing-library/user-event · @testing-library/jest-dom · eslint · @eslint/js ·
 typescript-eslint · eslint-plugin-boundaries · prettier · turbo · playwright ·
@@ -37,6 +37,7 @@ typescript-eslint · eslint-plugin-boundaries · prettier · turbo · playwright
 | league/flysystem-aws-s3-v3 | R2 storage (content import, backups, exports) |
 | hotmeteor/spectator (dev) | OpenAPI response conformance in tests (gate 5) |
 | pestphp/pest (dev) | test runner incl. arch() boundary tests |
+| mockery/mockery (dev) | required by Laravel's test harness (ADR-0013) |
 | laravel/pint (dev) | formatting |
 | larastan/larastan (dev) | static analysis level 9 |
 

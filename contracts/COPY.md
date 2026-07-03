@@ -133,6 +133,13 @@ Interpolations use `{braces}`. Pluralization via ICU MessageFormat where marked.
 - `a11y.replay.minute` — Minute {t}: {count} cells burning.
 - `a11y.contained` — Contained. {time}.
 
+## replay
+
+- `replay.watchAgain` — Watch the burn again
+- `replay.nextMinute` — Next minute
+- `replay.previousMinute` — Previous minute
+- `a11y.board` — Terrain
+
 ## errors
 
 - `error.offline` — You're offline. The board still works; syncing resumes later.

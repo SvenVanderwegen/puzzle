@@ -32,3 +32,15 @@
   ADR-0012 uncompressed-digest wording). Lesson recorded: contract edits at
   integration must re-run the FULL recursive suite before push — I had run gates
   before applying the openapi edit, not after.
+
+## 2026-07-03 — WS-04 merged
+- Branch worktree-agent-a5c8303a8921a53ef @ 077ba98 → merged after verification
+  (PASS; 58/58 re-measured, 98.67% lines, raw-hex tripwire teeth-tested, replay
+  timing boundary-exact, input-to-paint median ~2ms, fixture harness boots).
+- Lead rulings: (1) @types/react(-dom) + mockery ratified via ADR-0013 with
+  DEPENDENCIES.md amended in-range; (2) four COPY keys added via ADR-0014;
+  (3) axe substitution ACCEPTED for now — the real @axe-core/playwright scan is a
+  WS-17 acceptance item against this same fixture page; (4) tripwire fix 581b349
+  already on main pre-merge; (5) longPressMs stays a code constant (token
+  candidate noted), hatch px literals accepted (ported geometry), CODEMAP row
+  applied.
