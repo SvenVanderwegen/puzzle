@@ -6,7 +6,7 @@ import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily'
     difficulties: { type: Object, default: () => ({}) },
-    defaultDifficulty: { type: String, default: '' },
+    difficulty: { type: String, default: '' },
 });
 
 const isDaily = computed(() => props.mode === 'daily');
@@ -16,7 +16,7 @@ const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefe
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user ?? null);
 
-const diff = ref(props.defaultDifficulty);
+const diff = ref(props.difficulty);
 const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty, name, blurb, timed, token} */
 const marks = ref([]); /* 0 none, 1 break, 2 dot */
 const cellStyle = ref([]); /* per-cell burn animation style, set on win */

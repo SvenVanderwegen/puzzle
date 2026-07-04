@@ -48,18 +48,51 @@ class BurnfrontTest extends TestCase
         );
     }
 
-    public function test_the_endless_screen_renders(): void
+    public function test_the_endless_setup_screen_renders(): void
     {
         $response = $this->get('/endless');
 
         $response->assertStatus(200);
         $response->assertInertia(fn (Assert $page) => $page
-            ->component('Burnfront/Play')
-            ->where('mode', 'endless')
-            ->where('defaultDifficulty', PuzzleService::DEFAULT_DIFFICULTY)
+            ->component('Burnfront/EndlessSetup')
             ->has('difficulties.lookout')
             ->has('difficulties.crew')
             ->has('difficulties.hotshot')
+        );
+    }
+
+    public function test_the_endless_play_screen_renders_with_the_default_difficulty(): void
+    {
+        $response = $this->get('/endless/play');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'endless')
+            ->where('difficulty', PuzzleService::DEFAULT_DIFFICULTY)
+            ->has('difficulties.lookout')
+        );
+    }
+
+    public function test_the_endless_play_screen_honors_a_requested_difficulty(): void
+    {
+        $response = $this->get('/endless/play?difficulty=hotshot');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('difficulty', 'hotshot')
+        );
+    }
+
+    public function test_the_endless_play_screen_falls_back_to_the_default_difficulty_for_an_unknown_tier(): void
+    {
+        $response = $this->get('/endless/play?difficulty=arsonist');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('difficulty', PuzzleService::DEFAULT_DIFFICULTY)
         );
     }
 

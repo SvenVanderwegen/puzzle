@@ -1,7 +1,6 @@
 <script setup>
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import HowItWorksDemo from './HowItWorksDemo.vue';
 import { fmtClock } from '@/lib/burnfront-engine';
 
 const props = defineProps({
@@ -46,36 +45,30 @@ const dailyMeta = computed(() => {
             </p>
         </header>
 
-        <section class="grid gap-7 md:grid-cols-[minmax(0,1fr)_320px]" aria-label="Start">
-            <div aria-label="Preview">
-                <HowItWorksDemo />
-            </div>
+        <nav class="grid gap-3 sm:grid-cols-2" aria-label="Game modes">
+            <Link v-if="currentUser" href="/daily/play" class="bf-tile">
+                <span class="bf-tile-title">Daily Puzzle</span>
+                <span class="bf-tile-desc">One shared incident a day. Race the clock and climb today&rsquo;s board.</span>
+                <span class="bf-tile-meta" :class="{ 'is-solved': dailyStatus?.alreadyScored }">{{ dailyMeta }}</span>
+            </Link>
+            <Link v-else href="/login" class="bf-tile is-locked">
+                <span class="bf-tile-title">Daily Puzzle</span>
+                <span class="bf-tile-desc">One shared incident a day. Race the clock and climb today&rsquo;s board.</span>
+                <span class="bf-tile-meta">&#128274; {{ dailyMeta }}</span>
+            </Link>
 
-            <nav class="flex flex-col gap-3" aria-label="Game modes">
-                <Link v-if="currentUser" href="/daily/play" class="bf-tile">
-                    <span class="bf-tile-title">Daily Puzzle</span>
-                    <span class="bf-tile-desc">One shared incident a day. Race the clock and climb today&rsquo;s board.</span>
-                    <span class="bf-tile-meta" :class="{ 'is-solved': dailyStatus?.alreadyScored }">{{ dailyMeta }}</span>
-                </Link>
-                <Link v-else href="/login" class="bf-tile is-locked">
-                    <span class="bf-tile-title">Daily Puzzle</span>
-                    <span class="bf-tile-desc">One shared incident a day. Race the clock and climb today&rsquo;s board.</span>
-                    <span class="bf-tile-meta">&#128274; {{ dailyMeta }}</span>
-                </Link>
+            <Link href="/endless" class="bf-tile">
+                <span class="bf-tile-title">Endless</span>
+                <span class="bf-tile-desc">Pick a difficulty and generate as many fires as you like.</span>
+                <span class="bf-tile-meta">5 difficulty tiers</span>
+            </Link>
 
-                <Link href="/endless" class="bf-tile">
-                    <span class="bf-tile-title">Endless</span>
-                    <span class="bf-tile-desc">Pick a difficulty and generate as many fires as you like.</span>
-                    <span class="bf-tile-meta">5 difficulty tiers</span>
-                </Link>
-
-                <Link href="/how-to" class="bf-tile">
-                    <span class="bf-tile-title">How To Play</span>
-                    <span class="bf-tile-desc">An interactive walkthrough of the rules, beat by beat.</span>
-                    <span class="bf-tile-meta">2 minute read</span>
-                </Link>
-            </nav>
-        </section>
+            <Link href="/how-to" class="bf-tile">
+                <span class="bf-tile-title">How To Play</span>
+                <span class="bf-tile-desc">An interactive walkthrough of the rules, beat by beat.</span>
+                <span class="bf-tile-meta">2 minute read</span>
+            </Link>
+        </nav>
 
         <footer>
             <p class="max-w-[58ch] text-[12.5px] text-ash-dim">

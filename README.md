@@ -16,19 +16,23 @@ for the premise and lore.
   - `PuzzleService.php` — difficulty tiers and wire-format serialization; the
     seam a future scoreboard or daily-puzzle feature would build on.
   - The frontend is Inertia + Vue 3, styled with Tailwind CSS 4:
-    - `resources/js/Pages/Burnfront/Start.vue` — the start screen (`/`): a
-      preview of the walkthrough demo alongside tiles for Daily Puzzle,
-      Endless and How To Play. The daily tile is only playable while signed
-      in, and shows the signed-in player's own time once they've solved it.
+    - `resources/js/Pages/Burnfront/Start.vue` — the start screen (`/`):
+      tiles for Daily Puzzle, Endless and How To Play. The daily tile is only
+      playable while signed in, and shows the signed-in player's own time
+      once they've solved it.
+    - `resources/js/Pages/Burnfront/EndlessSetup.vue` (`/endless`) — the
+      difficulty picker between the start screen and an endless game; a
+      `Custom` tier is stubbed in for later.
     - `resources/js/Pages/Burnfront/Play.vue` — the board, toolbar and page
-      chrome for both the `/endless` and `/daily/play` modes.
+      chrome for both the `/endless/play` and `/daily/play` modes.
       `resources/js/lib/burnfront-engine.js` validates a player's marking
       locally (instant feedback, no round trip); puzzle generation itself is
       server-authoritative via `GET /puzzle?difficulty=...`.
     - `resources/js/Pages/Burnfront/HowTo.vue` (`/how-to`) — the rules and
-      walkthrough, also embedded as a preview on the start screen.
+      walkthrough, with an embedded animated demo.
     - `resources/js/Pages/Burnfront/HowItWorksDemo.vue` — the scripted
-      walkthrough animation, with no dependency on the real engine.
+      walkthrough animation used on the How To Play page, with no dependency
+      on the real engine.
     - `resources/css/app.css` — the Tailwind theme (colors, fonts) and the
       `bf-*` component classes the board/demo/tiles use.
 - `reference/` — the frozen prototype (`firebreak.py` + a self-contained
