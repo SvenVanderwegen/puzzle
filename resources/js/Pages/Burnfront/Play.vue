@@ -72,15 +72,19 @@ function stopClock() {
         clockTimer = null;
     }
 }
-/* elapsedMs seeds the clock from a resumed save (see persistProgress()/
-   restoreEndlessGame() below) instead of always starting at zero — startAt
-   is backdated so the displayed time (and whatever time_ms eventually gets
-   submitted) reflects time actually spent solving, not time since this
-   particular page load. */
-function startClock(elapsedMs = 0) {
+/* startAtValue seeds the clock from a resumed save (see persistProgress()/
+   restoreEndlessGame() below) instead of always starting now. It's an
+   absolute timestamp, not a relative elapsed duration: persistProgress()
+   only runs on mark-changing actions, so a relative "elapsed so far" value
+   would go stale the moment the player just sits looking at the board and
+   then refreshes — every second of that idle gap would silently vanish
+   from the resumed clock. Seeding startAt itself instead means the clock
+   (and whatever time_ms eventually gets submitted) always reflects true
+   wall-clock time since the board was first opened, idle gaps included. */
+function startClock(startAtValue = Date.now()) {
     stopClock();
-    startAt = Date.now() - elapsedMs;
-    clockText.value = fmtClock(elapsedMs);
+    startAt = startAtValue;
+    clockText.value = fmtClock(Date.now() - startAt);
     clockTimer = setInterval(() => {
         clockText.value = fmtClock(Date.now() - startAt);
     }, 1000);
@@ -169,7 +173,7 @@ function persistProgress() {
         hintSafe: hintSafe.value,
         undoStack: undoStack.slice(),
         hintsUsedThisRun: hintsUsedThisRun.value,
-        elapsedMs: clockTimer ? Date.now() - startAt : 0,
+        startAt: clockTimer ? startAt : null,
     };
     try {
         localStorage.setItem(key, JSON.stringify(payload));
@@ -236,7 +240,7 @@ function restoreEndlessGame(saved) {
     bannerVisible.value = false;
     veilVisible.value = false;
     locked.value = false;
-    if (saved.timed) startClock(saved.elapsedMs || 0);
+    if (saved.timed) startClock(saved.startAt || Date.now());
 }
 
 function cellLabel(i) {
@@ -733,7 +737,7 @@ async function loadDaily() {
                 undoStack.length = 0;
                 undoStack.push(...(saved.undoStack ?? []));
                 hintsUsedThisRun.value = saved.hintsUsedThisRun ?? 0;
-                startClock(saved.elapsedMs || 0);
+                startClock(saved.startAt || Date.now());
             } else {
                 startClock();
             }
