@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DailyIncident;
 use App\Models\DailyScore;
 use App\Models\EndlessScore;
+use App\Support\Burnfront\CareerProgress;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
@@ -476,7 +477,8 @@ class BurnfrontController extends Controller
      */
     public function gameHistory(Request $request): Response
     {
-        $best = $this->endlessBestTimes($request->user()->id);
+        $userId = $request->user()->id;
+        $best = $this->endlessBestTimes($userId);
 
         $tiers = collect(PuzzleService::DIFFICULTIES)->map(function (array $config, string $key) use ($best) {
             return [
@@ -488,7 +490,35 @@ class BurnfrontController extends Controller
             ];
         })->values();
 
-        return Inertia::render('Burnfront/GameHistory', ['tiers' => $tiers]);
+        return Inertia::render('Burnfront/GameHistory', [
+            'tiers' => $tiers,
+            'career' => $this->computeCareer($userId),
+        ]);
+    }
+
+    /**
+     * The career rank + badge row shown at the top of Game History: a thin
+     * read of totals already recorded by DailyScore/EndlessScore (see
+     * CareerProgress), not a new mechanic or a gate on any tier or mode.
+     *
+     * @return array{rank: array{title: string, totalSolved: int, nextTitle: string|null, nextThreshold: int|null}, badges: list<array{key: string, label: string, description: string, earned: bool}>}
+     */
+    private function computeCareer(int $userId): array
+    {
+        $totalSolved = (int) EndlessScore::where('user_id', $userId)->sum('solved_count')
+            + DailyScore::where('user_id', $userId)->count();
+
+        $facts = [
+            'totalSolved' => $totalSolved,
+            'bestStreak' => $this->computeStreaks($userId)['best'],
+            'hasCleanDaily' => DailyScore::where('user_id', $userId)->where('hints_used', 0)->exists(),
+            'hasColdCase' => EndlessScore::where('user_id', $userId)->where('difficulty', 'coldcase')->exists(),
+        ];
+
+        return [
+            'rank' => CareerProgress::rank($totalSolved),
+            'badges' => CareerProgress::badges($facts),
+        ];
     }
 
     /**
