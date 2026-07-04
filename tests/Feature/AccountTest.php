@@ -51,6 +51,19 @@ class AccountTest extends TestCase
         $this->assertSame('updated@example.com', $user->fresh()->email);
     }
 
+    public function test_profile_update_requires_a_lowercase_email(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->patch('/account/settings', [
+            'name' => $user->name,
+            'email' => 'Updated@Example.com',
+        ]);
+
+        $response->assertSessionHasErrors('email');
+        $this->assertNotSame('Updated@Example.com', $user->fresh()->email);
+    }
+
     public function test_profile_update_requires_a_unique_email(): void
     {
         $user = User::factory()->create();
