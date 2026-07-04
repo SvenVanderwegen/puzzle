@@ -19,12 +19,58 @@ class BurnfrontController extends Controller
 {
     public function __construct(private readonly PuzzleService $puzzles) {}
 
-    public function index(): Response
+    /**
+     * The start screen: a menu of game modes plus, for a signed-in player,
+     * their standing on today's daily incident. Deliberately reads
+     * DailyScore directly instead of going through daily()/bindDailyStart()
+     * — the start screen must never bind this account's daily start time
+     * just because the player looked at the menu.
+     */
+    public function start(Request $request): Response
     {
-        return Inertia::render('Burnfront/Index', [
+        $user = $request->user();
+        $dailyStatus = null;
+
+        if ($user !== null) {
+            $existing = DailyScore::where('user_id', $user->id)
+                ->whereDate('date', now('UTC')->toDateString())
+                ->first();
+
+            $dailyStatus = [
+                'alreadyScored' => $existing !== null,
+                'scoreTimeMs' => $existing?->time_ms,
+            ];
+        }
+
+        return Inertia::render('Burnfront/Start', [
+            'dailyStatus' => $dailyStatus,
+        ]);
+    }
+
+    public function endless(): Response
+    {
+        return Inertia::render('Burnfront/Play', [
+            'mode' => 'endless',
             'difficulties' => PuzzleService::DIFFICULTIES,
             'defaultDifficulty' => PuzzleService::DEFAULT_DIFFICULTY,
         ]);
+    }
+
+    /**
+     * Gated behind the `auth` middleware in routes/web.php — the daily
+     * puzzle is only playable while signed in, since a verified time can
+     * only ever be posted for an account.
+     */
+    public function dailyPlay(): Response
+    {
+        return Inertia::render('Burnfront/Play', [
+            'mode' => 'daily',
+        ]);
+    }
+
+    public function howTo(): Response
+    {
+        return Inertia::render('Burnfront/HowTo');
     }
 
     public function puzzle(Request $request): JsonResponse
@@ -43,7 +89,10 @@ class BurnfrontController extends Controller
      * gets the byte-identical board (Engine::generate()'s clue-stripping
      * loop is wall-clock-bounded, not iteration-bounded, so re-running it
      * for the "same" seed isn't guaranteed to converge at the same point —
-     * caching closes that gap). For a signed-in player, this also binds
+     * caching closes that gap). Gated behind the `auth` middleware in
+     * routes/web.php: the daily puzzle is signed-in-only, so this must never
+     * hand the board, clues or token to a guest who could solve it offline
+     * and then race the clock after signing in. This also binds
      * (idempotently — first call wins) that account's start time for today,
      * which submitDailyScore() later measures against instead of trusting
      * anything the client reports: refetching /daily can never reset it,
@@ -60,18 +109,12 @@ class BurnfrontController extends Controller
             fn () => $this->puzzles->generateDaily($date)
         );
 
-        $user = $request->user();
-        $payload['alreadyScored'] = false;
-        $payload['scoreTimeMs'] = null;
+        $userId = $request->user()->id;
+        $this->bindDailyStart($userId, $date);
 
-        if ($user !== null) {
-            $this->bindDailyStart($user->id, $date);
-
-            $existing = DailyScore::where('user_id', $user->id)->whereDate('date', $date)->first();
-            $payload['alreadyScored'] = $existing !== null;
-            $payload['scoreTimeMs'] = $existing?->time_ms;
-        }
-
+        $existing = DailyScore::where('user_id', $userId)->whereDate('date', $date)->first();
+        $payload['alreadyScored'] = $existing !== null;
+        $payload['scoreTimeMs'] = $existing?->time_ms;
         $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
         return response()->json($payload);

@@ -271,4 +271,30 @@
     .bf-status {
         @apply max-w-[60ch] border-l-[3px] border-l-danger py-0.5 pl-2.5 text-[13px] text-paper;
     }
+
+    /* ---------- start screen tiles ---------- */
+    .bf-tile {
+        @apply flex cursor-pointer flex-col gap-1.5 rounded-md border border-line px-5 py-4 text-left transition-colors duration-150;
+    }
+    .bf-tile:hover {
+        @apply border-ember;
+    }
+    .bf-tile:focus-visible {
+        @apply outline-2 outline-offset-2 outline-flame;
+    }
+    .bf-tile-title {
+        @apply font-staatliches text-[22px] tracking-[.04em] text-paper;
+    }
+    .bf-tile-desc {
+        @apply text-[13px] text-ash;
+    }
+    .bf-tile-meta {
+        @apply text-[11px] tracking-[.08em] text-ash-dim uppercase tabular-nums;
+    }
+    .bf-tile-meta.is-solved {
+        @apply text-ember normal-case tracking-normal;
+    }
+    .bf-tile.is-locked {
+        @apply opacity-70;
+    }
 }

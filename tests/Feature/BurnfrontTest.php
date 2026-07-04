@@ -17,18 +17,77 @@ class BurnfrontTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_the_incident_desk_renders(): void
+    public function test_the_start_screen_renders(): void
     {
         $response = $this->get('/');
 
         $response->assertStatus(200);
         $response->assertSee('Burnfront', false);
         $response->assertInertia(fn (Assert $page) => $page
-            ->component('Burnfront/Index')
+            ->component('Burnfront/Start')
+            ->where('dailyStatus', null)
+        );
+    }
+
+    public function test_the_start_screen_reports_daily_status_for_a_signed_in_user(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Start')
+            ->where('dailyStatus.alreadyScored', true)
+            ->has('dailyStatus.scoreTimeMs')
+        );
+    }
+
+    public function test_the_endless_screen_renders(): void
+    {
+        $response = $this->get('/endless');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'endless')
             ->where('defaultDifficulty', PuzzleService::DEFAULT_DIFFICULTY)
             ->has('difficulties.lookout')
             ->has('difficulties.crew')
             ->has('difficulties.hotshot')
+        );
+    }
+
+    public function test_the_how_to_screen_renders(): void
+    {
+        $response = $this->get('/how-to');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page->component('Burnfront/HowTo'));
+    }
+
+    public function test_the_daily_play_screen_requires_authentication(): void
+    {
+        $response = $this->get('/daily/play');
+
+        $response->assertRedirect('/login');
+    }
+
+    public function test_the_daily_play_screen_renders_for_a_signed_in_user(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/daily/play');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'daily')
         );
     }
 
@@ -193,9 +252,23 @@ class BurnfrontTest extends TestCase
         $this->assertSame('complete', $response->json('status'));
     }
 
-    public function test_daily_endpoint_returns_todays_incident(): void
+    /**
+     * The daily puzzle's board, clues and token are signed-in-only content
+     * (see routes/web.php) — a guest must never see them, or they could
+     * solve the shared board offline and race the clock right after signing
+     * in, defeating the timing gate entirely.
+     */
+    public function test_daily_endpoint_requires_authentication(): void
     {
         $response = $this->getJson('/daily');
+
+        $response->assertStatus(401);
+    }
+
+    public function test_daily_endpoint_returns_todays_incident(): void
+    {
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->getJson('/daily');
 
         $response->assertStatus(200);
         $response->assertJsonStructure(['difficulty', 'rows', 'cols', 'breaks', 'spark', 'clues', 'name', 'blurb', 'date', 'token']);
@@ -207,16 +280,18 @@ class BurnfrontTest extends TestCase
 
     public function test_daily_endpoint_is_deterministic_across_requests(): void
     {
-        $a = $this->getJson('/daily')->json();
-        $b = $this->getJson('/daily')->json();
+        $user = User::factory()->create();
+        $a = $this->actingAs($user)->getJson('/daily')->json();
+        $b = $this->actingAs($user)->getJson('/daily')->json();
 
         unset($a['token'], $b['token']); // encrypted separately each time, ciphertext is expected to differ
         $this->assertSame($a, $b);
     }
 
-    public function test_daily_endpoint_reports_not_yet_scored_for_a_guest(): void
+    public function test_daily_endpoint_reports_not_yet_scored_for_a_fresh_user(): void
     {
-        $response = $this->getJson('/daily');
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->getJson('/daily');
 
         $response->assertJson(['alreadyScored' => false, 'scoreTimeMs' => null]);
     }
@@ -230,7 +305,8 @@ class BurnfrontTest extends TestCase
 
     public function test_hint_endpoint_accepts_the_daily_difficulty(): void
     {
-        $daily = $this->getJson('/daily')->json();
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
 
         $response = $this->getJson('/hint?'.http_build_query([
             'difficulty' => 'daily',
@@ -244,10 +320,8 @@ class BurnfrontTest extends TestCase
 
     public function test_submit_daily_score_requires_authentication(): void
     {
-        $daily = $this->getJson('/daily')->json();
-
         $response = $this->postJson('/daily/score', [
-            'token' => $daily['token'],
+            'token' => 'not-a-real-token',
             'shaded' => [],
         ]);
 
@@ -309,9 +383,12 @@ class BurnfrontTest extends TestCase
 
     public function test_submit_daily_score_rejects_a_submission_that_never_loaded_daily_while_signed_in(): void
     {
-        $user = User::factory()->create();
-        $daily = $this->getJson('/daily')->json(); // fetched as a guest — never binds a start for $user
+        // Fetched by a different account — the shared board/token this
+        // populates never binds a start for $user below.
+        $other = User::factory()->create();
+        $daily = $this->actingAs($other)->getJson('/daily')->json();
 
+        $user = User::factory()->create();
         $response = $this->actingAs($user)->postJson('/daily/score', [
             'token' => $daily['token'],
             'shaded' => $this->solveDaily($daily),

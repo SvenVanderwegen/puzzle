@@ -1,14 +1,15 @@
 <script setup>
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
-import HowItWorksDemo from './HowItWorksDemo.vue';
 import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
-import { getDailyRecord, markDailySolved } from '@/lib/burnfront-daily';
 
 const props = defineProps({
-    difficulties: { type: Object, required: true },
-    defaultDifficulty: { type: String, required: true },
+    mode: { type: String, required: true }, // 'endless' | 'daily'
+    difficulties: { type: Object, default: () => ({}) },
+    defaultDifficulty: { type: String, default: '' },
 });
+
+const isDaily = computed(() => props.mode === 'daily');
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -32,7 +33,6 @@ const statusMessage = ref('');
 const bannerVisible = ref(false);
 const finalTimeText = ref('0:00');
 
-const dailyMode = ref(false);
 const dailyDate = ref(null);
 const dailyScorePosted = ref(false);
 const leaderboard = ref([]);
@@ -194,20 +194,12 @@ function win(times) {
         bannerVisible.value = true;
     }, total);
 
-    if (dailyMode.value && dailyDate.value) {
-        if (currentUser.value) {
-            // Only record "solved" locally once the server has actually
-            // accepted a verified score — never for an untrusted client-side
-            // time, and never before we know the submission succeeded.
-            const shaded = [];
-            for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
-            submitDailyScore(shaded);
-        } else {
-            // Guests have no account to post a verified time to; the local
-            // record is purely a "you already played this" courtesy for this
-            // browser, not a leaderboard entry.
-            markDailySolved(dailyDate.value, Date.now() - startAt);
-        }
+    // The /daily/play route requires an authenticated session (see
+    // routes/web.php), so a signed-in user is always present here.
+    if (isDaily.value && dailyDate.value) {
+        const shaded = [];
+        for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
+        submitDailyScore(shaded);
     }
 }
 
@@ -231,10 +223,7 @@ async function fetchLeaderboard() {
    server never trusts the client's clock or board — it replays `shaded`
    against the actual engine and measures elapsed time from this account's
    own bound start (set the first time /daily was fetched while signed in;
-   see BurnfrontController@daily), not from anything sent here. Local
-   "solved today" state is only recorded once the server confirms it (a 200
-   for a fresh score, or a 409 meaning this account already has one) — never
-   on a failure, so a genuine error doesn't silently lock the player out. */
+   see BurnfrontController@daily), not from anything sent here. */
 async function submitDailyScore(shaded) {
     if (dailyScorePosted.value) return;
     dailyScorePosted.value = true;
@@ -249,7 +238,6 @@ async function submitDailyScore(shaded) {
             body: JSON.stringify({ token: game.value.token, shaded }),
         });
         if (resp.ok || resp.status === 409) {
-            markDailySolved(dailyDate.value, Date.now() - startAt);
             fetchLeaderboard();
         } else {
             dailyScorePosted.value = false;
@@ -262,7 +250,6 @@ async function submitDailyScore(shaded) {
 async function newGame() {
     const token = ++genToken;
     locked.value = true;
-    dailyMode.value = false;
     dailyScorePosted.value = false;
     stopClock();
     clearStatus();
@@ -313,13 +300,12 @@ async function newGame() {
 }
 
 /* Loads the shared daily incident, seeded from today's date so every player
-   sees the same board (see PuzzleService::generateDaily). If this browser
-   already recorded a solve today, the board is shown locked with the
-   completion banner up front rather than replaying the puzzle. */
+   sees the same board (see PuzzleService::generateDaily). This route is
+   only reachable while signed in (see routes/web.php), so the server's own
+   "already scored" verdict is always authoritative here. */
 async function loadDaily() {
     const token = ++genToken;
     locked.value = true;
-    dailyMode.value = false;
     dailyScorePosted.value = false;
     stopClock();
     clearStatus();
@@ -354,39 +340,19 @@ async function loadDaily() {
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
         clearHint();
-        dailyMode.value = true;
         dailyDate.value = p.date;
         fetchLeaderboard();
 
-        // For a signed-in player, "already solved today" is whatever the
-        // server says (a verified score exists) — never a locally-stored
-        // flag, since that could be stale from an earlier guest session
-        // that never actually posted a score. Guests have no server truth
-        // to check, so their own browser's record is all there is.
-        if (currentUser.value) {
-            if (p.alreadyScored) {
-                dailyScorePosted.value = true;
-                locked.value = true;
-                boardDone.value = true;
-                finalTimeText.value = fmtClock(p.scoreTimeMs);
-                bannerVisible.value = true;
-            } else {
-                boardDone.value = false;
-                locked.value = false;
-                startClock();
-            }
+        if (p.alreadyScored) {
+            dailyScorePosted.value = true;
+            locked.value = true;
+            boardDone.value = true;
+            finalTimeText.value = fmtClock(p.scoreTimeMs);
+            bannerVisible.value = true;
         } else {
-            const record = getDailyRecord(p.date);
-            if (record) {
-                locked.value = true;
-                boardDone.value = true;
-                finalTimeText.value = fmtClock(record.timeMs);
-                bannerVisible.value = true;
-            } else {
-                boardDone.value = false;
-                locked.value = false;
-                startClock();
-            }
+            boardDone.value = false;
+            locked.value = false;
+            startClock();
         }
     } catch (e) {
         if (token === genToken) locked.value = false;
@@ -457,7 +423,11 @@ onBeforeUnmount(() => {
     clearTimeout(winTimer);
 });
 
-newGame();
+if (isDaily.value) {
+    loadDaily();
+} else {
+    newGame();
+}
 </script>
 
 <template>
@@ -466,7 +436,10 @@ newGame();
     <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-10 pb-16">
         <header class="flex flex-col gap-2">
             <div class="flex items-start justify-between gap-3">
-                <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">Incident report &middot; deduction puzzle</p>
+                <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">
+                    <Link href="/" class="text-ash-dim hover:text-ember">&larr; Menu</Link>
+                    &middot; {{ isDaily ? 'Daily incident' : 'Endless' }}
+                </p>
                 <p class="text-[11px] whitespace-nowrap text-ash-dim">
                     <template v-if="currentUser">
                         Signed in as {{ currentUser.name }} ·
@@ -494,20 +467,21 @@ newGame();
             </p>
 
             <div class="flex flex-wrap items-center gap-2.5">
-                <div class="bf-seg" role="group" aria-label="Difficulty">
-                    <button
-                        v-for="(config, key) in difficulties"
-                        :key="key"
-                        type="button"
-                        class="bf-seg-btn"
-                        :class="{ 'is-active': !dailyMode && key === diff }"
-                        @click="selectDifficulty(key)"
-                    >
-                        {{ config.label }}
-                    </button>
-                </div>
-                <button type="button" class="bf-btn" :class="{ 'bf-btn-primary': dailyMode }" @click="loadDaily">Daily</button>
-                <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
+                <template v-if="!isDaily">
+                    <div class="bf-seg" role="group" aria-label="Difficulty">
+                        <button
+                            v-for="(config, key) in difficulties"
+                            :key="key"
+                            type="button"
+                            class="bf-seg-btn"
+                            :class="{ 'is-active': key === diff }"
+                            @click="selectDifficulty(key)"
+                        >
+                            {{ config.label }}
+                        </button>
+                    </div>
+                    <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
+                </template>
                 <button type="button" class="bf-btn" :disabled="hintDisabled" @click="requestHint">Hint</button>
                 <button type="button" class="bf-btn" :disabled="undoDisabled" @click="undo">Undo</button>
                 <button type="button" class="bf-btn" :disabled="resetDisabled" @click="reset">Reset</button>
@@ -557,20 +531,16 @@ newGame();
                         time.
                     </p>
                     <p v-else class="text-sm text-ash">Every clue burns on time.</p>
-                    <p v-if="dailyMode && !currentUser" class="text-xs text-ash-dim">
-                        <Link href="/login" class="text-ember hover:text-flame">Sign in</Link> to post this time to the
-                        leaderboard.
-                    </p>
                 </div>
                 <p v-else-if="statusMessage" class="bf-status" role="status">{{ statusMessage }}</p>
                 <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
-                    Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases. New
-                    here? The walkthrough below shows exactly how the fire moves.
+                    Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases.
+                    New here? <Link href="/how-to" class="text-ember hover:text-flame">See how it works</Link>.
                 </p>
             </div>
 
             <div
-                v-if="dailyMode && leaderboard.length"
+                v-if="isDaily && leaderboard.length"
                 class="mt-3 flex flex-col gap-1.5 rounded-md border border-line p-3.5"
                 aria-label="Today's fastest"
             >
@@ -581,32 +551,6 @@ newGame();
                         <span class="text-paper">{{ fmtClock(entry.time_ms) }}</span>
                     </li>
                 </ol>
-            </div>
-        </section>
-
-        <section class="flex flex-col gap-4" aria-label="How Burnfront works">
-            <h2 class="font-staatliches text-[28px] font-normal tracking-[.06em] text-paper">HOW IT WORKS</h2>
-            <HowItWorksDemo />
-            <div class="bf-rulecols">
-                <div class="flex flex-col gap-2.5 bf-rulecol">
-                    <h3>The rules</h3>
-                    <ol>
-                        <li><strong>Shade exactly N firebreaks.</strong> The counter above the board sets N. The ★ and the numbered cells are never breaks.</li>
-                        <li><strong>Fire spreads one cell per minute.</strong> It starts on the ★ at minute 0 and moves up, down, left and right — never diagonally, never through a break.</li>
-                        <li><strong>Everything else burns.</strong> Every cell that isn&rsquo;t a firebreak must be reached by the fire eventually. No safe pockets.</li>
-                        <li><strong>Numbers are exact arrival times.</strong> A cell marked 5 caught fire at minute 5 — not before, not after.</li>
-                    </ol>
-                </div>
-                <div class="flex flex-col gap-2.5 bf-rulecol">
-                    <h3>Reading the numbers</h3>
-                    <ul>
-                        <li>A cell&rsquo;s minute is the length of the fire&rsquo;s <strong>shortest open route</strong> from the ★ — never less than the straight-line distance.</li>
-                        <li><strong>Bigger than the distance? Something is in the way.</strong> A 5 sitting 3 steps from the ★ proves every shorter route is blocked. That is how numbers reveal breaks.</li>
-                        <li>Neighboring burnt cells differ by at most 1, and a cell burning at minute t caught it from a neighbor that burned at t&minus;1 — wavefronts, not teleports.</li>
-                        <li><strong>Every break earns its place:</strong> open it, and the fire would reach some number too early. None hides in a corner justified by counting alone.</li>
-                        <li>Tap cycles firebreak &rarr; dot &rarr; empty. The dot is your own note for &ldquo;proven open&rdquo; — it isn&rsquo;t checked. The moment your Nth break lands, the board checks itself.</li>
-                    </ul>
-                </div>
             </div>
         </section>
 
