@@ -109,13 +109,36 @@ final class PuzzleService
     /**
      * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string}
      */
-    public function generate(string $difficulty, ?array $config = null, ?callable $random = null): array
+    public function generate(string $difficulty, ?callable $random = null): array
     {
-        $config ??= self::DIFFICULTIES[$difficulty] ?? null;
+        $config = self::DIFFICULTIES[$difficulty] ?? null;
         if ($config === null) {
             throw new InvalidArgumentException("Unknown difficulty [{$difficulty}].");
         }
 
+        return $this->generateFromConfig($difficulty, $config, $random);
+    }
+
+    /**
+     * Same as generate(), but for a config built by customConfig() rather
+     * than looked up from DIFFICULTIES — kept as its own method instead of
+     * an overload on generate() so that method's public signature (and the
+     * meaning of its second argument) never changes for existing callers.
+     *
+     * @param  array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}  $config
+     * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string}
+     */
+    public function generateCustom(array $config, ?callable $random = null): array
+    {
+        return $this->generateFromConfig('custom', $config, $random);
+    }
+
+    /**
+     * @param  array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}  $config
+     * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string}
+     */
+    private function generateFromConfig(string $difficulty, array $config, ?callable $random): array
+    {
         $result = Engine::generate($config['rows'], $config['cols'], $config['breaks'], [
             'random' => $random,
             'budgetMs' => $config['budgetMs'],

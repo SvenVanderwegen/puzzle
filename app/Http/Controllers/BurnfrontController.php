@@ -123,7 +123,7 @@ class BurnfrontController extends Controller
                 return response()->json(['message' => 'Invalid custom grid.'], 422);
             }
 
-            return response()->json($this->puzzles->generate('custom', $config));
+            return response()->json($this->puzzles->generateCustom($config));
         }
 
         if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {

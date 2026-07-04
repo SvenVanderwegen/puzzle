@@ -3,6 +3,7 @@
 namespace Tests\Unit\Support\Burnfront;
 
 use App\Support\Burnfront\PuzzleService;
+use App\Support\Burnfront\SeededRandom;
 use PHPUnit\Framework\TestCase;
 
 class PuzzleServiceTest extends TestCase
@@ -79,16 +80,33 @@ class PuzzleServiceTest extends TestCase
         ));
     }
 
-    public function test_generate_accepts_a_custom_config_override(): void
+    public function test_generate_custom_builds_a_puzzle_from_a_custom_config(): void
     {
         $service = new PuzzleService;
         $config = PuzzleService::customConfig(5, 5, 4);
 
-        $result = $service->generate('custom', $config);
+        $result = $service->generateCustom($config);
 
         $this->assertSame('custom', $result['difficulty']);
         $this->assertSame(5, $result['rows']);
         $this->assertSame(5, $result['cols']);
         $this->assertSame(4, $result['breaks']);
+    }
+
+    /**
+     * Regression test for a reviewer-flagged risk: generate()'s public
+     * signature must keep accepting a random override as its second
+     * argument unchanged, so existing deterministic callers (e.g.
+     * generate('lookout', new SeededRandom(...))) don't start hitting a
+     * TypeError from an unrelated custom-grid feature.
+     */
+    public function test_generate_still_accepts_a_random_override_as_the_second_argument(): void
+    {
+        $service = new PuzzleService;
+
+        $a = $service->generate('lookout', new SeededRandom(1));
+        $b = $service->generate('lookout', new SeededRandom(1));
+
+        $this->assertSame([$a['spark'], $a['clues']], [$b['spark'], $b['clues']]);
     }
 }
