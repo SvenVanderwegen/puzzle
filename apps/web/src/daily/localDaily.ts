@@ -51,11 +51,7 @@ export function markDailyContained(storage: StorageLike, date: string, contained
  * 1 (a guest browser has no freeze — freezes live server-side). Idempotent:
  * re-crediting today is a no-op.
  */
-export function creditLocalStreak(
-  streak: StreakState,
-  date: string,
-  today: string,
-): StreakState {
+export function creditLocalStreak(streak: StreakState, date: string, today: string): StreakState {
   if (date !== today) return streak;
   if (streak.lastDailyDate === today) return streak;
   const continues = streak.current > 0 && streak.lastDailyDate === utcDayBefore(today);

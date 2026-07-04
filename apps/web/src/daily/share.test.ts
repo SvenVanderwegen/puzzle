@@ -78,9 +78,12 @@ describe('spoiler-freeness (acceptance #1)', () => {
     // is empty: what's left is exactly the fixed template (headline/stats/url).
     const withoutSignature = text.replace(burnSignature(card().sequence), '§');
     expect(withoutSignature).toBe(
-      ['Burnfront — Incident #142 CONTAINED', '§', shareLine2('2:41', true, 5), shareUrl('2026-07-08')].join(
-        '\n',
-      ),
+      [
+        'Burnfront — Incident #142 CONTAINED',
+        '§',
+        shareLine2('2:41', true, 5),
+        shareUrl('2026-07-08'),
+      ].join('\n'),
     );
   });
 

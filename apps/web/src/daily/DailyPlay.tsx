@@ -382,7 +382,12 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
           setSubmission(next);
           if (next.kind === 'accepted' && next.result.streak !== undefined) {
             const server = next.result.streak;
-            const frozen = streakFrozen(previous.lastDailyDate, previous.current, server.current, today);
+            const frozen = streakFrozen(
+              previous.lastDailyDate,
+              previous.current,
+              server.current,
+              today,
+            );
             if (!isPast) {
               writeLocalStreak(runtime.storage, {
                 current: server.current,
@@ -398,7 +403,21 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
         }),
       );
     },
-    [api, date, deps, guestRecord, isPast, kv, runtime, session, showWon, signedIn, stage, today, preCacheTomorrow],
+    [
+      api,
+      date,
+      deps,
+      guestRecord,
+      isPast,
+      kv,
+      runtime,
+      session,
+      showWon,
+      signedIn,
+      stage,
+      today,
+      preCacheTomorrow,
+    ],
   );
 
   // ---- share ---------------------------------------------------------------
@@ -512,12 +531,7 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
             ) : null}
             {!signedIn ? <p className="bf-hint">{t('streak.guestNote')}</p> : null}
             <div className="bf-lane__row">
-              <button
-                type="button"
-                className="bf-chip"
-                onClick={onShare}
-                data-testid="daily-share"
-              >
+              <button type="button" className="bf-chip" onClick={onShare} data-testid="daily-share">
                 {t('share.action')}
               </button>
               {shareDone ? (
@@ -546,7 +560,9 @@ function DailyRankLine(props: { readonly submission: DailySubmissionState }): Re
   const daily = submission.result.daily;
   if (daily === undefined) return null;
   if (daily.percentile !== null && daily.percentile !== undefined) {
-    return <p data-testid="daily-percentile">{t('play.stats.percentile', { p: daily.percentile })}</p>;
+    return (
+      <p data-testid="daily-percentile">{t('play.stats.percentile', { p: daily.percentile })}</p>
+    );
   }
   if (daily.rank !== null && daily.rank !== undefined) {
     return <p data-testid="daily-rank">{t('daily.rankFallback', { rank: daily.rank })}</p>;

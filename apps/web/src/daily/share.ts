@@ -83,10 +83,7 @@ export interface ShareEnv {
  * (AbortError) is treated as handled — we do NOT silently copy behind a
  * deliberate cancel. Returns what happened so the caller can show share.copied.
  */
-export async function shareOrCopy(
-  card: ShareCard,
-  env: ShareEnv,
-): Promise<ShareResult> {
+export async function shareOrCopy(card: ShareCard, env: ShareEnv): Promise<ShareResult> {
   const text = shareText(card);
   if (typeof env.share === 'function') {
     try {
@@ -113,9 +110,7 @@ export function browserShareEnv(): ShareEnv {
   if (typeof navigator === 'undefined') return {};
   const clipboard = navigator.clipboard as Clipboard | undefined;
   return {
-    ...(typeof navigator.share === 'function'
-      ? { share: navigator.share.bind(navigator) }
-      : {}),
+    ...(typeof navigator.share === 'function' ? { share: navigator.share.bind(navigator) } : {}),
     ...(clipboard !== undefined && typeof clipboard.writeText === 'function'
       ? { writeText: clipboard.writeText.bind(clipboard) }
       : {}),

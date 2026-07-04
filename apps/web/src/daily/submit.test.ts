@@ -89,9 +89,7 @@ describe('submitDaily', () => {
   it('accepts, clears pending, and refreshes the rating on rating_pending', async () => {
     const storage = memoryStorage();
     const api = fakeApi({ kind: 'accepted', result: acceptedResult });
-    const states = await collect((onState) =>
-      submitDaily(record(), DATE, api, storage, onState),
-    );
+    const states = await collect((onState) => submitDaily(record(), DATE, api, storage, onState));
     expect(states[0]).toEqual({ kind: 'submitting' });
     const last = states.at(-1);
     expect(last?.kind).toBe('accepted');
@@ -106,9 +104,7 @@ describe('submitDaily', () => {
   it('keeps the pending record on a transport failure', async () => {
     const storage = memoryStorage();
     const api = fakeApi({ kind: 'network_error' });
-    const states = await collect((onState) =>
-      submitDaily(record(), DATE, api, storage, onState),
-    );
+    const states = await collect((onState) => submitDaily(record(), DATE, api, storage, onState));
     expect(states[states.length - 1]).toEqual({ kind: 'offline' });
     const pending = loadPending(storage);
     expect(pending?.idempotencyKey).toBe(KEY);
@@ -148,7 +144,11 @@ describe('retryPendingDaily (reconnect)', () => {
 
   it('is a no-op when nothing is pending', async () => {
     const onState = vi.fn();
-    const done = await retryPendingDaily(fakeApi({ kind: 'network_error' }), memoryStorage(), onState);
+    const done = await retryPendingDaily(
+      fakeApi({ kind: 'network_error' }),
+      memoryStorage(),
+      onState,
+    );
     expect(done).toBe(false);
     expect(onState).not.toHaveBeenCalled();
   });

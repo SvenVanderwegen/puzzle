@@ -3,7 +3,12 @@
  * idempotent) and the direct-storage progress writes.
  */
 import { describe, expect, it } from 'vitest';
-import { defaultLocalState, loadLocalState, memoryStorage, saveLocalState } from '../state/localState';
+import {
+  defaultLocalState,
+  loadLocalState,
+  memoryStorage,
+  saveLocalState,
+} from '../state/localState';
 import type { StreakState } from '../state/localState';
 import {
   creditLocalStreak,

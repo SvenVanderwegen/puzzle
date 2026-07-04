@@ -334,3 +334,38 @@
   independent subagent, forced by the session-limit outage. A post-reset
   independent pass over WS-18 is optional (ops code, fully gated); not
   blocking.
+
+## 2026-07-04 — WS-10 merged (lead-completed under session-limit outage)
+- Branch worktree-agent-ab657d25ff07b49d7 → merged. The builder's session hit
+  the shared session limit (and a container restart) mid-flight, with the SPA
+  daily feature ~85% built and committed but no Blade unfurl, no STATUS, and a
+  broken pre-existing offline test. Subagents were blocked until the 15:40 UTC
+  reset, so the lead completed and gate-verified it directly (main loop had
+  capacity; builder work was preserved to origin backup refs first).
+- Lead completion: (1) fixed a pre-existing app.test.tsx offline failure —
+  DailyPlay now mirrors connectivity into an onlineRef so a late getDaily
+  resolution reads live status (jsdom keeps navigator.onLine true; the
+  event-driven state is the only truth). (2) Finished the builder's half-written
+  submit.test.ts (noUncheckedIndexedAccess guards) and a share.test.ts spread
+  lint. (3) Built the entire Blade unfurl half from scratch: DailyShareController
+  + daily/show.blade + route + 7 Pest tests (future/unpublished/malformed/
+  impossible → 404; OG card; spoiler-free content-CDN og:image; past-date
+  banner). (4) Verified the fairness-critical share spoiler-freeness test is
+  substantive (solution bitstring + all 25 cell names absent; stripping the
+  signature leaves only the fixed template; signature is solver-independent).
+- Lead rulings via ADR-0027 in-range: per-page og:image (shared landing layout
+  gained a backward-compatible @yield('og-image', <default>)); unfurl og:image =
+  content-CDN host + /og/{puzzle_id}.png (spoiler-free pipeline PNG); 2 copy
+  keys (share.action, daily.retry) into COPY.md, quarantine dissolved. Blade
+  /daily/{date} serves crawlers/first-paint; the SPA-boot hand-off is the
+  WS-16/17 shell seam (mirrors WS-15's /hub). Closes WS-15's sitemap /daily
+  404s (og:image resolves once WS-05 content is published — owner/WS-16).
+- Consumers regenerated: strings.gen.ts, landing artifact (70.48 KB gz).
+- Gates on merged mainline: web 377 tests (coverage 85.68%), PHP 305/3614,
+  pint, phpstan L9, format/hygiene/strings/generate/budget/budget:landing all
+  green.
+- Verification note: like WS-18, WS-10 was lead-completed + gate-verified under
+  the outage rather than checked by an independent subagent. The fairness-
+  critical share-spoiler test is green; an optional post-reset adversarial pass
+  can follow. Deferred to WS-17: full e2e (fresh-user solve, unfurl,
+  CDN-down fallback, offline replay, streak timezone edge).

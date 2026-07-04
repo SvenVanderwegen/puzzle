@@ -6,12 +6,12 @@
  */
 import { formatIcu, type IcuParams } from './icu';
 import { catalog, type CatalogKey } from './strings.gen';
-import { proposedCatalog, type ProposedKey } from './proposed';
+import { proposedCatalog } from './proposed';
 
-// The proposed-keys quarantine carries WS-10's `share.action`/`daily.retry`
-// (see proposed.ts). The union widens the public key type; the runtime merge
-// below layers the catalog over the proposals so a promoted key always wins.
-export type StringKey = CatalogKey | ProposedKey;
+// The proposed-keys quarantine is empty (ADR-0017). When a future workstream
+// adds a proposed key, widen this to `CatalogKey | ProposedKey` (import the
+// type from './proposed') — the runtime merge below already handles it.
+export type StringKey = CatalogKey;
 export type { IcuParams };
 export { catalog };
 

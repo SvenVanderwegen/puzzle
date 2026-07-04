@@ -63,6 +63,7 @@ Interpolations use `{braces}`. Pluralization via ICU MessageFormat where marked.
 - `daily.pastBanner` — This is {weekday}'s incident — today's is live →
 - `daily.offline` — No dispatch — you're offline. Endless still works.
 - `daily.loading` — Fetching today's dispatch…
+- `daily.retry` — Try the dispatch again
 
 ## board & play
 
@@ -107,6 +108,7 @@ Interpolations use `{braces}`. Pluralization via ICU MessageFormat where marked.
 - `share.line2` — ⏱ {time}{clean, select, yes { · ✅ clean} other {}}{streak, plural, =0 {} =1 {} other { · 🔥 #}}
 - `share.url` — burnfront.com/daily/{date}
 - `share.copied` — Copied.
+- `share.action` — Share the burn signature
 - Signature: one emoji per minute, by cells ignited that minute: 🟥 ≥4 · 🟧 2–3 · 🟨 1.
 
 ## account & settings

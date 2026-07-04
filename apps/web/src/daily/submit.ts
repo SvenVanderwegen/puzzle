@@ -27,7 +27,11 @@ export type DailySubmissionState =
   | { readonly kind: 'offline' }
   /** Session expired between load and submit — caller degrades to the guest path. */
   | { readonly kind: 'unauthenticated' }
-  | { readonly kind: 'accepted'; readonly result: SolveResultData; readonly rating: RatingData | null }
+  | {
+      readonly kind: 'accepted';
+      readonly result: SolveResultData;
+      readonly rating: RatingData | null;
+    }
   | { readonly kind: 'error'; readonly messageKey: 'error.generic' | 'error.rateLimited' };
 
 /** Assemble the daily solve record once (stable key for idempotent retries). */
