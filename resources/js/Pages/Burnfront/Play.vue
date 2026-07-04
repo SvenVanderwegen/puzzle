@@ -58,7 +58,7 @@ const overBudget = computed(() => game.value !== null && placedCount.value > gam
 const undoDisabled = computed(() => locked.value || undoStack.length === 0);
 const resetDisabled = computed(() => locked.value);
 const hintDisabled = computed(() => locked.value || hinting.value);
-const solveDisabled = computed(() => locked.value || !game.value);
+const solveDisabled = computed(() => locked.value || !game.value || hinting.value);
 
 function stopClock() {
     if (clockTimer) {
@@ -482,7 +482,20 @@ async function requestHint() {
    Voids the run rather than scoring it — the board locks and the clock
    stops, but win()'s daily-score submission never runs (revealSolution()
    only paints marks/cellStyle, it doesn't call win()), so a solved-for-you
-   board can never post a verified daily time. */
+   board can never post a verified daily time on its own. The server also
+   never trusts this client-side void: solving a daily incident is recorded
+   server-side too (see BurnfrontController::solve()/voidDailyScore()), so a
+   request straight to /solve followed by a hand-crafted /daily/score POST
+   still can't post a score.
+
+   Bumping marksVersion here (disabled.value already keeps Solve unclickable
+   while a hint is in flight, via hintDisabled/solveDisabled both checking
+   hinting.value) is the actual guard against a hint request that was
+   already in flight *before* Solve was clicked: without it, that hint's
+   captured marksVersion would still match once its response finally
+   arrived, so it would sail past requestHint()'s staleness check and
+   re-place a cell — and since Solve already left the board fully correct,
+   that can trip maybeFinish() into calling win() a second time. */
 async function solvePuzzle() {
     if (locked.value || !game.value) return;
     if (!window.confirm("Reveal the full solution? Your time will be voided and this run won't be saved.")) return;
@@ -498,6 +511,7 @@ async function solvePuzzle() {
         if (!resp.ok) throw new Error('solve request failed');
         const data = await resp.json();
         if (token !== genToken) return;
+        marksVersion++;
         stopClock();
         clearStatus();
         undoStack.length = 0;

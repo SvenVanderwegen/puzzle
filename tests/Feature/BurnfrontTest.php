@@ -433,6 +433,35 @@ class BurnfrontTest extends TestCase
         );
     }
 
+    /**
+     * The "Solve" cheat button is meant to void the run instead of scoring
+     * it (see BurnfrontController::solve()) — this asserts that void is
+     * actually enforced server-side, not just left to the client's own
+     * banner/state, by calling /solve directly and then attempting to POST
+     * the correct board straight to /daily/score, bypassing the frontend
+     * entirely.
+     */
+    public function test_submit_daily_score_rejects_a_submission_after_solve_was_called(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $solve = $this->actingAs($user)->getJson('/solve?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $daily['spark'],
+            'clues' => json_encode($daily['clues']),
+        ]));
+        $solve->assertStatus(200);
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $solve->json('solution'),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('burnfront_daily_scores', 0);
+    }
+
     public function test_submit_daily_score_rejects_an_incorrect_board(): void
     {
         $user = User::factory()->create();

@@ -172,6 +172,11 @@ class BurnfrontController extends Controller
         }
 
         $userId = $request->user()->id;
+
+        if (Cache::has($this->dailyVoidKey($userId, $date))) {
+            return response()->json(['message' => 'This run was voided after revealing the solution.'], 422);
+        }
+
         $startedAt = Cache::get($this->dailyStartKey($userId, $date));
         if ($startedAt === null) {
             return response()->json(['message' => "Load today's incident while signed in before submitting."], 422);
@@ -280,6 +285,22 @@ class BurnfrontController extends Controller
     private function dailyStartKey(int $userId, string $date): string
     {
         return "burnfront:daily:start:v1:{$date}:{$userId}";
+    }
+
+    /**
+     * Marks this account's attempt at today's daily incident as voided —
+     * checked by submitDailyScore(), which refuses to record a time once
+     * this is set. Never expires before the incident itself does, so asking
+     * for the solution can't be "waited out" within the same day.
+     */
+    private function voidDailyScore(int $userId, string $date): void
+    {
+        Cache::put($this->dailyVoidKey($userId, $date), true, now('UTC')->endOfDay());
+    }
+
+    private function dailyVoidKey(int $userId, string $date): string
+    {
+        return "burnfront:daily:void:v1:{$date}:{$userId}";
     }
 
     /**
@@ -401,16 +422,22 @@ class BurnfrontController extends Controller
 
     /**
      * The full solution for the incident the client is holding, for the
-     * "solve it for me" button: voids the run instead of scoring it, so this
-     * never needs to know or care whether the caller is mid-daily-attempt —
-     * the frontend is responsible for not submitting a score once it's asked
-     * for this. Every server-generated incident is provably solvable by pure
-     * deduction (see Engine::generate()), so this is the same rederivation
-     * solveDaily() uses for an already-scored daily incident, just reachable
-     * for any difficulty/spark/clues combination.
+     * "solve it for me" button: voids the run instead of scoring it. Every
+     * server-generated incident is provably solvable by pure deduction (see
+     * Engine::generate()), so this is the same rederivation solveDaily()
+     * uses for an already-scored daily incident, just reachable for any
+     * difficulty/spark/clues combination.
+     *
+     * For the daily tier specifically, the void is also recorded server-side
+     * (voidDailyScore()) for whichever account is signed in — never trust
+     * the client to not submit a score after asking for the answer, since
+     * nothing stops a request straight to this endpoint followed by a POST
+     * to /daily/score with the returned cells.
      */
     public function solve(Request $request): JsonResponse
     {
+        $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {
             return $parsed;
@@ -422,6 +449,10 @@ class BurnfrontController extends Controller
 
         if ($state === null) {
             return response()->json(['message' => 'Could not solve this incident.'], 422);
+        }
+
+        if ($difficulty === 'daily' && $request->user() !== null) {
+            $this->voidDailyScore($request->user()->id, now('UTC')->toDateString());
         }
 
         $shaded = [];
