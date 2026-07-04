@@ -501,6 +501,36 @@ class BurnfrontTest extends TestCase
         $this->assertIsInt($response->json('scoreTimeMs'));
     }
 
+    /**
+     * Regression test for the reported bug where reopening an already-solved
+     * daily incident just showed an empty locked board instead of the
+     * solution. /daily must hand back the firebreak placement (rederived by
+     * pure deduction — see BurnfrontController::solveDaily()) once this
+     * account has a recorded score, and never before.
+     */
+    public function test_daily_endpoint_includes_the_solution_once_already_scored(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+        $expectedSolution = $this->solveDaily($daily);
+
+        $this->assertArrayNotHasKey('solution', $daily);
+
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $expectedSolution,
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->getJson('/daily');
+
+        $response->assertJson(['alreadyScored' => true]);
+        $solution = $response->json('solution');
+        $this->assertIsArray($solution);
+        sort($expectedSolution);
+        sort($solution);
+        $this->assertSame($expectedSolution, $solution);
+    }
+
     public function test_daily_leaderboard_returns_entries_sorted_by_time(): void
     {
         $date = now('UTC')->toDateString();

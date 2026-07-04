@@ -131,6 +131,9 @@ class BurnfrontController extends Controller
         $existing = DailyScore::where('user_id', $userId)->whereDate('date', $date)->first();
         $payload['alreadyScored'] = $existing !== null;
         $payload['scoreTimeMs'] = $existing?->time_ms;
+        if ($existing !== null) {
+            $payload['solution'] = $this->solveDaily($payload);
+        }
         $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
         return response()->json($payload);
@@ -277,6 +280,35 @@ class BurnfrontController extends Controller
     private function dailyStartKey(int $userId, string $date): string
     {
         return "burnfront:daily:start:v1:{$date}:{$userId}";
+    }
+
+    /**
+     * The daily incident is provably solvable by pure deduction (see
+     * Engine::generate()'s minimal-irredundant-clues loop), so once an
+     * account has already posted a verified time, the firebreak placement
+     * can be recomputed straight from the clues rather than needing to have
+     * been stored anywhere — there's exactly one, and this rederives it.
+     *
+     * @return list<int> the shaded (firebreak) cell indices
+     */
+    private function solveDaily(array $payload): array
+    {
+        $clues = [];
+        foreach ($payload['clues'] as [$cell, $minute]) {
+            $clues[$cell] = $minute;
+        }
+
+        $puzzle = new Puzzle($payload['rows'], $payload['cols'], $payload['spark'], $clues, $payload['breaks']);
+        $state = Engine::deductionSolve($puzzle);
+
+        $shaded = [];
+        foreach ($state as $cell => $value) {
+            if ($value === Engine::SHADED) {
+                $shaded[] = $cell;
+            }
+        }
+
+        return $shaded;
     }
 
     /**

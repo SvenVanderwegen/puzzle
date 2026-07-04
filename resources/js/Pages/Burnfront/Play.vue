@@ -203,6 +203,36 @@ function win(times) {
     }
 }
 
+/* Paints an already-known solution onto the board with no stagger and no
+   score submission — used when the player reopens a daily incident they've
+   already posted a verified time for. The shaded cells come straight from
+   the server (BurnfrontController@daily rederives them by pure deduction;
+   the incident has exactly one valid placement), so this never needs the
+   player's own past submission. */
+function revealSolution(shaded) {
+    const g = game.value;
+    for (const i of shaded) marks.value[i] = 1;
+    const breaks = new Uint8Array(marks.value.length);
+    for (let i = 0; i < marks.value.length; i++) breaks[i] = marks.value[i] === 1 ? 1 : 0;
+    const times = validate(g.n, g.adj, g.spark, g.clueIdx, g.clueVal, g.N, breaks);
+    if (!times) return;
+    let maxT = 0;
+    for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
+    for (let i = 0; i < times.length; i++) {
+        if (times[i] < 0) continue; /* firebreaks stay dark */
+        const t = times[i];
+        const warm = maxT ? t / maxT : 0;
+        const mix = (a, c, f) => Math.round(a + (c - a) * f);
+        const f = 0.25 + 0.6 * warm;
+        cellStyle.value[i] = {
+            '--burn-bg': `rgb(${mix(255, 255, f)},${mix(216, 138, f)},${mix(107, 61, f)})`,
+            transitionDelay: '0ms',
+        };
+        if (!g.clueMap.has(i) && i !== g.spark) revealedMinute.value[i] = String(t);
+        burnt.value[i] = true;
+    }
+}
+
 function xsrfToken() {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
     return match ? decodeURIComponent(match[1]) : null;
@@ -347,6 +377,7 @@ async function loadDaily() {
             dailyScorePosted.value = true;
             locked.value = true;
             boardDone.value = true;
+            if (p.solution) revealSolution(p.solution);
             finalTimeText.value = fmtClock(p.scoreTimeMs);
             bannerVisible.value = true;
         } else {
