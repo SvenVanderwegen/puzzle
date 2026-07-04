@@ -332,10 +332,12 @@ class BurnfrontController extends Controller
         // whereDate() range, not whereIn('date', ...): the 'date' cast
         // stores a full datetime string, so exact-match membership checks
         // against Y-m-d strings would never hit (see persistDailyIncident()).
-        $incidents = DailyIncident::whereDate('date', '>=', $dateStrings->min())
-            ->whereDate('date', '<=', $dateStrings->max())
-            ->get()
-            ->keyBy(fn (DailyIncident $incident) => $incident->date->toDateString());
+        $incidents = $dateStrings->isEmpty()
+            ? collect()
+            : DailyIncident::whereDate('date', '>=', $dateStrings->min())
+                ->whereDate('date', '<=', $dateStrings->max())
+                ->get()
+                ->keyBy(fn (DailyIncident $incident) => $incident->date->toDateString());
 
         $entries = $scores->map(function (DailyScore $score) use ($incidents) {
             $date = $score->date->toDateString();
@@ -347,6 +349,13 @@ class BurnfrontController extends Controller
                 'blurb' => $incident?->blurb,
                 'time_ms' => $score->time_ms,
                 'hints_used' => $score->hints_used,
+                // False for a score recorded before incidents were persisted
+                // (see persistDailyIncident()) — there's nothing to replay,
+                // since regenerating the incident later isn't guaranteed to
+                // reproduce the exact same clue set the player actually saw
+                // (Engine::generate()'s clue-stripping search is wall-clock-
+                // bounded, not seed-deterministic).
+                'replayable' => $incident !== null,
             ];
         })->values();
 
@@ -569,6 +578,30 @@ class BurnfrontController extends Controller
     private function dailyHintKey(int $userId, string $date): string
     {
         return "burnfront:daily:hints:v1:{$date}:{$userId}";
+    }
+
+    /**
+     * Whether a client-supplied spark/clues pair actually matches today's
+     * real persisted incident — the gate on incrementDailyHints() above.
+     * Key order in $clues doesn't necessarily match the incident's stored
+     * pair order, so both are normalized (ksort) before comparing.
+     */
+    private function matchesTodaysDailyIncident(int $spark, array $clues): bool
+    {
+        $incident = DailyIncident::whereDate('date', now('UTC')->toDateString())->first();
+        if ($incident === null || $spark !== $incident->spark) {
+            return false;
+        }
+
+        $incidentClues = [];
+        foreach ($incident->clues as [$cell, $minute]) {
+            $incidentClues[$cell] = $minute;
+        }
+
+        ksort($clues);
+        ksort($incidentClues);
+
+        return $clues === $incidentClues;
     }
 
     /**
@@ -810,8 +843,14 @@ class BurnfrontController extends Controller
             // player (see the "stays clear" note above) — that's the only
             // outcome worth charging against the daily leaderboard's "clean"
             // (no-hints) badge, so only that case increments the counter.
+            // /hint is a generic deduction endpoint that trusts whatever
+            // spark/clues the client sends, so this also checks those match
+            // today's actual persisted incident before charging anything —
+            // otherwise a stale, retried, or hand-crafted request tagged
+            // difficulty=daily could inflate an honest player's count for a
+            // puzzle that was never their real board.
             $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
-            if ($difficulty === 'daily' && $request->user() !== null) {
+            if ($difficulty === 'daily' && $request->user() !== null && $this->matchesTodaysDailyIncident($spark, $clues)) {
                 $this->incrementDailyHints($request->user()->id, now('UTC')->toDateString());
             }
         } elseif ($result['status'] === 'contradiction') {
