@@ -47,12 +47,28 @@ class BurnfrontController extends Controller
         ]);
     }
 
-    public function endless(): Response
+    /**
+     * The setup screen between the start menu and an endless game: the
+     * player picks a difficulty tier here before a board is ever generated.
+     */
+    public function endlessSetup(): Response
     {
+        return Inertia::render('Burnfront/EndlessSetup', [
+            'difficulties' => PuzzleService::DIFFICULTIES,
+        ]);
+    }
+
+    public function endlessPlay(Request $request): Response
+    {
+        $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+        if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
+            $difficulty = PuzzleService::DEFAULT_DIFFICULTY;
+        }
+
         return Inertia::render('Burnfront/Play', [
             'mode' => 'endless',
             'difficulties' => PuzzleService::DIFFICULTIES,
-            'defaultDifficulty' => PuzzleService::DEFAULT_DIFFICULTY,
+            'difficulty' => $difficulty,
         ]);
     }
 

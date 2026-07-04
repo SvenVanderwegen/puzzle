@@ -63,22 +63,6 @@
         @apply outline-2 outline-offset-2 outline-flame;
     }
 
-    .bf-seg {
-        @apply flex overflow-hidden rounded-[5px] border border-line;
-    }
-    .bf-seg-btn {
-        @apply cursor-pointer appearance-none border-0 border-l border-l-line bg-transparent px-3 py-2 text-[11px] font-semibold tracking-[.09em] whitespace-nowrap text-ash-dim uppercase first:border-l-0;
-    }
-    .bf-seg-btn.is-active {
-        @apply bg-ember/8 text-ember;
-    }
-    .bf-seg-btn:hover:not(.is-active) {
-        @apply text-ash;
-    }
-    .bf-seg-btn:focus-visible {
-        @apply outline-2 outline-offset-2 outline-flame;
-    }
-
     .bf-chip {
         @apply flex items-baseline gap-[7px] rounded-[5px] border border-line px-3 py-2 text-xs whitespace-nowrap text-ash tabular-nums;
     }

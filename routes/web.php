@@ -6,7 +6,8 @@ use App\Http\Controllers\BurnfrontController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [BurnfrontController::class, 'start'])->name('burnfront.start');
-Route::get('/endless', [BurnfrontController::class, 'endless'])->name('burnfront.endless');
+Route::get('/endless', [BurnfrontController::class, 'endlessSetup'])->name('burnfront.endless');
+Route::get('/endless/play', [BurnfrontController::class, 'endlessPlay'])->name('burnfront.endless.play');
 Route::get('/how-to', [BurnfrontController::class, 'howTo'])->name('burnfront.how-to');
 Route::get('/puzzle', [BurnfrontController::class, 'puzzle'])->name('burnfront.puzzle');
 Route::get('/hint', [BurnfrontController::class, 'hint'])->name('burnfront.hint');
