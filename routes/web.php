@@ -11,6 +11,7 @@ Route::get('/endless/play', [BurnfrontController::class, 'endlessPlay'])->name('
 Route::get('/how-to', [BurnfrontController::class, 'howTo'])->name('burnfront.how-to');
 Route::get('/puzzle', [BurnfrontController::class, 'puzzle'])->name('burnfront.puzzle');
 Route::get('/hint', [BurnfrontController::class, 'hint'])->name('burnfront.hint');
+Route::get('/solve', [BurnfrontController::class, 'solve'])->name('burnfront.solve');
 Route::get('/daily/leaderboard', [BurnfrontController::class, 'dailyLeaderboard'])->name('burnfront.daily.leaderboard');
 
 Route::middleware('guest')->group(function () {
