@@ -411,12 +411,6 @@ async function requestHint() {
     }
 }
 
-function selectDifficulty(key) {
-    if (key === diff.value) return;
-    diff.value = key;
-    newGame();
-}
-
 onBeforeUnmount(() => {
     stopClock();
     clearTimeout(statusTimer);
@@ -439,6 +433,7 @@ if (isDaily.value) {
                 <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">
                     <Link href="/" class="text-ash-dim hover:text-ember">&larr; Menu</Link>
                     &middot; {{ isDaily ? 'Daily incident' : 'Endless' }}
+                    <template v-if="!isDaily && difficulties[diff]"> &middot; {{ difficulties[diff].label }}</template>
                 </p>
                 <p class="text-[11px] whitespace-nowrap text-ash-dim">
                     <template v-if="currentUser">
@@ -468,18 +463,7 @@ if (isDaily.value) {
 
             <div class="flex flex-wrap items-center gap-2.5">
                 <template v-if="!isDaily">
-                    <div class="bf-seg" role="group" aria-label="Difficulty">
-                        <button
-                            v-for="(config, key) in difficulties"
-                            :key="key"
-                            type="button"
-                            class="bf-seg-btn"
-                            :class="{ 'is-active': key === diff }"
-                            @click="selectDifficulty(key)"
-                        >
-                            {{ config.label }}
-                        </button>
-                    </div>
+                    <Link href="/endless" class="bf-btn">Change difficulty</Link>
                     <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
                 </template>
                 <button type="button" class="bf-btn" :disabled="hintDisabled" @click="requestHint">Hint</button>

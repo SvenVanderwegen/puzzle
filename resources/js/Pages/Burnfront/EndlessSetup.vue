@@ -23,7 +23,7 @@ function meta(config) {
             <h1 class="font-staatliches text-[clamp(40px,9vw,56px)] leading-[0.95] font-normal tracking-[.035em] text-paper">
                 CHOOSE A DIFFICULTY
             </h1>
-            <p class="max-w-[52ch] text-ash">Pick a tier to generate a fresh incident. You can change difficulty any time from the board.</p>
+            <p class="max-w-[52ch] text-ash">Pick a tier to generate a fresh incident. Come back here any time to switch tiers.</p>
         </header>
 
         <nav class="flex flex-col gap-3" aria-label="Difficulty tiers">
