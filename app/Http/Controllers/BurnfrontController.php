@@ -89,7 +89,10 @@ class BurnfrontController extends Controller
      * gets the byte-identical board (Engine::generate()'s clue-stripping
      * loop is wall-clock-bounded, not iteration-bounded, so re-running it
      * for the "same" seed isn't guaranteed to converge at the same point —
-     * caching closes that gap). For a signed-in player, this also binds
+     * caching closes that gap). Gated behind the `auth` middleware in
+     * routes/web.php: the daily puzzle is signed-in-only, so this must never
+     * hand the board, clues or token to a guest who could solve it offline
+     * and then race the clock after signing in. This also binds
      * (idempotently — first call wins) that account's start time for today,
      * which submitDailyScore() later measures against instead of trusting
      * anything the client reports: refetching /daily can never reset it,
@@ -106,18 +109,12 @@ class BurnfrontController extends Controller
             fn () => $this->puzzles->generateDaily($date)
         );
 
-        $user = $request->user();
-        $payload['alreadyScored'] = false;
-        $payload['scoreTimeMs'] = null;
+        $userId = $request->user()->id;
+        $this->bindDailyStart($userId, $date);
 
-        if ($user !== null) {
-            $this->bindDailyStart($user->id, $date);
-
-            $existing = DailyScore::where('user_id', $user->id)->whereDate('date', $date)->first();
-            $payload['alreadyScored'] = $existing !== null;
-            $payload['scoreTimeMs'] = $existing?->time_ms;
-        }
-
+        $existing = DailyScore::where('user_id', $userId)->whereDate('date', $date)->first();
+        $payload['alreadyScored'] = $existing !== null;
+        $payload['scoreTimeMs'] = $existing?->time_ms;
         $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
         return response()->json($payload);
