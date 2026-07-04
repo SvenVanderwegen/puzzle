@@ -195,11 +195,18 @@ function win(times) {
     }, total);
 
     if (dailyMode.value && dailyDate.value) {
-        markDailySolved(dailyDate.value, Date.now() - startAt);
         if (currentUser.value) {
+            // Only record "solved" locally once the server has actually
+            // accepted a verified score — never for an untrusted client-side
+            // time, and never before we know the submission succeeded.
             const shaded = [];
             for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
             submitDailyScore(shaded);
+        } else {
+            // Guests have no account to post a verified time to; the local
+            // record is purely a "you already played this" courtesy for this
+            // browser, not a leaderboard entry.
+            markDailySolved(dailyDate.value, Date.now() - startAt);
         }
     }
 }
@@ -222,10 +229,12 @@ async function fetchLeaderboard() {
 
 /* Posts a server-verified completion time for today's daily incident. The
    server never trusts the client's clock or board — it replays `shaded`
-   against the actual engine and measures elapsed time from the token it
-   issued at /daily fetch time. A 409 means this account already has a
-   recorded time today (e.g. solved earlier, then reloaded); anything else
-   is a quiet, non-blocking failure — the local win already stands. */
+   against the actual engine and measures elapsed time from this account's
+   own bound start (set the first time /daily was fetched while signed in;
+   see BurnfrontController@daily), not from anything sent here. Local
+   "solved today" state is only recorded once the server confirms it (a 200
+   for a fresh score, or a 409 meaning this account already has one) — never
+   on a failure, so a genuine error doesn't silently lock the player out. */
 async function submitDailyScore(shaded) {
     if (dailyScorePosted.value) return;
     dailyScorePosted.value = true;
@@ -239,9 +248,14 @@ async function submitDailyScore(shaded) {
             },
             body: JSON.stringify({ token: game.value.token, shaded }),
         });
-        if (resp.ok) fetchLeaderboard();
+        if (resp.ok || resp.status === 409) {
+            markDailySolved(dailyDate.value, Date.now() - startAt);
+            fetchLeaderboard();
+        } else {
+            dailyScorePosted.value = false;
+        }
     } catch (e) {
-        /* score posting is best-effort from the client's side */
+        dailyScorePosted.value = false;
     }
 }
 
@@ -344,17 +358,35 @@ async function loadDaily() {
         dailyDate.value = p.date;
         fetchLeaderboard();
 
-        const record = getDailyRecord(p.date);
-        if (record) {
-            dailyScorePosted.value = true;
-            locked.value = true;
-            boardDone.value = true;
-            finalTimeText.value = fmtClock(record.timeMs);
-            bannerVisible.value = true;
+        // For a signed-in player, "already solved today" is whatever the
+        // server says (a verified score exists) — never a locally-stored
+        // flag, since that could be stale from an earlier guest session
+        // that never actually posted a score. Guests have no server truth
+        // to check, so their own browser's record is all there is.
+        if (currentUser.value) {
+            if (p.alreadyScored) {
+                dailyScorePosted.value = true;
+                locked.value = true;
+                boardDone.value = true;
+                finalTimeText.value = fmtClock(p.scoreTimeMs);
+                bannerVisible.value = true;
+            } else {
+                boardDone.value = false;
+                locked.value = false;
+                startClock();
+            }
         } else {
-            boardDone.value = false;
-            locked.value = false;
-            startClock();
+            const record = getDailyRecord(p.date);
+            if (record) {
+                locked.value = true;
+                boardDone.value = true;
+                finalTimeText.value = fmtClock(record.timeMs);
+                bannerVisible.value = true;
+            } else {
+                boardDone.value = false;
+                locked.value = false;
+                startClock();
+            }
         }
     } catch (e) {
         if (token === genToken) locked.value = false;

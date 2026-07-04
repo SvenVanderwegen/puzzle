@@ -43,11 +43,14 @@ class BurnfrontController extends Controller
      * gets the byte-identical board (Engine::generate()'s clue-stripping
      * loop is wall-clock-bounded, not iteration-bounded, so re-running it
      * for the "same" seed isn't guaranteed to converge at the same point —
-     * caching closes that gap). Carries a signed token binding the date and
-     * issue time, which submitDailyScore() later uses to measure elapsed
-     * time from the server's own clock instead of trusting the client.
+     * caching closes that gap). For a signed-in player, this also binds
+     * (idempotently — first call wins) that account's start time for today,
+     * which submitDailyScore() later measures against instead of trusting
+     * anything the client reports: refetching /daily can never reset it,
+     * so a player can't "restart the clock" right before submitting a
+     * board they already knew the answer to.
      */
-    public function daily(): JsonResponse
+    public function daily(Request $request): JsonResponse
     {
         $date = now('UTC')->toDateString();
 
@@ -57,19 +60,30 @@ class BurnfrontController extends Controller
             fn () => $this->puzzles->generateDaily($date)
         );
 
-        $payload['token'] = Crypt::encryptString(json_encode([
-            'date' => $date,
-            'issuedAt' => now('UTC')->timestamp,
-        ]));
+        $user = $request->user();
+        $payload['alreadyScored'] = false;
+        $payload['scoreTimeMs'] = null;
+
+        if ($user !== null) {
+            $this->bindDailyStart($user->id, $date);
+
+            $existing = DailyScore::where('user_id', $user->id)->whereDate('date', $date)->first();
+            $payload['alreadyScored'] = $existing !== null;
+            $payload['scoreTimeMs'] = $existing?->time_ms;
+        }
+
+        $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
         return response()->json($payload);
     }
 
     /**
      * Records a server-verified completion time for today's daily incident.
-     * Never trusts the client's reported elapsed time or board: the token
-     * proves when the puzzle was issued, and the submitted cells are
-     * replayed against the actual engine before any time is recorded.
+     * Never trusts the client's reported elapsed time or board: elapsed
+     * time is measured from this account's bound start (see daily() /
+     * bindDailyStart()), not from anything the client sends, and the
+     * submitted cells are replayed against the actual engine before any
+     * time is recorded.
      */
     public function submitDailyScore(Request $request): JsonResponse
     {
@@ -86,18 +100,19 @@ class BurnfrontController extends Controller
             return response()->json(['message' => 'Invalid token.'], 422);
         }
 
-        if (
-            ! is_array($token)
-            || ! isset($token['date'], $token['issuedAt'])
-            || ! is_string($token['date'])
-            || ! is_int($token['issuedAt'])
-        ) {
+        if (! is_array($token) || ! isset($token['date']) || ! is_string($token['date'])) {
             return response()->json(['message' => 'Invalid token.'], 422);
         }
 
         $date = now('UTC')->toDateString();
         if ($token['date'] !== $date) {
             return response()->json(['message' => "Not today's incident."], 422);
+        }
+
+        $userId = $request->user()->id;
+        $startedAt = Cache::get($this->dailyStartKey($userId, $date));
+        if ($startedAt === null) {
+            return response()->json(['message' => "Load today's incident while signed in before submitting."], 422);
         }
 
         $puzzlePayload = Cache::get($this->dailyCacheKey($date));
@@ -141,15 +156,15 @@ class BurnfrontController extends Controller
             return response()->json(['message' => "Board doesn't solve the incident."], 422);
         }
 
-        $timeMs = max(0, now('UTC')->valueOf() - $token['issuedAt'] * 1000);
+        $timeMs = max(0, now('UTC')->valueOf() - $startedAt * 1000);
 
-        if (DailyScore::where('user_id', $request->user()->id)->whereDate('date', $date)->exists()) {
+        if (DailyScore::where('user_id', $userId)->whereDate('date', $date)->exists()) {
             return response()->json(['message' => "Already on today's board."], 409);
         }
 
         try {
             $score = DailyScore::create([
-                'user_id' => $request->user()->id,
+                'user_id' => $userId,
                 'date' => $date,
                 'time_ms' => $timeMs,
             ]);
@@ -188,6 +203,21 @@ class BurnfrontController extends Controller
     private function dailyCacheKey(string $date): string
     {
         return "burnfront:daily:v1:{$date}";
+    }
+
+    /**
+     * Idempotent: the first call for a given (user, date) wins and every
+     * later call is a no-op, so nothing — including refetching /daily
+     * right before submitting — can push this account's start time later.
+     */
+    private function bindDailyStart(int $userId, string $date): void
+    {
+        Cache::add($this->dailyStartKey($userId, $date), now('UTC')->timestamp, now('UTC')->endOfDay());
+    }
+
+    private function dailyStartKey(int $userId, string $date): string
+    {
+        return "burnfront:daily:start:v1:{$date}:{$userId}";
     }
 
     /**

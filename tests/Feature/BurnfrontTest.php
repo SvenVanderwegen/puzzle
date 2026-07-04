@@ -8,6 +8,7 @@ use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -209,8 +210,15 @@ class BurnfrontTest extends TestCase
         $a = $this->getJson('/daily')->json();
         $b = $this->getJson('/daily')->json();
 
-        unset($a['token'], $b['token']); // the token embeds an issue timestamp, expected to differ
+        unset($a['token'], $b['token']); // encrypted separately each time, ciphertext is expected to differ
         $this->assertSame($a, $b);
+    }
+
+    public function test_daily_endpoint_reports_not_yet_scored_for_a_guest(): void
+    {
+        $response = $this->getJson('/daily');
+
+        $response->assertJson(['alreadyScored' => false, 'scoreTimeMs' => null]);
     }
 
     public function test_daily_puzzle_difficulty_is_rejected_by_the_puzzle_endpoint(): void
@@ -246,10 +254,16 @@ class BurnfrontTest extends TestCase
         $response->assertStatus(401);
     }
 
+    /**
+     * The daily flow always fetches /daily while signed in before playing
+     * (this is what binds the account's start time — see
+     * BurnfrontController@daily), so every submission test here does the
+     * same: acts as the user first, then fetches.
+     */
     public function test_submit_daily_score_accepts_a_correct_board_and_records_a_verified_time(): void
     {
         $user = User::factory()->create();
-        $daily = $this->getJson('/daily')->json();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
 
         $response = $this->actingAs($user)->postJson('/daily/score', [
             'token' => $daily['token'],
@@ -266,7 +280,7 @@ class BurnfrontTest extends TestCase
     public function test_submit_daily_score_rejects_an_incorrect_board(): void
     {
         $user = User::factory()->create();
-        $daily = $this->getJson('/daily')->json();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
 
         $response = $this->actingAs($user)->postJson('/daily/score', [
             'token' => $daily['token'],
@@ -280,12 +294,9 @@ class BurnfrontTest extends TestCase
     public function test_submit_daily_score_rejects_a_stale_token(): void
     {
         $user = User::factory()->create();
-        $daily = $this->getJson('/daily')->json();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
 
-        $staleToken = Crypt::encryptString(json_encode([
-            'date' => now('UTC')->subDay()->toDateString(),
-            'issuedAt' => now('UTC')->subDay()->timestamp,
-        ]));
+        $staleToken = Crypt::encryptString(json_encode(['date' => now('UTC')->subDay()->toDateString()]));
 
         $response = $this->actingAs($user)->postJson('/daily/score', [
             'token' => $staleToken,
@@ -296,10 +307,24 @@ class BurnfrontTest extends TestCase
         $this->assertDatabaseCount('burnfront_daily_scores', 0);
     }
 
+    public function test_submit_daily_score_rejects_a_submission_that_never_loaded_daily_while_signed_in(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->getJson('/daily')->json(); // fetched as a guest — never binds a start for $user
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('burnfront_daily_scores', 0);
+    }
+
     public function test_submit_daily_score_rejects_a_duplicate_submission_for_the_same_day(): void
     {
         $user = User::factory()->create();
-        $daily = $this->getJson('/daily')->json();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
         $shaded = $this->solveDaily($daily);
 
         $this->actingAs($user)->postJson('/daily/score', ['token' => $daily['token'], 'shaded' => $shaded])
@@ -309,6 +334,61 @@ class BurnfrontTest extends TestCase
 
         $response->assertStatus(409);
         $this->assertDatabaseCount('burnfront_daily_scores', 1);
+    }
+
+    /**
+     * Regression test for the reported timing bug: /daily used to mint a
+     * fresh issuedAt on every request, so a player who already knew the
+     * solution could refetch right before submitting to reset their own
+     * clock to ~0. The start time must instead be bound to this account's
+     * *first* fetch of the day and stay fixed no matter how many times
+     * /daily is refetched afterward.
+     */
+    public function test_submit_daily_score_measures_from_the_first_fetch_not_a_later_refetch(): void
+    {
+        $user = User::factory()->create();
+
+        Carbon::setTestNow(Carbon::parse('2026-07-04 10:00:00', 'UTC'));
+        $daily = $this->actingAs($user)->getJson('/daily')->json(); // binds start at 10:00:00
+
+        Carbon::setTestNow(Carbon::parse('2026-07-04 10:05:00', 'UTC'));
+        $this->actingAs($user)->getJson('/daily'); // refetching must not push the bound start later
+
+        Carbon::setTestNow(Carbon::parse('2026-07-04 10:07:00', 'UTC'));
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        Carbon::setTestNow();
+
+        $response->assertStatus(200);
+        // ~7 minutes elapsed since the first fetch, not ~2 minutes since the refetch.
+        $this->assertEqualsWithDelta(7 * 60 * 1000, $response->json('time_ms'), 1000);
+    }
+
+    /**
+     * Regression test for the reported bug where an authenticated player's
+     * "already solved today" state was read from localStorage — stale if
+     * they'd played earlier as a guest and only just signed in — instead of
+     * from the server. /daily must report the server's own truth so a
+     * signed-in player who hasn't actually posted a score yet gets a fresh,
+     * playable board rather than being locked out.
+     */
+    public function test_daily_endpoint_reports_already_scored_after_this_account_has_submitted(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->getJson('/daily');
+
+        $response->assertJson(['alreadyScored' => true]);
+        $this->assertIsInt($response->json('scoreTimeMs'));
     }
 
     public function test_daily_leaderboard_returns_entries_sorted_by_time(): void
