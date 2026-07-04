@@ -1,45 +1,46 @@
 /**
- * /academy and /academy/$slug stubs — heading, local progress line, and the
- * lesson area WS-12 replaces (7 lessons per product §5).
+ * /academy and /academy/$slug — thin route shells that lazily load the Academy
+ * feature (WS-12). The heavy graph (lesson player, beat engine, board data,
+ * ui-web board) lives in one on-demand chunk (src/academy/routes.tsx), so the
+ * hub and every other route stay off the academy's weight and the initial
+ * bundle stays under budget (playbook §5 gate 7). Both exports lazy-import the
+ * SAME module, so they resolve to a single shared chunk.
  */
-import { useParams } from '@tanstack/react-router';
-import type { ReactElement } from 'react';
-import { PageHeading } from '../chrome/PageHeading';
-import { useLocalState } from '../state/runtime';
+import { lazy, Suspense, type ReactElement } from 'react';
 import { t } from '../strings';
 
-export function AcademyPage(): ReactElement {
-  const state = useLocalState();
+const AcademyIndex = lazy(() =>
+  import('../academy/routes').then((module) => ({ default: module.AcademyIndex })),
+);
+const LessonRoute = lazy(() =>
+  import('../academy/routes').then((module) => ({ default: module.LessonRoute })),
+);
+
+function Loading(): ReactElement {
   return (
-    <>
-      <PageHeading>{t('hub.lane.academy')}</PageHeading>
-      <p className="bf-lane__meta">
-        {t('hub.academy.progress', { done: state.academy.done, total: state.academy.total })}
-      </p>
-      <section data-ws="WS-12" aria-labelledby="bf-academy-area">
-        <p className="bf-lane__meta" id="bf-academy-area">
-          {t('play.loading')}
-        </p>
-      </section>
-    </>
+    <p className="bf-lane__meta" role="status">
+      {t('play.loading')}
+    </p>
+  );
+}
+
+export function AcademyPage(): ReactElement {
+  return (
+    <div data-ws="WS-12">
+      <Suspense fallback={<Loading />}>
+        <AcademyIndex />
+      </Suspense>
+    </div>
   );
 }
 
 export function AcademyLessonPage(): ReactElement {
-  const params = useParams({ strict: false });
   return (
-    <>
-      <PageHeading>{t('hub.lane.academy')}</PageHeading>
-      <p>
-        <span className="bf-chip">
-          <code>{params.slug ?? ''}</code>
-        </span>
-      </p>
-      <section data-ws="WS-12" aria-labelledby="bf-lesson-area">
-        <p className="bf-lane__meta" id="bf-lesson-area">
-          {t('play.loading')}
-        </p>
-      </section>
-    </>
+    <div data-ws="WS-12">
+      <Suspense fallback={<Loading />}>
+        <LessonRoute />
+      </Suspense>
+    </div>
   );
 }
+</content>

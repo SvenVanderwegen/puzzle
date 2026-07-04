@@ -32,6 +32,19 @@ function PlayButton(props: { readonly decision: PlayDecision }): ReactElement {
       </Link>
     );
   }
+  if (decision.to === '/academy') {
+    // First Shift funnel (WS-12): route into the lesson, not the daily.
+    return (
+      <Link
+        className="bf-play"
+        to="/academy/$slug"
+        params={{ slug: decision.slug ?? 'first-shift' }}
+        data-decision={decision.kind}
+      >
+        {label}
+      </Link>
+    );
+  }
   return (
     <Link className="bf-play" to="/daily/{-$date}" data-decision={decision.kind}>
       {label}
@@ -98,14 +111,22 @@ function EndlessLane(props: { readonly state: LocalState }): ReactElement {
 
 function AcademyLane(props: { readonly state: LocalState }): ReactElement {
   const academy = props.state.academy;
+  const certified = academy.total > 0 && academy.done >= academy.total;
   return (
     <section className="bf-lane" aria-labelledby="bf-lane-academy" data-ws="WS-12">
       <h2 className="bf-lane__title" id="bf-lane-academy">
         <Link to="/academy">{t('hub.lane.academy')}</Link>
       </h2>
-      <p className="bf-lane__meta">
-        {t('hub.academy.progress', { done: academy.done, total: academy.total })}
-      </p>
+      <div className="bf-lane__row">
+        <span className="bf-lane__meta">
+          {t('hub.academy.progress', { done: academy.done, total: academy.total })}
+        </span>
+        {certified ? (
+          <span className="bf-chip" data-certified="true">
+            {t('academy.certified')}
+          </span>
+        ) : null}
+      </div>
     </section>
   );
 }

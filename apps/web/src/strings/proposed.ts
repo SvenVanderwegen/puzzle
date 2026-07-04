@@ -40,6 +40,7 @@ export const proposedCatalog = {
   'academy.practice.intro':
     'Shade the firebreaks that make every number exact. Same rules, live board.',
   'academy.practice.next': 'Next board',
+  'academy.practice.finish': 'Finish the lesson',
   'academy.lesson.completeHeading': 'Lesson contained',
   'academy.lesson.completeNote':
     'You have the argument and the practice. It carries into every board from here.',
