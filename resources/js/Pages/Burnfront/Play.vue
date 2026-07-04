@@ -238,6 +238,23 @@ function revealSolution(shaded) {
     }
 }
 
+/* The 'custom' tier isn't a fixed dictionary entry — its rows/cols/breaks
+   came from the player's own setup form and travel down as the 'custom'
+   entry of the `difficulties` prop (see BurnfrontController::endlessPlay()).
+   Every request that names a difficulty needs to carry that grid back to
+   the server, since /puzzle and /hint can't otherwise know what a custom
+   grid even is. */
+function difficultyQuery(difficulty) {
+    const params = { difficulty };
+    if (difficulty === 'custom') {
+        const custom = props.difficulties.custom;
+        params.rows = custom.rows;
+        params.cols = custom.cols;
+        params.breaks = custom.breaks;
+    }
+    return params;
+}
+
 function xsrfToken() {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
     return match ? decodeURIComponent(match[1]) : null;
@@ -291,7 +308,7 @@ async function newGame() {
     veilVisible.value = true;
     bannerVisible.value = false;
     try {
-        const resp = await fetch('/puzzle?difficulty=' + encodeURIComponent(diff.value));
+        const resp = await fetch('/puzzle?' + new URLSearchParams(difficultyQuery(diff.value)));
         if (!resp.ok) throw new Error('puzzle request failed');
         const p = await resp.json();
         if (token !== genToken) return; /* superseded by a newer request */
@@ -419,7 +436,7 @@ async function requestHint() {
             else if (marks.value[i] === 2) open.push(i);
         }
         const qs = new URLSearchParams({
-            difficulty: game.value.difficulty,
+            ...difficultyQuery(game.value.difficulty),
             spark: String(game.value.spark),
             clues: JSON.stringify(game.value.clues),
             shaded: JSON.stringify(shaded),

@@ -58,6 +58,10 @@ class BurnfrontTest extends TestCase
             ->has('difficulties.lookout')
             ->has('difficulties.crew')
             ->has('difficulties.hotshot')
+            ->has('customBounds.minDim')
+            ->has('customBounds.maxDim')
+            ->has('customBounds.minBreaks')
+            ->has('customBounds.breaksRatio')
         );
     }
 
@@ -88,6 +92,32 @@ class BurnfrontTest extends TestCase
     public function test_the_endless_play_screen_falls_back_to_the_default_difficulty_for_an_unknown_tier(): void
     {
         $response = $this->get('/endless/play?difficulty=arsonist');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('difficulty', PuzzleService::DEFAULT_DIFFICULTY)
+        );
+    }
+
+    public function test_the_endless_play_screen_honors_a_valid_custom_grid(): void
+    {
+        $response = $this->get('/endless/play?difficulty=custom&rows=6&cols=7&breaks=10');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('difficulty', 'custom')
+            ->where('difficulties.custom.rows', 6)
+            ->where('difficulties.custom.cols', 7)
+            ->where('difficulties.custom.breaks', 10)
+            ->has('difficulties.lookout')
+        );
+    }
+
+    public function test_the_endless_play_screen_falls_back_to_the_default_difficulty_for_an_invalid_custom_grid(): void
+    {
+        $response = $this->get('/endless/play?difficulty=custom&rows=999&cols=7&breaks=10');
 
         $response->assertStatus(200);
         $response->assertInertia(fn (Assert $page) => $page
@@ -166,6 +196,43 @@ class BurnfrontTest extends TestCase
         ]);
     }
 
+    public function test_puzzle_endpoint_generates_a_custom_incident(): void
+    {
+        $response = $this->getJson('/puzzle?'.http_build_query([
+            'difficulty' => 'custom',
+            'rows' => 6,
+            'cols' => 7,
+            'breaks' => 10,
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'difficulty' => 'custom',
+            'rows' => 6,
+            'cols' => 7,
+            'breaks' => 10,
+        ]);
+    }
+
+    public function test_puzzle_endpoint_rejects_a_custom_grid_outside_bounds(): void
+    {
+        $response = $this->getJson('/puzzle?'.http_build_query([
+            'difficulty' => 'custom',
+            'rows' => 999,
+            'cols' => 7,
+            'breaks' => 10,
+        ]));
+
+        $response->assertStatus(422);
+    }
+
+    public function test_puzzle_endpoint_rejects_a_custom_grid_missing_params(): void
+    {
+        $response = $this->getJson('/puzzle?difficulty=custom&rows=6&cols=7');
+
+        $response->assertStatus(422);
+    }
+
     public function test_puzzle_endpoint_defaults_to_lookout(): void
     {
         $response = $this->getJson('/puzzle');
@@ -196,6 +263,43 @@ class BurnfrontTest extends TestCase
         $response->assertJson(['status' => 'forced']);
         $response->assertJsonStructure(['status', 'cell', 'state']);
         $this->assertContains($response->json('state'), ['break', 'open']);
+    }
+
+    public function test_hint_endpoint_offers_a_forced_deduction_for_a_custom_incident(): void
+    {
+        $puzzle = $this->getJson('/puzzle?'.http_build_query([
+            'difficulty' => 'custom',
+            'rows' => 6,
+            'cols' => 7,
+            'breaks' => 10,
+        ]))->json();
+
+        $response = $this->getJson('/hint?'.http_build_query([
+            'difficulty' => 'custom',
+            'rows' => 6,
+            'cols' => 7,
+            'breaks' => 10,
+            'spark' => $puzzle['spark'],
+            'clues' => json_encode($puzzle['clues']),
+            'shaded' => json_encode([]),
+        ]));
+
+        $response->assertStatus(200);
+        $this->assertContains($response->json('status'), ['forced', 'complete']);
+    }
+
+    public function test_hint_endpoint_rejects_a_custom_grid_outside_bounds(): void
+    {
+        $response = $this->getJson('/hint?'.http_build_query([
+            'difficulty' => 'custom',
+            'rows' => 999,
+            'cols' => 7,
+            'breaks' => 10,
+            'spark' => 0,
+            'clues' => json_encode([]),
+        ]));
+
+        $response->assertStatus(422);
     }
 
     public function test_hint_endpoint_rejects_unknown_difficulty(): void

@@ -55,13 +55,37 @@ class BurnfrontController extends Controller
     {
         return Inertia::render('Burnfront/EndlessSetup', [
             'difficulties' => PuzzleService::DIFFICULTIES,
+            'customBounds' => [
+                'minDim' => PuzzleService::CUSTOM_MIN_DIM,
+                'maxDim' => PuzzleService::CUSTOM_MAX_DIM,
+                'minBreaks' => PuzzleService::CUSTOM_MIN_BREAKS,
+                'breaksRatio' => PuzzleService::CUSTOM_BREAKS_RATIO,
+            ],
         ]);
     }
 
+    /**
+     * For 'custom' this also carries the player's requested rows/cols/breaks
+     * (validated against PuzzleService::customConfig()) — everything else
+     * about the flow (newGame(), requestHint() in Play.vue) reads the grid
+     * back out of the 'custom' entry this injects into `difficulties` rather
+     * than needing a separate prop.
+     */
     public function endlessPlay(Request $request): Response
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
-        if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
+
+        if ($difficulty === 'custom') {
+            $config = $this->resolveCustomConfig($request);
+            if ($config !== null) {
+                return Inertia::render('Burnfront/Play', [
+                    'mode' => 'endless',
+                    'difficulties' => PuzzleService::DIFFICULTIES + ['custom' => $config],
+                    'difficulty' => 'custom',
+                ]);
+            }
+            $difficulty = PuzzleService::DEFAULT_DIFFICULTY;
+        } elseif (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
             $difficulty = PuzzleService::DEFAULT_DIFFICULTY;
         }
 
@@ -92,6 +116,15 @@ class BurnfrontController extends Controller
     public function puzzle(Request $request): JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+
+        if ($difficulty === 'custom') {
+            $config = $this->resolveCustomConfig($request);
+            if ($config === null) {
+                return response()->json(['message' => 'Invalid custom grid.'], 422);
+            }
+
+            return response()->json($this->puzzles->generate('custom', $config));
+        }
 
         if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
             return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);
@@ -262,6 +295,31 @@ class BurnfrontController extends Controller
         return response()->json(['date' => $date, 'entries' => $entries]);
     }
 
+    /**
+     * Reads rows/cols/breaks off the request's query string for the
+     * 'custom' difficulty and hands them to PuzzleService::customConfig()
+     * for bounds validation — null if any is missing, non-numeric, or out
+     * of bounds. Query values arrive as strings, so ctype_digit() guards
+     * against non-integer input (negative numbers, floats) before casting.
+     *
+     * @return array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}|null
+     */
+    private function resolveCustomConfig(Request $request): ?array
+    {
+        foreach (['rows', 'cols', 'breaks'] as $key) {
+            $raw = $request->query($key);
+            if (! is_string($raw) || ! ctype_digit($raw)) {
+                return null;
+            }
+        }
+
+        return PuzzleService::customConfig(
+            (int) $request->query('rows'),
+            (int) $request->query('cols'),
+            (int) $request->query('breaks'),
+        );
+    }
+
     private function dailyCacheKey(string $date): string
     {
         return "burnfront:daily:v1:{$date}";
@@ -330,7 +388,9 @@ class BurnfrontController extends Controller
     public function hint(Request $request): JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
-        $config = PuzzleService::tierConfig($difficulty);
+        $config = $difficulty === 'custom'
+            ? $this->resolveCustomConfig($request)
+            : PuzzleService::tierConfig($difficulty);
 
         if ($config === null) {
             return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);

@@ -27,6 +27,23 @@ final class PuzzleService
     public const DEFAULT_DIFFICULTY = 'lookout';
 
     /**
+     * Bounds for the player-chosen custom grid. These aren't a difficulty
+     * curve decision — they exist because Engine::witnessedTerrain() has no
+     * time budget of its own and can spin close to forever repairing terrain
+     * once the breaks-to-cells ratio gets too dense for a grid this small
+     * (verified empirically: a 4x4 grid with 5 of its 16 cells shaded — under
+     * 32% — already hangs). CUSTOM_BREAKS_RATIO stays comfortably under every
+     * failure point observed across 4x4 through 10x10.
+     */
+    public const CUSTOM_MIN_DIM = 4;
+
+    public const CUSTOM_MAX_DIM = 10;
+
+    public const CUSTOM_MIN_BREAKS = 2;
+
+    public const CUSTOM_BREAKS_RATIO = 0.28;
+
+    /**
      * Kept out of DIFFICULTIES on purpose: the daily incident is a distinct
      * mode (one shared, date-seeded board), not a tier a player picks from
      * the difficulty selector — /puzzle?difficulty=daily must keep 422ing.
@@ -48,11 +65,53 @@ final class PuzzleService
     }
 
     /**
+     * The largest number of firebreaks that's safe to generate for a given
+     * custom grid — see CUSTOM_BREAKS_RATIO for why this cap exists.
+     */
+    public static function customMaxBreaks(int $rows, int $cols): int
+    {
+        return max(self::CUSTOM_MIN_BREAKS, (int) floor($rows * $cols * self::CUSTOM_BREAKS_RATIO));
+    }
+
+    /**
+     * Validates and builds a tier-shaped config for a player-chosen custom
+     * grid, or null if any dimension or the break count falls outside the
+     * bounds above. budgetMs scales with cell count the same way the named
+     * tiers already do, capped at the largest budget any shipped tier uses.
+     *
+     * @return array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}|null
+     */
+    public static function customConfig(int $rows, int $cols, int $breaks): ?array
+    {
+        if ($rows < self::CUSTOM_MIN_DIM || $rows > self::CUSTOM_MAX_DIM) {
+            return null;
+        }
+        if ($cols < self::CUSTOM_MIN_DIM || $cols > self::CUSTOM_MAX_DIM) {
+            return null;
+        }
+        if ($breaks < self::CUSTOM_MIN_BREAKS || $breaks > self::customMaxBreaks($rows, $cols)) {
+            return null;
+        }
+
+        $cells = $rows * $cols;
+
+        return [
+            'label' => "Custom {$rows}×{$cols}",
+            'rows' => $rows,
+            'cols' => $cols,
+            'breaks' => $breaks,
+            'budgetMs' => (int) min(14000, max(4000, round($cells * 220))),
+            'minClues' => $breaks,
+            'timed' => true,
+        ];
+    }
+
+    /**
      * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string}
      */
-    public function generate(string $difficulty, ?callable $random = null): array
+    public function generate(string $difficulty, ?array $config = null, ?callable $random = null): array
     {
-        $config = self::DIFFICULTIES[$difficulty] ?? null;
+        $config ??= self::DIFFICULTIES[$difficulty] ?? null;
         if ($config === null) {
             throw new InvalidArgumentException("Unknown difficulty [{$difficulty}].");
         }
