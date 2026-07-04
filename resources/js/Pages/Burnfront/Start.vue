@@ -5,7 +5,7 @@ import { fmtClock } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
-    dailyStatus: { type: Object, default: null }, // {alreadyScored, scoreTimeMs} | null, signed-in users only
+    dailyStatus: { type: Object, default: null }, // {alreadyScored, scoreTimeMs, streak: {current, best}} | null, signed-in users only
 });
 
 const page = usePage();
@@ -13,8 +13,9 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 
 const dailyMeta = computed(() => {
     if (!currentUser.value) return 'Sign in to unlock';
-    if (props.dailyStatus?.alreadyScored) return `Solved in ${fmtClock(props.dailyStatus.scoreTimeMs)}`;
-    return "Today's incident awaits";
+    const base = props.dailyStatus?.alreadyScored ? `Solved in ${fmtClock(props.dailyStatus.scoreTimeMs)}` : "Today's incident awaits";
+    const streak = props.dailyStatus?.streak?.current ?? 0;
+    return streak > 0 ? `${base} · \u{1F525} ${streak}-day streak` : base;
 });
 </script>
 

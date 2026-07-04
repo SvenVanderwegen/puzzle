@@ -33,11 +33,10 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
                 <span class="bf-tile-meta">Coming soon</span>
             </div>
 
-            <div class="bf-tile is-locked cursor-default">
+            <Link href="/daily/history" class="bf-tile">
                 <span class="bf-tile-title">Daily History</span>
                 <span class="bf-tile-desc">Your streak and past daily results.</span>
-                <span class="bf-tile-meta">Coming soon</span>
-            </div>
+            </Link>
 
             <Link href="/logout" method="post" as="button" class="bf-tile cursor-pointer text-left">
                 <span class="bf-tile-title text-ember">Log Out</span>
