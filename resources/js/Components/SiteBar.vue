@@ -1,9 +1,8 @@
 <script setup>
 /* Shared utility bar for every Burnfront page: a back-link/breadcrumb on the
-   left, the account entry point on the right. Stacks on narrow screens so
-   neither side has to squeeze or wrap mid-word; sits on one row once there's
-   room. The avatar is a large (44px) tap target on mobile since it's often
-   the only interactive thing in reach up here. */
+   left, the account entry point on the right, always on one row. The avatar
+   is a large (44px) tap target on mobile since it's often the only
+   interactive thing in reach up here. */
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import Avatar from '@/Components/Avatar.vue';
@@ -19,8 +18,8 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 </script>
 
 <template>
-    <div class="flex flex-col gap-1 text-[11px] sm:flex-row sm:items-center sm:justify-between">
-        <p class="flex min-h-11 items-center tracking-[.18em] text-ash-dim uppercase sm:min-h-0">
+    <div class="flex items-center justify-between gap-3 text-[11px]">
+        <p class="flex min-w-0 items-center truncate tracking-[.18em] text-ash-dim uppercase">
             <template v-if="back">
                 <Link
                     :href="back.href"
@@ -35,7 +34,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 
         <Link
             :href="currentUser ? '/account' : '/login'"
-            class="group -mr-1 inline-flex items-center gap-2.5 self-end rounded-full py-1 pr-1 pl-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flame sm:self-auto"
+            class="group -mr-1 inline-flex shrink-0 items-center gap-2.5 rounded-full py-1 pr-1 pl-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flame"
             :aria-label="currentUser ? `Account, signed in as ${currentUser.name}` : 'Sign in'"
         >
             <span class="hidden text-[11px] tracking-[.09em] text-ash-dim uppercase group-hover:text-ember group-focus-visible:text-ember sm:inline">
