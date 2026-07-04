@@ -6,12 +6,15 @@ import LoadingVeil from './LoadingVeil.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
-    mode: { type: String, required: true }, // 'endless' | 'daily'
+    mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive'
     difficulties: { type: Object, default: () => ({}) },
     difficulty: { type: String, default: '' },
+    archiveDate: { type: String, default: null }, // 'archive' mode only
 });
 
 const isDaily = computed(() => props.mode === 'daily');
+const isArchive = computed(() => props.mode === 'archive');
+const isEndless = computed(() => props.mode === 'endless');
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -19,9 +22,11 @@ const diff = ref(props.difficulty);
 
 const crumbText = computed(() => {
     if (isDaily.value) return 'Daily incident';
+    if (isArchive.value) return props.archiveDate; // back link already reads "Archive", so the crumb is just the date
     const label = props.difficulties[diff.value]?.label;
     return label ? `Endless · ${label}` : 'Endless';
 });
+const backLink = computed(() => (isArchive.value ? { href: '/daily/archive', text: 'Archive' } : { href: '/', text: 'Menu' }));
 const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty, name, blurb, timed, token} */
 const marks = ref([]); /* 0 none, 1 break, 2 dot */
 const hintSafe = ref([]); /* per-cell: this firebreak was auto-placed by a hint and still stands */
@@ -42,7 +47,18 @@ const voided = ref(false); /* true once the board was revealed via the "Solve" c
 
 const dailyDate = ref(null);
 const dailyScorePosted = ref(false);
+const dailyRank = ref(null);
+const streakBonus = ref(0); /* +1 the instant this session posts a fresh daily score, before a reload would pick it up server-side */
+const hintsUsedThisRun = ref(0);
+const shareCopied = ref(false);
 const leaderboard = ref([]);
+
+const displayStreak = computed(() => {
+    const base = game.value?.streakBase;
+    if (!base) return null;
+    const current = base.current + streakBonus.value;
+    return { current, best: Math.max(base.best, current) };
+});
 
 const undoStack = reactive([]);
 let marksVersion = 0;
@@ -216,8 +232,13 @@ function win(times) {
     }, total);
 
     // The /daily/play route requires an authenticated session (see
-    // routes/web.php), so a signed-in user is always present here.
+    // routes/web.php), so a signed-in user is always present here. win()
+    // only ever runs on a fresh completion (an already-solved board is
+    // painted straight into its finished state by loadDaily()/loadArchive()
+    // without calling win()), so bumping the streak display here can't
+    // double-count a reopened board.
     if (isDaily.value && dailyDate.value) {
+        streakBonus.value = 1;
         const shaded = [];
         for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
         submitDailyScore(shaded);
@@ -307,7 +328,11 @@ async function submitDailyScore(shaded) {
             },
             body: JSON.stringify({ token: game.value.token, shaded }),
         });
-        if (resp.ok || resp.status === 409) {
+        if (resp.ok) {
+            const data = await resp.json();
+            dailyRank.value = data.rank ?? null;
+            fetchLeaderboard();
+        } else if (resp.status === 409) {
             fetchLeaderboard();
         } else {
             dailyScorePosted.value = false;
@@ -315,6 +340,40 @@ async function submitDailyScore(shaded) {
     } catch (e) {
         dailyScorePosted.value = false;
     }
+}
+
+/* A Wordle-style spoiler-free summary: marks the spark and clue cells only
+   (never the firebreak solution, which is what would actually spoil the
+   puzzle for someone else) so it's safe to paste anywhere before or after
+   solving. Daily-only — endless/archive boards aren't a shared incident
+   worth comparing notes on. */
+function buildShareText() {
+    const g = game.value;
+    const lines = [];
+    for (let r = 0; r < g.R; r++) {
+        let line = '';
+        for (let c = 0; c < g.C; c++) {
+            const i = r * g.C + c;
+            line += i === g.spark ? '🔥' : g.clueMap.has(i) ? '🟧' : '⬛';
+        }
+        lines.push(line);
+    }
+    const rank = dailyRank.value ? ` · rank #${dailyRank.value}` : '';
+    const clean = hintsUsedThisRun.value === 0 ? ' · clean case' : '';
+    return `Burnfront — ${g.name}\nContained in ${finalTimeText.value}${rank}${clean}\n${lines.join('\n')}`;
+}
+
+async function shareResult() {
+    if (!game.value) return;
+    try {
+        await navigator.clipboard.writeText(buildShareText());
+    } catch (e) {
+        return; /* clipboard permission denied or unavailable — nothing else to fall back to */
+    }
+    shareCopied.value = true;
+    setTimeout(() => {
+        shareCopied.value = false;
+    }, 2200);
 }
 
 async function newGame() {
@@ -379,6 +438,10 @@ async function loadDaily() {
     const token = ++genToken;
     locked.value = true;
     dailyScorePosted.value = false;
+    dailyRank.value = null;
+    streakBonus.value = 0;
+    hintsUsedThisRun.value = 0;
+    shareCopied.value = false;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -406,6 +469,7 @@ async function loadDaily() {
             blurb: p.blurb,
             timed: true,
             token: p.token,
+            streakBase: p.streak,
         });
         marks.value = new Array(n).fill(0);
         hintSafe.value = new Array(n).fill(false);
@@ -419,6 +483,70 @@ async function loadDaily() {
 
         if (p.alreadyScored) {
             dailyScorePosted.value = true;
+            locked.value = true;
+            boardDone.value = true;
+            if (p.solution) revealSolution(p.solution);
+            finalTimeText.value = fmtClock(p.scoreTimeMs);
+            bannerVisible.value = true;
+        } else {
+            boardDone.value = false;
+            locked.value = false;
+            startClock();
+        }
+    } catch (e) {
+        if (token === genToken) locked.value = false;
+        showStatus("Couldn't reach the incident desk. Try again.");
+    } finally {
+        if (token === genToken) veilVisible.value = false;
+    }
+}
+
+/* Practice replay of a past daily incident (see BurnfrontController::
+   dailyArchivePuzzle()) — deterministic per date, never scored. game.difficulty
+   is set to 'archive' rather than 'daily' so requestHint()/solvePuzzle() ask
+   the server for the daily tier's board shape (see PuzzleService::
+   tierConfig()) without solvePuzzle() voiding *today's* real daily score,
+   which it would if this reused the 'daily' difficulty string. win() never
+   posts a score here since isDaily is false for 'archive' mode. */
+async function loadArchive() {
+    const token = ++genToken;
+    locked.value = true;
+    stopClock();
+    clearStatus();
+    veilVisible.value = true;
+    bannerVisible.value = false;
+    voided.value = false;
+    try {
+        const resp = await fetch(`/daily/archive/${props.archiveDate}`);
+        if (!resp.ok) throw new Error('archive request failed');
+        const p = await resp.json();
+        if (token !== genToken) return;
+        const n = p.rows * p.cols;
+        game.value = reactive({
+            n,
+            adj: buildAdj(p.rows, p.cols),
+            spark: p.spark,
+            R: p.rows,
+            C: p.cols,
+            N: p.breaks,
+            clueMap: new Map(p.clues),
+            clueIdx: p.clues.map((cv) => cv[0]),
+            clueVal: p.clues.map((cv) => cv[1]),
+            clues: p.clues,
+            difficulty: 'archive',
+            name: p.name,
+            blurb: p.blurb,
+            timed: true,
+        });
+        marks.value = new Array(n).fill(0);
+        hintSafe.value = new Array(n).fill(false);
+        wrongCells.value = new Array(n).fill(false);
+        cellStyle.value = new Array(n).fill(null);
+        burnt.value = new Array(n).fill(false);
+        revealedMinute.value = new Array(n).fill('');
+        undoStack.length = 0;
+
+        if (p.alreadyScored) {
             locked.value = true;
             boardDone.value = true;
             if (p.solution) revealSolution(p.solution);
@@ -455,6 +583,7 @@ async function loadDaily() {
 async function requestHint() {
     if (locked.value || !game.value || hinting.value) return;
     hinting.value = true;
+    if (isDaily.value) hintsUsedThisRun.value++; // mirrors the server's own count, purely for this run's "clean case" display
     const token = genToken;
     const version = marksVersion;
     try {
@@ -556,6 +685,8 @@ onBeforeUnmount(() => {
 
 if (isDaily.value) {
     loadDaily();
+} else if (isArchive.value) {
+    loadArchive();
 } else {
     newGame();
 }
@@ -565,7 +696,7 @@ if (isDaily.value) {
     <Head title="Burnfront" />
 
     <main class="mx-auto flex min-h-dvh max-w-[640px] flex-col gap-2.5 px-4 pt-3 pb-4">
-        <SiteBar :back="{ href: '/', text: 'Menu' }" :crumb="crumbText" />
+        <SiteBar :back="backLink" :crumb="crumbText" />
 
         <section class="flex min-h-0 flex-1 flex-col" aria-label="Puzzle board">
             <p v-if="game && game.name" class="text-sm text-ash">
@@ -573,7 +704,7 @@ if (isDaily.value) {
             </p>
 
             <div class="mt-2.5 flex flex-wrap items-center gap-2">
-                <template v-if="!isDaily">
+                <template v-if="isEndless">
                     <Link href="/endless" class="bf-btn">Change difficulty</Link>
                     <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
                 </template>
@@ -622,10 +753,20 @@ if (isDaily.value) {
                     <span class="bf-banner-headline">{{ voided ? 'SOLVED' : 'FIRE MAPPED' }}</span>
                     <p v-if="voided" class="text-sm text-ash">Answer revealed — time voided, this run wasn&rsquo;t saved.</p>
                     <p v-else-if="game.timed" class="text-sm text-ash">
-                        Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span> — every clue burns on
-                        time.
+                        Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span
+                        ><span v-if="isDaily && dailyRank"> &middot; rank #{{ dailyRank }}</span> — every clue burns on time.
                     </p>
                     <p v-else class="text-sm text-ash">Every clue burns on time.</p>
+                    <p v-if="isArchive" class="text-[13px] text-ash-dim">Practice run — not scored, no leaderboard entry.</p>
+                    <p v-if="isDaily && !voided && displayStreak" class="text-[13px] text-ash-dim">
+                        <template v-if="hintsUsedThisRun === 0">Clean case — no hints used. </template>&#128293;
+                        {{ displayStreak.current }}-day streak<template v-if="displayStreak.best > displayStreak.current">
+                            (best {{ displayStreak.best }})</template
+                        >
+                    </p>
+                    <button v-if="isDaily && !voided" type="button" class="bf-btn self-start" @click="shareResult">
+                        {{ shareCopied ? 'Copied!' : 'Share result' }}
+                    </button>
                 </div>
                 <p v-else-if="statusMessage" class="bf-status" role="status">{{ statusMessage }}</p>
                 <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
@@ -642,7 +783,12 @@ if (isDaily.value) {
                 <h3 class="text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
                 <ol class="flex flex-col gap-1 text-sm text-ash">
                     <li v-for="entry in leaderboard" :key="entry.rank" class="flex justify-between gap-3 tabular-nums">
-                        <span>{{ entry.rank }}. {{ entry.name }}</span>
+                        <span
+                            >{{ entry.rank }}. {{ entry.name }}
+                            <span v-if="entry.clean" class="text-[10px] tracking-[.1em] text-ember uppercase" title="Solved with no hints"
+                                >clean</span
+                            ></span
+                        >
                         <span class="text-paper">{{ fmtClock(entry.time_ms) }}</span>
                     </li>
                 </ol>

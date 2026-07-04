@@ -755,6 +755,246 @@ class BurnfrontTest extends TestCase
         ]);
     }
 
+    public function test_start_screen_reports_a_daily_streak(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-04 12:00:00', 'UTC'));
+        $user = User::factory()->create();
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-01', 'time_ms' => 1000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-02', 'time_ms' => 1000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-03', 'time_ms' => 1000]);
+
+        $response = $this->actingAs($user)->get('/');
+
+        Carbon::setTestNow();
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Start')
+            ->where('dailyStatus.streak.current', 3)
+            ->where('dailyStatus.streak.best', 3)
+        );
+    }
+
+    /**
+     * Missing yesterday breaks the *current* streak even if an older run was
+     * longer — dailyStreak() must report the older run only via `best`, and
+     * a `current` of 0 rather than incorrectly carrying it forward.
+     */
+    public function test_daily_streak_resets_after_a_missed_day(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-04 12:00:00', 'UTC'));
+        $user = User::factory()->create();
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-06-20', 'time_ms' => 1000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-01', 'time_ms' => 1000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-02', 'time_ms' => 1000]);
+        // 2026-07-03 (yesterday) is deliberately left unsolved.
+
+        $response = $this->actingAs($user)->get('/');
+
+        Carbon::setTestNow();
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Start')
+            ->where('dailyStatus.streak.current', 0)
+            ->where('dailyStatus.streak.best', 2)
+        );
+    }
+
+    public function test_submit_daily_score_records_a_clean_case_with_no_hints(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['clean' => true]);
+        $this->assertSame(0, DailyScore::first()->hints_used);
+    }
+
+    public function test_submit_daily_score_records_hints_used_and_is_not_clean(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $this->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $daily['spark'],
+            'clues' => json_encode($daily['clues']),
+        ]))->assertStatus(200);
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['clean' => false]);
+        $this->assertSame(1, DailyScore::first()->hints_used);
+    }
+
+    public function test_daily_leaderboard_reports_a_clean_flag_per_entry(): void
+    {
+        $date = now('UTC')->toDateString();
+        $clean = User::factory()->create(['name' => 'Clean Analyst']);
+        $hinted = User::factory()->create(['name' => 'Hinted Analyst']);
+        DailyScore::create(['user_id' => $clean->id, 'date' => $date, 'time_ms' => 1000, 'hints_used' => 0]);
+        DailyScore::create(['user_id' => $hinted->id, 'date' => $date, 'time_ms' => 2000, 'hints_used' => 2]);
+
+        $response = $this->getJson('/daily/leaderboard');
+
+        $response->assertJson([
+            'entries' => [
+                ['name' => 'Clean Analyst', 'clean' => true],
+                ['name' => 'Hinted Analyst', 'clean' => false],
+            ],
+        ]);
+    }
+
+    public function test_daily_history_requires_authentication(): void
+    {
+        $response = $this->get('/daily/history');
+
+        $response->assertRedirect('/login');
+    }
+
+    public function test_daily_history_reports_totals_and_streak(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-04 12:00:00', 'UTC'));
+        $user = User::factory()->create();
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-02', 'time_ms' => 4000, 'hints_used' => 0]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-03', 'time_ms' => 6000, 'hints_used' => 1]);
+
+        $response = $this->actingAs($user)->get('/daily/history');
+
+        Carbon::setTestNow();
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/DailyHistory')
+            ->where('totalClosed', 2)
+            ->where('bestTimeMs', 4000)
+            ->where('averageTimeMs', 5000)
+            ->where('cleanCount', 1)
+            ->where('streak.current', 2)
+            ->where('streak.best', 2)
+            ->has('entries', 2)
+        );
+    }
+
+    public function test_daily_archive_requires_authentication(): void
+    {
+        $response = $this->get('/daily/archive');
+
+        $response->assertRedirect('/login');
+    }
+
+    public function test_daily_archive_lists_the_past_thirty_days(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/daily/archive');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/DailyArchive')
+            ->has('entries', 30)
+        );
+    }
+
+    public function test_daily_archive_puzzle_rejects_todays_date(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->getJson('/daily/archive/'.now('UTC')->toDateString());
+
+        $response->assertStatus(422);
+    }
+
+    public function test_daily_archive_puzzle_rejects_a_date_too_far_in_the_past(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->getJson('/daily/archive/'.now('UTC')->subDays(60)->toDateString());
+
+        $response->assertStatus(422);
+    }
+
+    public function test_daily_archive_puzzle_rejects_a_malformed_date(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->getJson('/daily/archive/not-a-date');
+
+        $response->assertStatus(422);
+    }
+
+    public function test_daily_archive_puzzle_is_deterministic_and_carries_no_scoring_token(): void
+    {
+        $user = User::factory()->create();
+        $date = now('UTC')->subDays(3)->toDateString();
+
+        $a = $this->actingAs($user)->getJson("/daily/archive/{$date}")->json();
+        $b = $this->actingAs($user)->getJson("/daily/archive/{$date}")->json();
+
+        $this->assertSame($a, $b);
+        $this->assertArrayNotHasKey('token', $a);
+    }
+
+    public function test_daily_archive_play_screen_renders_for_a_valid_date(): void
+    {
+        $user = User::factory()->create();
+        $date = now('UTC')->subDays(2)->toDateString();
+
+        $response = $this->actingAs($user)->get("/daily/archive/{$date}/play");
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'archive')
+            ->where('archiveDate', $date)
+        );
+    }
+
+    public function test_daily_archive_play_screen_404s_for_an_invalid_date(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/daily/archive/not-a-date/play');
+
+        $response->assertStatus(404);
+    }
+
+    /**
+     * Archive replays are tagged 'archive', a distinct difficulty string
+     * from 'daily' (see PuzzleService::tierConfig()) specifically so that
+     * solve()'s void-the-run behavior — which only fires for 'daily' — can
+     * never reach into today's already-bound daily attempt just because a
+     * player used the "Solve" cheat button on a past incident instead.
+     */
+    public function test_solving_an_archived_incident_does_not_void_todays_daily_score(): void
+    {
+        $user = User::factory()->create();
+        $today = $this->actingAs($user)->getJson('/daily')->json();
+        $pastDate = now('UTC')->subDays(5)->toDateString();
+        $past = $this->actingAs($user)->getJson("/daily/archive/{$pastDate}")->json();
+
+        $this->actingAs($user)->getJson('/solve?'.http_build_query([
+            'difficulty' => 'archive',
+            'spark' => $past['spark'],
+            'clues' => json_encode($past['clues']),
+        ]))->assertStatus(200);
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $today['token'],
+            'shaded' => $this->solveDaily($today),
+        ]);
+
+        $response->assertStatus(200);
+    }
+
     /** @return list<int> the shaded cells of a valid solution for a /daily payload */
     private function solveDaily(array $daily): array
     {

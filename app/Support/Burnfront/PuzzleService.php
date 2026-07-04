@@ -57,7 +57,13 @@ final class PuzzleService
      */
     public static function tierConfig(string $difficulty): ?array
     {
-        if ($difficulty === 'daily') {
+        // 'archive' (a replayed past daily incident, see
+        // BurnfrontController::dailyArchivePlay()) shares the daily tier's
+        // board shape but is kept a distinct string from 'daily' on purpose:
+        // it's how BurnfrontController::solve() tells a practice replay
+        // apart from today's real incident, so revealing the solution
+        // during a replay can never void today's already-recorded score.
+        if ($difficulty === 'daily' || $difficulty === 'archive') {
             return self::DAILY_TIER;
         }
 

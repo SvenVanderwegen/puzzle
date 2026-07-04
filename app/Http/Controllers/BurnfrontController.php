@@ -10,6 +10,7 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Inertia\Inertia;
@@ -17,6 +18,16 @@ use Inertia\Response;
 
 class BurnfrontController extends Controller
 {
+    /**
+     * How many days back the daily archive (see dailyArchive()) reaches.
+     * Bounded rather than "every day since launch" because each archive
+     * date has to be generated (Engine::generate(), wall-clock-bounded up
+     * to the daily tier's 6s budget) the first time anyone requests it —
+     * an unbounded window would let a request pick an arbitrary old date
+     * and force a fresh multi-second generation for it.
+     */
+    private const ARCHIVE_DAYS = 30;
+
     public function __construct(private readonly PuzzleService $puzzles) {}
 
     /**
@@ -39,6 +50,7 @@ class BurnfrontController extends Controller
             $dailyStatus = [
                 'alreadyScored' => $existing !== null,
                 'scoreTimeMs' => $existing?->time_ms,
+                'streak' => $this->dailyStreak($user->id),
             ];
         }
 
@@ -166,7 +178,9 @@ class BurnfrontController extends Controller
         $payload['scoreTimeMs'] = $existing?->time_ms;
         if ($existing !== null) {
             $payload['solution'] = $this->solveDaily($payload);
+            $payload['cleanCase'] = $existing->hints_used === 0;
         }
+        $payload['streak'] = $this->dailyStreak($userId);
         $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
         return response()->json($payload);
@@ -267,6 +281,7 @@ class BurnfrontController extends Controller
                 'user_id' => $userId,
                 'date' => $date,
                 'time_ms' => $timeMs,
+                'hints_used' => Cache::get($this->dailyHintKey($userId, $date), 0),
             ]);
         } catch (UniqueConstraintViolationException) {
             return response()->json(['message' => "Already on today's board."], 409);
@@ -274,7 +289,7 @@ class BurnfrontController extends Controller
 
         $rank = DailyScore::whereDate('date', $date)->where('time_ms', '<', $score->time_ms)->count() + 1;
 
-        return response()->json(['time_ms' => $score->time_ms, 'rank' => $rank]);
+        return response()->json(['time_ms' => $score->time_ms, 'rank' => $rank, 'clean' => $score->hints_used === 0]);
     }
 
     /**
@@ -295,6 +310,7 @@ class BurnfrontController extends Controller
             'rank' => $i + 1,
             'name' => $score->user->name,
             'time_ms' => $score->time_ms,
+            'clean' => $score->hints_used === 0,
         ]);
 
         return response()->json(['date' => $date, 'entries' => $entries]);
@@ -362,6 +378,196 @@ class BurnfrontController extends Controller
     }
 
     /**
+     * Counts /hint requests server-side for today's real daily incident
+     * (see hint()), rather than trusting anything the client could report —
+     * the same never-trust-the-client posture as bindDailyStart()/
+     * voidDailyScore(). submitDailyScore() reads this into hints_used at
+     * the moment a score is recorded; it's never decremented or reset
+     * within the day, so re-requesting /daily can't "launder" hints away.
+     */
+    private function bumpDailyHintCount(int $userId, string $date): void
+    {
+        $key = $this->dailyHintKey($userId, $date);
+        if (! Cache::has($key)) {
+            Cache::put($key, 0, now('UTC')->endOfDay());
+        }
+        Cache::increment($key);
+    }
+
+    private function dailyHintKey(int $userId, string $date): string
+    {
+        return "burnfront:daily:hints:v1:{$date}:{$userId}";
+    }
+
+    /**
+     * Current and best consecutive-day streaks across every date this
+     * account has a recorded daily score for. "Current" only counts if the
+     * most recent solved date is today or yesterday — miss two days in a
+     * row and it resets to 0 rather than silently carrying a stale streak.
+     * One row per (user, date) at most (the table's unique constraint), and
+     * bounded by how many days this account has played, so this is cheap
+     * enough to compute on every call rather than needing its own column.
+     *
+     * @return array{current: int, best: int}
+     */
+    private function dailyStreak(int $userId): array
+    {
+        $dates = DailyScore::where('user_id', $userId)
+            ->orderBy('date')
+            ->pluck('date')
+            ->map(fn ($date) => $date->toDateString())
+            ->all();
+
+        $best = 0;
+        $run = 0;
+        $previous = null;
+        foreach ($dates as $date) {
+            $run = ($previous !== null && Carbon::parse($previous)->addDay()->toDateString() === $date)
+                ? $run + 1
+                : 1;
+            $best = max($best, $run);
+            $previous = $date;
+        }
+
+        $solved = array_flip($dates);
+        $today = now('UTC')->toDateString();
+        $cursor = match (true) {
+            isset($solved[$today]) => $today,
+            isset($solved[now('UTC')->subDay()->toDateString()]) => now('UTC')->subDay()->toDateString(),
+            default => null,
+        };
+
+        $current = 0;
+        while ($cursor !== null && isset($solved[$cursor])) {
+            $current++;
+            $cursor = Carbon::parse($cursor)->subDay()->toDateString();
+        }
+
+        return ['current' => $current, 'best' => $best];
+    }
+
+    /**
+     * The signed-in player's daily history: every past streak and score,
+     * plus the same current/best streak dailyStreak() surfaces elsewhere.
+     * Read-only over burnfront_daily_scores — nothing here can be scored or
+     * replayed from; see dailyArchive() for actually re-playing a past
+     * incident.
+     */
+    public function dailyHistory(Request $request): Response
+    {
+        $userId = $request->user()->id;
+
+        $scores = DailyScore::where('user_id', $userId)->orderByDesc('date')->get();
+
+        return Inertia::render('Burnfront/DailyHistory', [
+            'totalClosed' => $scores->count(),
+            'bestTimeMs' => $scores->min('time_ms'),
+            'averageTimeMs' => $scores->isEmpty() ? null : (int) round($scores->avg('time_ms')),
+            'cleanCount' => $scores->where('hints_used', 0)->count(),
+            'streak' => $this->dailyStreak($userId),
+            'entries' => $scores->map(fn (DailyScore $score) => [
+                'date' => $score->date->toDateString(),
+                'timeMs' => $score->time_ms,
+                'clean' => $score->hints_used === 0,
+            ]),
+        ]);
+    }
+
+    /**
+     * Lists the past ARCHIVE_DAYS dates a signed-in player can replay for
+     * practice (see dailyArchivePlay()/dailyArchivePuzzle()) — today isn't
+     * included, since today's incident is only ever played via /daily/play.
+     */
+    public function dailyArchive(Request $request): Response
+    {
+        $userId = $request->user()->id;
+        $today = now('UTC')->startOfDay();
+
+        $dates = [];
+        for ($i = 1; $i <= self::ARCHIVE_DAYS; $i++) {
+            $dates[] = $today->copy()->subDays($i)->toDateString();
+        }
+
+        $solved = DailyScore::where('user_id', $userId)
+            ->whereIn('date', $dates)
+            ->get()
+            ->keyBy(fn (DailyScore $score) => $score->date->toDateString());
+
+        return Inertia::render('Burnfront/DailyArchive', [
+            'entries' => array_map(fn (string $date) => [
+                'date' => $date,
+                'solved' => $solved->has($date),
+                'timeMs' => $solved->get($date)?->time_ms,
+            ], $dates),
+        ]);
+    }
+
+    public function dailyArchivePlay(string $date): Response
+    {
+        abort_unless($this->isValidArchiveDate($date), 404);
+
+        return Inertia::render('Burnfront/Play', [
+            'mode' => 'archive',
+            'archiveDate' => $date,
+        ]);
+    }
+
+    /**
+     * The puzzle for a past daily incident, for practice replay only: no
+     * token is issued (see submitDailyScore(), which only ever accepts
+     * today's date inside that token), so this can never be scored. Reuses
+     * PuzzleService::generateDaily(), which is already deterministic per
+     * date, and caches the result indefinitely rather than until end-of-day
+     * like today's incident — a past date's board never changes.
+     */
+    public function dailyArchivePuzzle(Request $request, string $date): JsonResponse
+    {
+        if (! $this->isValidArchiveDate($date)) {
+            return response()->json(['message' => 'Invalid archive date.'], 422);
+        }
+
+        $payload = Cache::rememberForever(
+            $this->dailyCacheKey($date),
+            fn () => $this->puzzles->generateDaily($date)
+        );
+
+        $userId = $request->user()->id;
+        $existing = DailyScore::where('user_id', $userId)->whereDate('date', $date)->first();
+        $payload['alreadyScored'] = $existing !== null;
+        $payload['scoreTimeMs'] = $existing?->time_ms;
+        if ($existing !== null) {
+            $payload['solution'] = $this->solveDaily($payload);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * True for any date strictly between today and ARCHIVE_DAYS ago —
+     * shared by dailyArchivePlay() and dailyArchivePuzzle() so both agree on
+     * exactly which dates are replayable.
+     */
+    private function isValidArchiveDate(string $date): bool
+    {
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return false;
+        }
+
+        try {
+            $parsed = Carbon::createFromFormat('!Y-m-d', $date, 'UTC');
+        } catch (\Exception) {
+            return false;
+        }
+        if ($parsed === false || $parsed->toDateString() !== $date) {
+            return false;
+        }
+
+        $today = now('UTC')->startOfDay();
+
+        return $parsed->lt($today) && $parsed->gte($today->copy()->subDays(self::ARCHIVE_DAYS));
+    }
+
+    /**
      * The daily incident is provably solvable by pure deduction (see
      * Engine::generate()'s minimal-irredundant-clues loop), so once an
      * account has already posted a verified time, the firebreak placement
@@ -414,11 +620,21 @@ class BurnfrontController extends Controller
      */
     public function hint(Request $request): JsonResponse
     {
+        $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {
             return $parsed;
         }
         [$config, $spark, $clues] = $parsed;
+
+        // Only today's real daily incident (not an 'archive' replay, see
+        // PuzzleService::tierConfig()) counts toward the "clean case" badge
+        // — a practice replay of a past incident was never going to be
+        // scored, so hints spent there shouldn't taint anything.
+        if ($difficulty === 'daily' && ($user = $request->user()) !== null) {
+            $this->bumpDailyHintCount($user->id, now('UTC')->toDateString());
+        }
         $cellCount = $config['rows'] * $config['cols'];
         $invalid = fn (string $message) => response()->json(['message' => $message], 422);
 
