@@ -48,7 +48,7 @@ const dailyMeta = computed(() => {
             <Link href="/endless" class="bf-tile">
                 <span class="bf-tile-title">Endless</span>
                 <span class="bf-tile-desc">Pick a difficulty and generate as many fires as you like.</span>
-                <span class="bf-tile-meta">5 difficulty tiers</span>
+                <span class="bf-tile-meta">5 tiers, plus a custom grid</span>
             </Link>
 
             <Link href="/how-to" class="bf-tile">
