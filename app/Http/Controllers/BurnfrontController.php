@@ -401,13 +401,16 @@ class BurnfrontController extends Controller
     /**
      * Records a verified board (replayed against the actual engine, same as
      * submitDailyScore()) as one more solved incident for this account's
-     * running best on a named endless tier — 'custom' grids and untimed
-     * tiers are rejected since there's no comparable clock to keep a best
-     * against. Unlike the daily incident, endless play has no server-bound
-     * start time to measure from, so time_ms is trusted from the client:
-     * this is a personal-best record, not a competitive leaderboard, and
-     * the board itself is still independently verified before any time is
-     * recorded.
+     * running best on a named endless tier — 'custom' grids are rejected
+     * since there's no fixed identity to keep a running record against.
+     * Untimed tiers (Cold Case) are accepted too, but only ever bump
+     * solved_count: time_ms is neither read nor required for them, and
+     * best_time_ms stays null forever, since there's no clock to keep a
+     * best against. Unlike the daily incident, endless play has no
+     * server-bound start time to measure from, so a timed tier's time_ms is
+     * trusted from the client: this is a personal-best record, not a
+     * competitive leaderboard, and the board itself is still independently
+     * verified before any time is recorded.
      */
     public function submitEndlessScore(Request $request): JsonResponse
     {
@@ -415,9 +418,7 @@ class BurnfrontController extends Controller
         if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
             return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);
         }
-        if (PuzzleService::DIFFICULTIES[$difficulty]['timed'] === false) {
-            return response()->json(['message' => 'This tier has no clock to record.'], 422);
-        }
+        $timed = PuzzleService::DIFFICULTIES[$difficulty]['timed'];
 
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {
@@ -430,9 +431,12 @@ class BurnfrontController extends Controller
             return response()->json(['message' => 'Invalid shaded cells.'], 422);
         }
 
-        $timeMsRaw = $request->input('time_ms');
-        if (! is_int($timeMsRaw) || $timeMsRaw < 0) {
-            return response()->json(['message' => 'Invalid time.'], 422);
+        $timeMsRaw = null;
+        if ($timed) {
+            $timeMsRaw = $request->input('time_ms');
+            if (! is_int($timeMsRaw) || $timeMsRaw < 0) {
+                return response()->json(['message' => 'Invalid time.'], 422);
+            }
         }
 
         $puzzle = new Puzzle($config['rows'], $config['cols'], $spark, $clues, $config['breaks']);
@@ -455,9 +459,12 @@ class BurnfrontController extends Controller
             'difficulty' => $difficulty,
         ]);
         $record->solved_count = ($record->solved_count ?? 0) + 1;
-        $improved = $record->best_time_ms === null || $timeMsRaw < $record->best_time_ms;
-        if ($improved) {
-            $record->best_time_ms = $timeMsRaw;
+        $improved = false;
+        if ($timed) {
+            $improved = $record->best_time_ms === null || $timeMsRaw < $record->best_time_ms;
+            if ($improved) {
+                $record->best_time_ms = $timeMsRaw;
+            }
         }
         $record->last_solved_at = now();
         $record->save();

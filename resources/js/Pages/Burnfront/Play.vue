@@ -460,8 +460,12 @@ function win(times) {
     // routes/web.php), so a signed-in user is always present here.
     if (isDaily.value && dailyDate.value) {
         submitDailyScore(shaded);
-    } else if (props.mode === 'endless' && props.authenticated && diff.value !== 'custom' && g.timed) {
-        submitEndlessScore(shaded, Date.now() - startAt);
+    } else if (props.mode === 'endless' && props.authenticated && diff.value !== 'custom') {
+        // Untimed tiers (Cold Case) still get recorded — just with no
+        // time_ms, since there's no clock to keep a best against (see
+        // BurnfrontController::submitEndlessScore()). That's what lets a
+        // solve there ever bump solved_count at all.
+        submitEndlessScore(shaded, g.timed ? Date.now() - startAt : null);
     }
 }
 
@@ -562,15 +566,26 @@ async function submitDailyScore(shaded) {
     }
 }
 
-/* Records a personal-best attempt for a named endless tier. Unlike the
-   daily incident, there's no server-bound start time here — time_ms is the
+/* Records a solved incident for a named endless tier. Unlike the daily
+   incident, there's no server-bound start time here — time_ms is the
    client's own clock, trusted for this personal-record feature — but the
    submitted board is still independently replayed against the actual
    engine server-side before any time is recorded (see
-   BurnfrontController::submitEndlessScore()). Best-effort: a failed
-   request just means this run's personal-best bookkeeping is skipped. */
+   BurnfrontController::submitEndlessScore()). timeMs is null for an
+   untimed tier (Cold Case): there's no clock to trust or keep a best
+   against, so the field is left out entirely rather than sent as a made-up
+   0 — the server only ever bumps solved_count for those. Best-effort: a
+   failed request just means this run's personal-best bookkeeping is
+   skipped. */
 async function submitEndlessScore(shaded, timeMs) {
     try {
+        const body = {
+            difficulty: diff.value,
+            spark: game.value.spark,
+            clues: game.value.clues,
+            shaded,
+        };
+        if (timeMs !== null) body.time_ms = Math.round(timeMs);
         const resp = await fetch('/endless/score', {
             method: 'POST',
             headers: {
@@ -578,13 +593,7 @@ async function submitEndlessScore(shaded, timeMs) {
                 Accept: 'application/json',
                 'X-XSRF-TOKEN': xsrfToken(),
             },
-            body: JSON.stringify({
-                difficulty: diff.value,
-                spark: game.value.spark,
-                clues: game.value.clues,
-                shaded,
-                time_ms: Math.round(timeMs),
-            }),
+            body: JSON.stringify(body),
         });
         if (!resp.ok) return;
         const data = await resp.json();

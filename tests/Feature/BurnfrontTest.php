@@ -1038,7 +1038,7 @@ class BurnfrontTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_submit_endless_score_rejects_the_untimed_cold_case_tier(): void
+    public function test_submit_endless_score_records_a_solve_for_the_untimed_cold_case_tier_without_a_time(): void
     {
         $user = User::factory()->create();
         $puzzle = $this->puzzles()->generate('coldcase');
@@ -1048,10 +1048,15 @@ class BurnfrontTest extends TestCase
             'spark' => $puzzle['spark'],
             'clues' => $puzzle['clues'],
             'shaded' => $this->solveEndless($puzzle),
-            'time_ms' => 1000,
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(200);
+        $response->assertJson(['solved_count' => 1, 'best_time_ms' => null, 'improved' => false]);
+
+        $record = EndlessScore::where('user_id', $user->id)->where('difficulty', 'coldcase')->first();
+        $this->assertNotNull($record);
+        $this->assertSame(1, $record->solved_count);
+        $this->assertNull($record->best_time_ms);
     }
 
     public function test_submit_endless_score_requires_authentication(): void
