@@ -1102,7 +1102,7 @@ class BurnfrontTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_submit_endless_score_rejects_the_untimed_cold_case_tier(): void
+    public function test_submit_endless_score_records_a_solve_for_the_untimed_cold_case_tier_without_a_time(): void
     {
         $user = User::factory()->create();
         $puzzle = $this->puzzles()->generate('coldcase');
@@ -1112,10 +1112,15 @@ class BurnfrontTest extends TestCase
             'spark' => $puzzle['spark'],
             'clues' => $puzzle['clues'],
             'shaded' => $this->solveEndless($puzzle),
-            'time_ms' => 1000,
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(200);
+        $response->assertJson(['solved_count' => 1, 'best_time_ms' => null, 'improved' => false]);
+
+        $record = EndlessScore::where('user_id', $user->id)->where('difficulty', 'coldcase')->first();
+        $this->assertNotNull($record);
+        $this->assertSame(1, $record->solved_count);
+        $this->assertNull($record->best_time_ms);
     }
 
     public function test_submit_endless_score_requires_authentication(): void
@@ -1176,6 +1181,50 @@ class BurnfrontTest extends TestCase
     public function test_game_history_requires_authentication(): void
     {
         $this->get('/game/history')->assertRedirect('/login');
+    }
+
+    public function test_game_history_reports_a_trainee_rank_and_no_badges_for_a_fresh_account(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/game/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('career.rank.title', 'Trainee Analyst')
+            ->where('career.rank.totalSolved', 0)
+            ->where('career.rank.nextTitle', 'Field Analyst')
+            ->where('career.rank.nextThreshold', 5)
+            ->where('career.badges.0.earned', false)
+        );
+    }
+
+    public function test_game_history_career_rank_counts_daily_and_endless_solves_together(): void
+    {
+        $user = User::factory()->create();
+        EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'lookout', 'solved_count' => 3, 'best_time_ms' => 3000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => now('UTC')->toDateString(), 'time_ms' => 1000, 'hints_used' => 0]);
+
+        $response = $this->actingAs($user)->get('/game/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('career.rank.totalSolved', 4)
+            ->where('career.rank.title', 'Trainee Analyst')
+            ->where('career.badges.0.earned', true) // first_incident
+            ->where('career.badges.1.earned', true) // clean_reconstruction
+        );
+    }
+
+    public function test_game_history_awards_the_cold_case_badge_only_after_a_cold_case_solve(): void
+    {
+        $user = User::factory()->create();
+
+        $before = $this->actingAs($user)->get('/game/history');
+        $before->assertInertia(fn (Assert $page) => $page->where('career.badges.5.earned', false));
+
+        EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'coldcase', 'solved_count' => 1]);
+
+        $after = $this->actingAs($user)->get('/game/history');
+        $after->assertInertia(fn (Assert $page) => $page->where('career.badges.5.earned', true));
     }
 
     public function test_daily_incident_is_persisted_the_first_time_it_is_generated(): void
