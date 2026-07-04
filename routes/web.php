@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\BurnfrontController;
@@ -25,4 +26,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/daily/play', [BurnfrontController::class, 'dailyPlay'])->name('burnfront.daily.play');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
     Route::post('/daily/score', [BurnfrontController::class, 'submitDailyScore'])->name('burnfront.daily.score');
+
+    Route::get('/account', [AccountController::class, 'index'])->name('account');
+    Route::get('/account/settings', [AccountController::class, 'edit'])->name('account.settings');
+    Route::patch('/account/settings', [AccountController::class, 'update'])->name('account.settings.update');
+    Route::put('/account/settings/password', [AccountController::class, 'updatePassword'])->name('account.settings.password');
 });
