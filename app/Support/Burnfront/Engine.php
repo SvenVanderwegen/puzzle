@@ -438,6 +438,35 @@ final class Engine
     }
 
     /**
+     * Given an infeasible partial state, finds which currently-shaded cells
+     * are individually to blame: a shaded cell is flagged when opening it
+     * alone (everything else held fixed) restores feasibility. Used by the
+     * hint system so a wrong firebreak can be pointed at directly instead of
+     * just reporting "something's off". A genuine multi-cell contradiction,
+     * where no single flip clears it, yields an empty list.
+     *
+     * @param  array<int, int>  $state
+     * @return list<int>
+     */
+    public static function misplacedShaded(Puzzle $pz, array $state): array
+    {
+        $wrong = [];
+        foreach ($state as $i => $v) {
+            if ($v !== self::SHADED) {
+                continue;
+            }
+            $state[$i] = self::OPEN;
+            $ok = self::feasible($pz, $state);
+            $state[$i] = self::SHADED;
+            if ($ok) {
+                $wrong[] = $i;
+            }
+        }
+
+        return $wrong;
+    }
+
+    /**
      * True iff every shaded cell, opened alone (the rest staying shaded),
      * changes at least one clue's burn time. A witnessed break is justified
      * by the clues themselves, never by the break count alone.
