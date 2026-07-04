@@ -16,8 +16,9 @@
 <meta property="og:title" content="@yield('title')">
 <meta property="og:description" content="@yield('meta-description')">
 <meta property="og:url" content="@yield('canonical')">
-{{-- Static placeholder path; the pipeline's pre-rendered PNGs land with WS-05. --}}
-<meta property="og:image" content="{{ $baseUrl }}/og/landing.png">
+{{-- Pages override og-image; landing keeps the static card. Dated /daily pages
+     point at the pipeline's pre-rendered spoiler-free PNG (WS-05/WS-10). --}}
+<meta property="og:image" content="@yield('og-image', $baseUrl.'/og/landing.png')">
 <meta name="twitter:card" content="summary_large_image">
 @yield('head-extra')
 @include('landing.partials.critical-css')
