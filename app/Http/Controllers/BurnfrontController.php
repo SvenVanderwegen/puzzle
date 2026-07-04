@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CampaignProfile;
 use App\Models\DailyIncident;
 use App\Models\DailyScore;
 use App\Models\EndlessScore;
+use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
@@ -33,6 +35,7 @@ class BurnfrontController extends Controller
     {
         $user = $request->user();
         $dailyStatus = null;
+        $campaignStatus = null;
 
         if ($user !== null) {
             $existing = DailyScore::where('user_id', $user->id)
@@ -44,10 +47,17 @@ class BurnfrontController extends Controller
                 'scoreTimeMs' => $existing?->time_ms,
                 'streak' => $this->computeStreaks($user->id),
             ];
+
+            // Read-only, same as dailyStatus above — viewing the menu must
+            // never create a CampaignProfile row; a guest-shaped 0-XP
+            // profile is never persisted just because someone looked.
+            $totalXp = CampaignProfile::where('user_id', $user->id)->value('total_xp') ?? 0;
+            $campaignStatus = CampaignService::progressForXp($totalXp);
         }
 
         return Inertia::render('Burnfront/Start', [
             'dailyStatus' => $dailyStatus,
+            'campaignStatus' => $campaignStatus,
         ]);
     }
 
@@ -657,23 +667,7 @@ class BurnfrontController extends Controller
      */
     private function shadedCellsFromRequest(array $config, int $spark, array $clues, mixed $shadedRaw): ?array
     {
-        if (! is_array($shadedRaw)) {
-            return null;
-        }
-
-        $cellCount = $config['rows'] * $config['cols'];
-        $shaded = [];
-        foreach ($shadedRaw as $cell) {
-            if (
-                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
-                || array_key_exists($cell, $clues) || array_key_exists($cell, $shaded)
-            ) {
-                return null;
-            }
-            $shaded[$cell] = true;
-        }
-
-        return $shaded;
+        return Engine::shadedCellsFromRequest($config['rows'] * $config['cols'], $spark, $clues, $shadedRaw);
     }
 
     /**
@@ -880,54 +874,52 @@ class BurnfrontController extends Controller
     private function parsePuzzleConfig(Request $request): array|JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
-        $config = $difficulty === 'custom'
-            ? $this->resolveCustomConfig($request)
-            : PuzzleService::tierConfig($difficulty);
+        $config = match (true) {
+            $difficulty === 'custom' => $this->resolveCustomConfig($request),
+            $difficulty === 'campaign' => $this->resolveCampaignConfig($request),
+            default => PuzzleService::tierConfig($difficulty),
+        };
 
         if ($config === null) {
             return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);
         }
 
         $cellCount = $config['rows'] * $config['cols'];
-        $invalid = fn (string $message) => response()->json(['message' => $message], 422);
 
         // input(), not query(): this is shared by GET callers (hint()/solve(),
         // spark/clues as query-string values, clues JSON-encoded as a
         // string) and POST callers (submitEndlessScore(), spark/clues as
         // native JSON body values, clues already an array) — input() reads
-        // both, but the two shapes still need normalizing below.
-        $sparkRaw = $request->input('spark');
-        if (is_string($sparkRaw) && ctype_digit($sparkRaw)) {
-            $spark = (int) $sparkRaw;
-        } elseif (is_int($sparkRaw)) {
-            $spark = $sparkRaw;
-        } else {
-            return $invalid('Invalid spark.');
+        // both, but the two shapes still need normalizing, which
+        // Engine::parseSparkAndClues() does.
+        $parsed = Engine::parseSparkAndClues($cellCount, $request->input('spark'), $request->input('clues'));
+        if ($parsed === null) {
+            return response()->json(['message' => 'Invalid spark or clues.'], 422);
         }
-        if ($spark < 0 || $spark >= $cellCount) {
-            return $invalid('Invalid spark.');
-        }
-
-        $cluesInput = $request->input('clues');
-        $cluesRaw = is_string($cluesInput) ? json_decode($cluesInput, true) : $cluesInput;
-        if (! is_array($cluesRaw) || count($cluesRaw) > $cellCount) {
-            return $invalid('Invalid clues.');
-        }
-        $clues = [];
-        foreach ($cluesRaw as $pair) {
-            if (! is_array($pair) || ! array_is_list($pair) || count($pair) !== 2) {
-                return $invalid('Invalid clues.');
-            }
-            [$cell, $minute] = $pair;
-            if (
-                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
-                || array_key_exists($cell, $clues) || ! is_int($minute) || $minute < 0
-            ) {
-                return $invalid('Invalid clues.');
-            }
-            $clues[$cell] = $minute;
-        }
+        [$spark, $clues] = $parsed;
 
         return [$config, $spark, $clues];
+    }
+
+    /**
+     * Campaign has no client-chosen difficulty at all — the level a hint()/
+     * solve() request should be scored against is always this account's
+     * *current* level, derived from CampaignProfile::total_xp the same way
+     * CampaignController does, never trusted from the request. Returns null
+     * (and therefore a 422 from the caller) for a guest, since campaign
+     * routes are auth-gated and there's no profile to read without a user.
+     *
+     * @return array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}|null
+     */
+    private function resolveCampaignConfig(Request $request): ?array
+    {
+        $user = $request->user();
+        if ($user === null) {
+            return null;
+        }
+
+        $profile = CampaignProfile::firstOrCreate(['user_id' => $user->id], ['total_xp' => 0, 'puzzles_solved' => 0]);
+
+        return CampaignService::levelConfig(CampaignService::levelForXp($profile->total_xp));
     }
 }

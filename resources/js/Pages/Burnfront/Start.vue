@@ -6,6 +6,7 @@ import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null }, // {alreadyScored, scoreTimeMs} | null, signed-in users only
+    campaignStatus: { type: Object, default: null }, // {level, chapterLabel, xpIntoLevel, xpToNextLevel, maxed} | null, signed-in users only
 });
 
 const page = usePage();
@@ -20,6 +21,20 @@ const dailyMeta = computed(() => {
     if (!currentUser.value) return 'Sign in to unlock';
     if (props.dailyStatus?.alreadyScored) return `Solved in ${fmtClock(props.dailyStatus.scoreTimeMs)}${streakSuffix.value}`;
     return `Today's incident awaits${streakSuffix.value}`;
+});
+
+const campaignMeta = computed(() => {
+    if (!currentUser.value) return 'Sign in to unlock';
+    const c = props.campaignStatus;
+    if (!c) return 'Case 1 of 20 · Lookout';
+    if (c.maxed) return `Case ${c.level} of 20 · record closed`;
+    return `Case ${c.level} of 20 · ${c.chapterLabel} · ${c.xpIntoLevel}/${c.xpToNextLevel} XP`;
+});
+
+const campaignXpPct = computed(() => {
+    const c = props.campaignStatus;
+    if (!c || c.maxed) return 100;
+    return Math.min(100, Math.round((c.xpIntoLevel / c.xpToNextLevel) * 100));
 });
 </script>
 
@@ -48,6 +63,18 @@ const dailyMeta = computed(() => {
                 <span class="bf-tile-title">Daily Puzzle</span>
                 <span class="bf-tile-desc">One shared incident a day. Race the clock and climb today&rsquo;s board.</span>
                 <span class="bf-tile-meta">&#128274; {{ dailyMeta }}</span>
+            </Link>
+
+            <Link v-if="currentUser" href="/campaign" class="bf-tile">
+                <span class="bf-tile-title">Campaign</span>
+                <span class="bf-tile-desc">20 incidents across 5 case files, hardest fires last.</span>
+                <span class="bf-tile-meta">{{ campaignMeta }}</span>
+                <div class="bf-xp-track"><div class="bf-xp-fill" :style="{ width: campaignXpPct + '%' }"></div></div>
+            </Link>
+            <Link v-else href="/login" class="bf-tile is-locked">
+                <span class="bf-tile-title">Campaign</span>
+                <span class="bf-tile-desc">20 incidents across 5 case files, hardest fires last.</span>
+                <span class="bf-tile-meta">&#128274; {{ campaignMeta }}</span>
             </Link>
 
             <Link href="/endless" class="bf-tile">

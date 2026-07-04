@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\BurnfrontController;
+use App\Http\Controllers\CampaignController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [BurnfrontController::class, 'start'])->name('burnfront.start');
@@ -31,6 +32,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/daily/history/play', [BurnfrontController::class, 'dailyHistoryPlay'])->name('burnfront.daily.history.play');
     Route::post('/endless/score', [BurnfrontController::class, 'submitEndlessScore'])->name('burnfront.endless.score');
     Route::get('/game/history', [BurnfrontController::class, 'gameHistory'])->name('burnfront.game.history');
+
+    Route::get('/campaign', [CampaignController::class, 'map'])->name('burnfront.campaign');
+    Route::get('/campaign/play', [CampaignController::class, 'play'])->name('burnfront.campaign.play');
+    Route::get('/campaign/puzzle', [CampaignController::class, 'puzzle'])->name('burnfront.campaign.puzzle');
+    Route::post('/campaign/score', [CampaignController::class, 'submitScore'])->name('burnfront.campaign.score');
 
     Route::get('/account', [AccountController::class, 'index'])->name('account');
     Route::get('/account/settings', [AccountController::class, 'edit'])->name('account.settings');

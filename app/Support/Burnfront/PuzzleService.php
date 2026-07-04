@@ -151,6 +151,22 @@ final class PuzzleService
     }
 
     /**
+     * Same as generate(), but for a config built by CampaignService::levelConfig()
+     * rather than looked up from DIFFICULTIES — kept as its own method for the
+     * same reason generateCustom() is: existing callers' signatures never
+     * change. Campaign levels are never seeded (unlike the daily incident) —
+     * a player replays their current level repeatedly until leveling up, so a
+     * fixed shared solution would trivialize repeat attempts.
+     *
+     * @param  array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}  $config
+     * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string}
+     */
+    public function generateCampaign(array $config, ?callable $random = null): array
+    {
+        return $this->generateFromConfig('campaign', $config, $random);
+    }
+
+    /**
      * The daily incident: terrain and naming are each seeded independently
      * from the given date, so the same date always reproduces the same
      * board and the same name/blurb (naming's seed is a distinct hash so it
