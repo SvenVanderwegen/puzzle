@@ -6,12 +6,15 @@ import LoadingVeil from './LoadingVeil.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
-    mode: { type: String, required: true }, // 'endless' | 'daily'
+    mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive'
     difficulties: { type: Object, default: () => ({}) },
     difficulty: { type: String, default: '' },
+    authenticated: { type: Boolean, default: false },
+    archivePuzzle: { type: Object, default: null }, // set for mode 'archive': a past daily incident this account already solved
 });
 
 const isDaily = computed(() => props.mode === 'daily');
+const isArchive = computed(() => props.mode === 'archive');
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -19,6 +22,7 @@ const diff = ref(props.difficulty);
 
 const crumbText = computed(() => {
     if (isDaily.value) return 'Daily incident';
+    if (isArchive.value) return 'Case history · review';
     const label = props.difficulties[diff.value]?.label;
     return label ? `Endless · ${label}` : 'Endless';
 });
@@ -43,6 +47,8 @@ const voided = ref(false); /* true once the board was revealed via the "Solve" c
 const dailyDate = ref(null);
 const dailyScorePosted = ref(false);
 const leaderboard = ref([]);
+const hintsUsedThisRun = ref(0);
+const personalBestNote = ref('');
 
 const undoStack = reactive([]);
 let marksVersion = 0;
@@ -215,12 +221,15 @@ function win(times) {
         bannerVisible.value = true;
     }, total);
 
+    const shaded = [];
+    for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
+
     // The /daily/play route requires an authenticated session (see
     // routes/web.php), so a signed-in user is always present here.
     if (isDaily.value && dailyDate.value) {
-        const shaded = [];
-        for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
         submitDailyScore(shaded);
+    } else if (props.mode === 'endless' && props.authenticated && diff.value !== 'custom' && g.timed) {
+        submitEndlessScore(shaded, Date.now() - startAt);
     }
 }
 
@@ -307,7 +316,11 @@ async function submitDailyScore(shaded) {
             },
             body: JSON.stringify({ token: game.value.token, shaded }),
         });
-        if (resp.ok || resp.status === 409) {
+        if (resp.ok) {
+            const data = await resp.json();
+            if (typeof data.hints_used === 'number') hintsUsedThisRun.value = data.hints_used;
+            fetchLeaderboard();
+        } else if (resp.status === 409) {
             fetchLeaderboard();
         } else {
             dailyScorePosted.value = false;
@@ -317,10 +330,44 @@ async function submitDailyScore(shaded) {
     }
 }
 
+/* Records a personal-best attempt for a named endless tier. Unlike the
+   daily incident, there's no server-bound start time here — time_ms is the
+   client's own clock, trusted for this personal-record feature — but the
+   submitted board is still independently replayed against the actual
+   engine server-side before any time is recorded (see
+   BurnfrontController::submitEndlessScore()). Best-effort: a failed
+   request just means this run's personal-best bookkeeping is skipped. */
+async function submitEndlessScore(shaded, timeMs) {
+    try {
+        const resp = await fetch('/endless/score', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body: JSON.stringify({
+                difficulty: diff.value,
+                spark: game.value.spark,
+                clues: game.value.clues,
+                shaded,
+                time_ms: Math.round(timeMs),
+            }),
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.improved) personalBestNote.value = 'New personal best for this tier.';
+    } catch (e) {
+        /* personal bests are a nice-to-have; a failed post just skips the record */
+    }
+}
+
 async function newGame() {
     const token = ++genToken;
     locked.value = true;
     dailyScorePosted.value = false;
+    hintsUsedThisRun.value = 0;
+    personalBestNote.value = '';
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -379,6 +426,8 @@ async function loadDaily() {
     const token = ++genToken;
     locked.value = true;
     dailyScorePosted.value = false;
+    hintsUsedThisRun.value = 0;
+    personalBestNote.value = '';
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -423,6 +472,7 @@ async function loadDaily() {
             boardDone.value = true;
             if (p.solution) revealSolution(p.solution);
             finalTimeText.value = fmtClock(p.scoreTimeMs);
+            hintsUsedThisRun.value = p.hintsUsed ?? 0;
             bannerVisible.value = true;
         } else {
             boardDone.value = false;
@@ -483,6 +533,7 @@ async function requestHint() {
             const prevHintSafe = hintSafe.value[cell];
             marks.value[cell] = 1;
             hintSafe.value[cell] = true;
+            hintsUsedThisRun.value++;
             undoStack.push([[cell, prev, prevHintSafe]]);
             maybeFinish(prev !== 1);
         } else if (data.status === 'contradiction') {
@@ -548,14 +599,100 @@ async function solvePuzzle() {
     }
 }
 
+/* Read-only replay of a past daily incident this account already holds a
+   verified time for (BurnfrontController::dailyHistoryPlay() only ever
+   hands one of these back), passed down as a plain prop rather than
+   fetched — there's nothing left to generate or time, just a board to
+   paint straight into its solved state. */
+function loadArchive() {
+    const p = props.archivePuzzle;
+    const n = p.rows * p.cols;
+    game.value = reactive({
+        n,
+        adj: buildAdj(p.rows, p.cols),
+        spark: p.spark,
+        R: p.rows,
+        C: p.cols,
+        N: p.breaks,
+        clueMap: new Map(p.clues),
+        clueIdx: p.clues.map((cv) => cv[0]),
+        clueVal: p.clues.map((cv) => cv[1]),
+        clues: p.clues,
+        difficulty: 'daily',
+        name: p.name,
+        blurb: p.blurb,
+        timed: true,
+    });
+    marks.value = new Array(n).fill(0);
+    hintSafe.value = new Array(n).fill(false);
+    wrongCells.value = new Array(n).fill(false);
+    cellStyle.value = new Array(n).fill(null);
+    burnt.value = new Array(n).fill(false);
+    revealedMinute.value = new Array(n).fill('');
+    undoStack.length = 0;
+    dailyDate.value = p.date;
+    hintsUsedThisRun.value = p.hintsUsed ?? 0;
+    revealSolution(p.solution);
+    locked.value = true;
+    boardDone.value = true;
+    dailyScorePosted.value = true;
+    finalTimeText.value = fmtClock(p.timeMs);
+    bannerVisible.value = true;
+}
+
+/* A short, Wordle-style recap of this run for the player to paste
+   elsewhere — never anything the server hasn't already told the client
+   (name/blurb, difficulty label, time, hint count), so there's nothing new
+   to validate here. */
+const shareText = computed(() => {
+    const g = game.value;
+    if (!g) return '';
+    const tierLabel = isDaily.value || isArchive.value ? 'Daily incident' : (props.difficulties[diff.value]?.label ?? 'Endless');
+    const lines = [`Burnfront — ${g.name || 'Unnamed incident'}`, tierLabel];
+
+    if (voided.value) {
+        lines.push('Solved (answer revealed, not scored)');
+    } else if (g.timed) {
+        lines.push(`Contained in ${finalTimeText.value}`);
+        lines.push(
+            hintsUsedThisRun.value === 0
+                ? 'Clean reconstruction — no hints'
+                : `${hintsUsedThisRun.value} hint${hintsUsedThisRun.value === 1 ? '' : 's'} used`
+        );
+    } else {
+        lines.push('Every clue burns on time');
+    }
+
+    return lines.join('\n');
+});
+
+const copyFeedback = ref('');
+let copyFeedbackTimer = null;
+
+async function copyReport() {
+    try {
+        await navigator.clipboard.writeText(shareText.value);
+        copyFeedback.value = 'Copied.';
+    } catch (e) {
+        copyFeedback.value = "Couldn't copy.";
+    }
+    clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimer = setTimeout(() => {
+        copyFeedback.value = '';
+    }, 2400);
+}
+
 onBeforeUnmount(() => {
     stopClock();
     clearTimeout(statusTimer);
     clearTimeout(winTimer);
+    clearTimeout(copyFeedbackTimer);
 });
 
 if (isDaily.value) {
     loadDaily();
+} else if (isArchive.value) {
+    loadArchive();
 } else {
     newGame();
 }
@@ -572,8 +709,8 @@ if (isDaily.value) {
                 <span class="font-medium text-paper">{{ game.name }}</span> — {{ game.blurb }}
             </p>
 
-            <div class="mt-2.5 flex flex-wrap items-center gap-2">
-                <template v-if="!isDaily">
+            <div v-if="!isArchive" class="mt-2.5 flex flex-wrap items-center gap-2">
+                <template v-if="mode === 'endless'">
                     <Link href="/endless" class="bf-btn">Change difficulty</Link>
                     <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
                 </template>
@@ -617,15 +754,29 @@ if (isDaily.value) {
                 <LoadingVeil :visible="veilVisible" />
             </div>
 
-            <div class="mt-2.5 flex min-h-9 items-baseline gap-3">
+            <div class="mt-2.5 flex min-h-9 flex-col gap-1.5">
                 <div v-if="bannerVisible" class="flex flex-col gap-1.5">
                     <span class="bf-banner-headline">{{ voided ? 'SOLVED' : 'FIRE MAPPED' }}</span>
                     <p v-if="voided" class="text-sm text-ash">Answer revealed — time voided, this run wasn&rsquo;t saved.</p>
-                    <p v-else-if="game.timed" class="text-sm text-ash">
-                        Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span> — every clue burns on
-                        time.
-                    </p>
-                    <p v-else class="text-sm text-ash">Every clue burns on time.</p>
+                    <template v-else>
+                        <p v-if="game.timed" class="text-sm text-ash">
+                            Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span> — every clue burns
+                            on time.
+                        </p>
+                        <p v-else class="text-sm text-ash">Every clue burns on time.</p>
+                        <p v-if="game.timed" class="text-[12.5px] text-ash-dim">
+                            {{
+                                hintsUsedThisRun === 0
+                                    ? 'Clean reconstruction — no hints borrowed.'
+                                    : `${hintsUsedThisRun} hint${hintsUsedThisRun === 1 ? '' : 's'} used.`
+                            }}
+                        </p>
+                        <p v-if="personalBestNote" class="text-[12.5px] text-flame">{{ personalBestNote }}</p>
+                    </template>
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="bf-btn" @click="copyReport">Copy report</button>
+                        <span v-if="copyFeedback" class="text-[12px] text-ash-dim">{{ copyFeedback }}</span>
+                    </div>
                 </div>
                 <p v-else-if="statusMessage" class="bf-status" role="status">{{ statusMessage }}</p>
                 <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
@@ -642,7 +793,12 @@ if (isDaily.value) {
                 <h3 class="text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
                 <ol class="flex flex-col gap-1 text-sm text-ash">
                     <li v-for="entry in leaderboard" :key="entry.rank" class="flex justify-between gap-3 tabular-nums">
-                        <span>{{ entry.rank }}. {{ entry.name }}</span>
+                        <span>
+                            {{ entry.rank }}. {{ entry.name }}
+                            <span v-if="entry.hints_used === 0" class="ml-1 text-[10px] tracking-[.08em] text-ember uppercase"
+                                >clean</span
+                            >
+                        </span>
                         <span class="text-paper">{{ fmtClock(entry.time_ms) }}</span>
                     </li>
                 </ol>
