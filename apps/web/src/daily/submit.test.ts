@@ -65,7 +65,9 @@ function fakeApi(outcomes: SubmitOutcome | SubmitOutcome[]): FakeApi {
     startDaily: () => Promise.resolve('stamped'),
     submitSolve: (payload, key) => {
       submits.push({ payload, key });
-      return Promise.resolve(queue.length > 1 ? (queue.shift() as SubmitOutcome) : queue[0]);
+      const next = queue.length > 1 ? queue.shift() : queue[0];
+      if (next === undefined) throw new Error('fakeApi: empty outcome queue');
+      return Promise.resolve(next);
     },
     fetchRating: () => {
       api.ratingFetches += 1;
@@ -91,9 +93,9 @@ describe('submitDaily', () => {
       submitDaily(record(), DATE, api, storage, onState),
     );
     expect(states[0]).toEqual({ kind: 'submitting' });
-    const last = states[states.length - 1];
-    expect(last.kind).toBe('accepted');
-    if (last.kind === 'accepted') {
+    const last = states.at(-1);
+    expect(last?.kind).toBe('accepted');
+    if (last?.kind === 'accepted') {
       expect(last.result.daily?.percentile).toBe(88);
       expect(last.rating).toEqual(rating);
     }

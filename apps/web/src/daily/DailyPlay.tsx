@@ -133,6 +133,12 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
   const client = useApi();
   const deps = useDailyDeps();
   const online = useOnline();
+  // Mirror connectivity into a ref so an in-flight getDaily that resolves AFTER
+  // a disconnect reads live status, not the stale value captured when the load
+  // began (jsdom keeps navigator.onLine true, so the event-driven state is the
+  // only source of truth).
+  const onlineRef = useRef(online);
+  onlineRef.current = online;
   const countdown = useCountdown(runtime.clock);
   const api = useMemo(() => createDailyApi(client), [client]);
   const kv = useMemo(() => toKeyValueStorage(runtime.storage), [runtime.storage]);
@@ -236,7 +242,7 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
         return;
       }
       if (outcome.kind === 'error') {
-        setStateIfMounted(setStage, online ? 'error' : 'offline');
+        setStateIfMounted(setStage, onlineRef.current ? 'error' : 'offline');
         return;
       }
       // not_found: no incident for this date (future/unpublished).
@@ -276,7 +282,13 @@ export function DailyPlay({ date }: DailyPlayProps): ReactElement {
   // Reconnect: reload when we came online without a board, and flush any queued
   // (offline-solved) daily submission idempotently.
   useEffect(() => {
-    if (!online) return;
+    if (!online) {
+      // Lost connectivity: surface the offline notice unless a board is already
+      // in hand — an in-progress or contained daily keeps its persisted session
+      // (offline replay), so only the pre-board stages fall back to the notice.
+      setStage((s) => (s === 'playing' || s === 'won' ? s : 'offline'));
+      return;
+    }
     if (stage === 'offline') loadBoard();
     void retryPendingDaily(api, runtime.storage, (next) => {
       setStateIfMounted(setSubmission, next);

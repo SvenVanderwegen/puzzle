@@ -54,7 +54,7 @@ describe('burnSignature', () => {
     const sequence = revealSequence(board, solutionShading());
     const signature = burnSignature(sequence);
     // One emoji per frame (minute); every glyph is one of the three buckets.
-    expect([...signature].length).toBe(sequence.frames.length);
+    expect((signature.match(/[🟥🟧🟨]/gu) ?? []).length).toBe(sequence.frames.length);
     expect(/^[🟥🟧🟨]+$/u.test(signature)).toBe(true);
     // The mapping is a pure function of the per-minute count — recompute it
     // independently and require an exact match (counts-only, no positions).
