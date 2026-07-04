@@ -24,19 +24,21 @@ const crumbText = computed(() => {
 });
 const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty, name, blurb, timed, token} */
 const marks = ref([]); /* 0 none, 1 break, 2 dot */
+const hintSafe = ref([]); /* per-cell: this firebreak was auto-placed by a hint and still stands */
+const wrongCells = ref([]); /* per-cell: flagged as an incorrect firebreak by the last hint check */
 const cellStyle = ref([]); /* per-cell burn animation style, set on win */
 const burnt = ref([]); /* per-cell "burn replay" flag, set on win */
 const revealedMinute = ref([]); /* per-cell revealed arrival time text, set on win */
 
 const locked = ref(true);
 const hinting = ref(false);
-const hintCell = ref(-1);
 const boardDone = ref(false);
 const veilVisible = ref(false);
 const clockText = ref('0:00');
 const statusMessage = ref('');
 const bannerVisible = ref(false);
 const finalTimeText = ref('0:00');
+const voided = ref(false); /* true once the board was revealed via the "Solve" cheat button */
 
 const dailyDate = ref(null);
 const dailyScorePosted = ref(false);
@@ -56,6 +58,7 @@ const overBudget = computed(() => game.value !== null && placedCount.value > gam
 const undoDisabled = computed(() => locked.value || undoStack.length === 0);
 const resetDisabled = computed(() => locked.value);
 const hintDisabled = computed(() => locked.value || hinting.value);
+const solveDisabled = computed(() => locked.value || !game.value || hinting.value);
 
 function stopClock() {
     if (clockTimer) {
@@ -84,8 +87,8 @@ function showStatus(msg) {
     }, 3400);
 }
 
-function clearHint() {
-    hintCell.value = -1;
+function clearWrongCells() {
+    wrongCells.value = wrongCells.value.map(() => false);
 }
 
 function cellLabel(i) {
@@ -93,19 +96,26 @@ function cellLabel(i) {
     if (i === g.spark) return cellName(i, g.C) + ', the spark';
     if (g.clueMap.has(i)) return cellName(i, g.C) + ', clue: burns at minute ' + g.clueMap.get(i);
     const m = marks.value[i];
-    return cellName(i, g.C) + (m === 1 ? ', firebreak' : m === 2 ? ', marked clear' : ', empty');
+    if (m === 1) {
+        if (wrongCells.value[i]) return cellName(i, g.C) + ', firebreak, flagged wrong by hint';
+        if (hintSafe.value[i]) return cellName(i, g.C) + ', firebreak, placed by hint';
+        return cellName(i, g.C) + ', firebreak';
+    }
+    return cellName(i, g.C) + (m === 2 ? ', marked clear' : ', empty');
 }
 
 function cellClasses(i) {
     const g = game.value;
+    const isBreak = marks.value[i] === 1;
     return {
         'bf-cell': true,
         'is-fixed': i === g.spark || g.clueMap.has(i),
         'is-spark': i === g.spark,
         'is-clue': g.clueMap.has(i),
-        'is-break': marks.value[i] === 1,
+        'is-break': isBreak,
         'is-dot': marks.value[i] === 2,
-        'is-hint': hintCell.value === i,
+        'is-hint-wrong': isBreak && !!wrongCells.value[i],
+        'is-hint-safe': isBreak && !!hintSafe.value[i] && !wrongCells.value[i],
         'is-burnt': burnt.value[i],
     };
 }
@@ -120,32 +130,38 @@ function cellText(i) {
 function tap(i, dir) {
     if (locked.value || !game.value) return;
     if (i === game.value.spark || game.value.clueMap.has(i)) return;
-    clearHint();
+    clearWrongCells();
     marksVersion++;
     const prev = marks.value[i];
+    const prevHintSafe = hintSafe.value[i];
     marks.value[i] = (prev + dir + 3) % 3;
-    undoStack.push([[i, prev]]);
+    hintSafe.value[i] = false;
+    undoStack.push([[i, prev, prevHintSafe]]);
     maybeFinish(prev !== 1 && marks.value[i] === 1);
 }
 
 function undo() {
     if (locked.value || !undoStack.length) return;
-    clearHint();
+    clearWrongCells();
     marksVersion++;
     const entry = undoStack.pop();
-    for (const [i, prev] of entry) marks.value[i] = prev;
+    for (const [i, prev, prevHintSafe] of entry) {
+        marks.value[i] = prev;
+        hintSafe.value[i] = prevHintSafe;
+    }
 }
 
 function reset() {
     if (locked.value || !game.value) return;
     clearStatus();
-    clearHint();
+    clearWrongCells();
     marksVersion++;
     const entry = [];
     for (let i = 0; i < marks.value.length; i++) {
         if (marks.value[i] !== 0) {
-            entry.push([i, marks.value[i]]);
+            entry.push([i, marks.value[i], hintSafe.value[i]]);
             marks.value[i] = 0;
+            hintSafe.value[i] = false;
         }
     }
     if (entry.length) undoStack.push(entry);
@@ -168,7 +184,7 @@ function win(times) {
     const g = game.value;
     locked.value = true;
     clearStatus();
-    clearHint();
+    clearWrongCells();
     stopClock();
     boardDone.value = true;
     let maxT = 0;
@@ -210,10 +226,12 @@ function win(times) {
 
 /* Paints an already-known solution onto the board with no stagger and no
    score submission — used when the player reopens a daily incident they've
-   already posted a verified time for. The shaded cells come straight from
-   the server (BurnfrontController@daily rederives them by pure deduction;
-   the incident has exactly one valid placement), so this never needs the
-   player's own past submission. */
+   already posted a verified time for, and by solvePuzzle()'s cheat button.
+   The shaded cells come straight from the server (BurnfrontController@daily
+   / @solve rederive them by pure deduction; every incident has exactly one
+   valid placement), so this never needs the player's own past submission.
+   Callers are responsible for clearing any of the player's own marks first
+   — this only ever adds shaded cells, it never removes a wrong one. */
 function revealSolution(shaded) {
     const g = game.value;
     for (const i of shaded) marks.value[i] = 1;
@@ -290,6 +308,7 @@ async function newGame() {
     clearStatus();
     veilVisible.value = true;
     bannerVisible.value = false;
+    voided.value = false;
     try {
         const resp = await fetch('/puzzle?difficulty=' + encodeURIComponent(diff.value));
         if (!resp.ok) throw new Error('puzzle request failed');
@@ -314,12 +333,13 @@ async function newGame() {
             timed,
         });
         marks.value = new Array(n).fill(0);
+        hintSafe.value = new Array(n).fill(false);
+        wrongCells.value = new Array(n).fill(false);
         cellStyle.value = new Array(n).fill(null);
         burnt.value = new Array(n).fill(false);
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
         boardDone.value = false;
-        clearHint();
         locked.value = false;
         if (timed) startClock();
     } catch (e) {
@@ -346,6 +366,7 @@ async function loadDaily() {
     clearStatus();
     veilVisible.value = true;
     bannerVisible.value = false;
+    voided.value = false;
     try {
         const resp = await fetch('/daily');
         if (!resp.ok) throw new Error('daily request failed');
@@ -370,11 +391,12 @@ async function loadDaily() {
             token: p.token,
         });
         marks.value = new Array(n).fill(0);
+        hintSafe.value = new Array(n).fill(false);
+        wrongCells.value = new Array(n).fill(false);
         cellStyle.value = new Array(n).fill(null);
         burnt.value = new Array(n).fill(false);
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
-        clearHint();
         dailyDate.value = p.date;
         fetchLeaderboard();
 
@@ -405,7 +427,14 @@ async function loadDaily() {
    a marks version are captured before the request goes out and rechecked
    after, so a reply for a superseded puzzle or a stale board (the player
    tapped, undid, reset, or started a new fire while waiting) is dropped
-   instead of being painted onto whatever's on screen now. */
+   instead of being painted onto whatever's on screen now.
+
+   The server only ever surfaces a forced *firebreak* (it silently works
+   through any "stays clear" deductions on its own) — so a hint just places
+   the cell itself, tinted green, instead of pointing at it with text. A
+   contradiction instead flags whichever already-placed firebreaks the
+   server can pin the blame on, tinted red — no status text needed either
+   way, the board says it directly. */
 async function requestHint() {
     if (locked.value || !game.value || hinting.value) return;
     hinting.value = true;
@@ -429,21 +458,76 @@ async function requestHint() {
         if (!resp.ok) throw new Error('hint request failed');
         const data = await resp.json();
         if (token !== genToken || version !== marksVersion) return; /* superseded */
-        clearHint();
+        clearWrongCells();
         if (data.status === 'forced') {
-            hintCell.value = data.cell;
-            showStatus(cellName(data.cell, game.value.C) + ' has to ' + (data.state === 'break' ? 'be a firebreak.' : 'stay clear.'));
+            const cell = data.cell;
+            marksVersion++;
+            const prev = marks.value[cell];
+            const prevHintSafe = hintSafe.value[cell];
+            marks.value[cell] = 1;
+            hintSafe.value[cell] = true;
+            undoStack.push([[cell, prev, prevHintSafe]]);
+            maybeFinish(prev !== 1);
         } else if (data.status === 'contradiction') {
-            showStatus('Something already marked doesn’t fit the report. Recheck your breaks.');
-        } else if (data.status === 'complete') {
-            showStatus('Every cell is already accounted for.');
-        } else {
-            showStatus("No forced move right now — take another look at what's placed.");
+            for (const cell of data.wrong ?? []) wrongCells.value[cell] = true;
         }
     } catch (e) {
         if (token === genToken && version === marksVersion) showStatus("Couldn't reach the incident desk. Try again.");
     } finally {
         hinting.value = false;
+    }
+}
+
+/* Cheat button: reveals the full solution instead of one forced deduction.
+   Voids the run rather than scoring it — the board locks and the clock
+   stops, but win()'s daily-score submission never runs (revealSolution()
+   only paints marks/cellStyle, it doesn't call win()), so a solved-for-you
+   board can never post a verified daily time on its own. The server also
+   never trusts this client-side void: solving a daily incident is recorded
+   server-side too (see BurnfrontController::solve()/voidDailyScore()), so a
+   request straight to /solve followed by a hand-crafted /daily/score POST
+   still can't post a score.
+
+   Bumping marksVersion here (disabled.value already keeps Solve unclickable
+   while a hint is in flight, via hintDisabled/solveDisabled both checking
+   hinting.value) is the actual guard against a hint request that was
+   already in flight *before* Solve was clicked: without it, that hint's
+   captured marksVersion would still match once its response finally
+   arrived, so it would sail past requestHint()'s staleness check and
+   re-place a cell — and since Solve already left the board fully correct,
+   that can trip maybeFinish() into calling win() a second time. */
+async function solvePuzzle() {
+    if (locked.value || !game.value) return;
+    if (!window.confirm("Reveal the full solution? Your time will be voided and this run won't be saved.")) return;
+    const token = genToken;
+    const n = game.value.n;
+    try {
+        const qs = new URLSearchParams({
+            difficulty: game.value.difficulty,
+            spark: String(game.value.spark),
+            clues: JSON.stringify(game.value.clues),
+        });
+        const resp = await fetch('/solve?' + qs.toString());
+        if (!resp.ok) throw new Error('solve request failed');
+        const data = await resp.json();
+        if (token !== genToken) return;
+        marksVersion++;
+        stopClock();
+        clearStatus();
+        undoStack.length = 0;
+        marks.value = new Array(n).fill(0);
+        hintSafe.value = new Array(n).fill(false);
+        wrongCells.value = new Array(n).fill(false);
+        cellStyle.value = new Array(n).fill(null);
+        burnt.value = new Array(n).fill(false);
+        revealedMinute.value = new Array(n).fill('');
+        locked.value = true;
+        boardDone.value = true;
+        voided.value = true;
+        revealSolution(data.solution);
+        bannerVisible.value = true;
+    } catch (e) {
+        showStatus("Couldn't reach the incident desk. Try again.");
     }
 }
 
@@ -479,6 +563,7 @@ if (isDaily.value) {
                 <button type="button" class="bf-btn" :disabled="hintDisabled" @click="requestHint">Hint</button>
                 <button type="button" class="bf-btn" :disabled="undoDisabled" @click="undo">Undo</button>
                 <button type="button" class="bf-btn" :disabled="resetDisabled" @click="reset">Reset</button>
+                <button type="button" class="bf-btn" :disabled="solveDisabled" @click="solvePuzzle">Solve</button>
                 <div class="ml-auto flex gap-2">
                     <div class="bf-chip" :class="{ 'is-over': overBudget }">
                         <span class="bf-chip-key">Breaks</span>
@@ -517,8 +602,9 @@ if (isDaily.value) {
 
             <div class="mt-2.5 flex min-h-9 items-baseline gap-3">
                 <div v-if="bannerVisible" class="flex flex-col gap-1.5">
-                    <span class="bf-banner-headline">FIRE MAPPED</span>
-                    <p v-if="game.timed" class="text-sm text-ash">
+                    <span class="bf-banner-headline">{{ voided ? 'SOLVED' : 'FIRE MAPPED' }}</span>
+                    <p v-if="voided" class="text-sm text-ash">Answer revealed — time voided, this run wasn&rsquo;t saved.</p>
+                    <p v-else-if="game.timed" class="text-sm text-ash">
                         Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span> — every clue burns on
                         time.
                     </p>

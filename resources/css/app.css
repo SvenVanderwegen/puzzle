@@ -20,6 +20,7 @@
     --color-ember-deep: #e06a1f;
     --color-flame: #ffd86b;
     --color-danger: #e5484d;
+    --color-safe: #5fae72;
 }
 
 @layer base {
@@ -107,33 +108,15 @@
     .bf-cell.is-break {
         @apply border-[#6e6146] bg-[repeating-linear-gradient(135deg,#564b38_0_3px,#241f16_3px_9px)];
     }
+    .bf-cell.is-break.is-hint-safe {
+        @apply border-safe bg-[repeating-linear-gradient(135deg,rgba(95,174,114,.5)_0_3px,#1c2b20_3px_9px)];
+    }
+    .bf-cell.is-break.is-hint-wrong {
+        @apply border-danger bg-[repeating-linear-gradient(135deg,rgba(229,72,77,.5)_0_3px,#2c1a1b_3px_9px)];
+    }
     .bf-cell.is-dot::after {
         content: '';
         @apply absolute inset-0 m-auto size-[12%] rounded-full bg-ash opacity-90;
-    }
-    .bf-cell.is-hint {
-        animation: bf-hint-pulse 1.3s ease-in-out infinite;
-        box-shadow:
-            0 0 0 2px var(--color-flame),
-            0 0 12px rgba(255, 216, 107, 0.55);
-    }
-    @keyframes bf-hint-pulse {
-        0%,
-        100% {
-            box-shadow:
-                0 0 0 2px var(--color-flame),
-                0 0 12px rgba(255, 216, 107, 0.55);
-        }
-        50% {
-            box-shadow:
-                0 0 0 2px var(--color-flame),
-                0 0 20px rgba(255, 216, 107, 0.85);
-        }
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .bf-cell.is-hint {
-            animation: none;
-        }
     }
     .bf-cell .bf-cell-minute {
         @apply absolute inset-0 flex items-center justify-center;

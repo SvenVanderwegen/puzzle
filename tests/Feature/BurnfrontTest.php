@@ -194,8 +194,7 @@ class BurnfrontTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJson(['status' => 'forced']);
-        $response->assertJsonStructure(['status', 'cell', 'state']);
-        $this->assertContains($response->json('state'), ['break', 'open']);
+        $response->assertJsonStructure(['status', 'cell']);
     }
 
     public function test_hint_endpoint_rejects_unknown_difficulty(): void
@@ -237,21 +236,20 @@ class BurnfrontTest extends TestCase
     }
 
     /**
-     * A player accepting an "open" hint has no way to tell the server
-     * except by sending it back as a committed open cell next time — if the
-     * endpoint dropped that (only ever looking at `shaded`), an open verdict
-     * would repeat forever instead of the search moving on. Walks the fixed
-     * demo instance from EngineTest, feeding every returned cell back as
-     * shaded or open depending on its verdict, and asserts no cell is ever
-     * suggested twice.
+     * The hint system only ever surfaces a forced *firebreak* — any forced
+     * "stays clear" step along the way is absorbed silently server-side (see
+     * BurnfrontController::hint()), so the player never needs to feed those
+     * back as committed open cells. Walks the fixed demo instance from
+     * EngineTest, feeding only the returned shaded cells back each time, and
+     * asserts every verdict is a firebreak (never 'open') until the board is
+     * fully accounted for, with no cell ever suggested twice.
      */
-    public function test_hint_endpoint_advances_past_an_accepted_open_verdict(): void
+    public function test_hint_endpoint_only_ever_surfaces_firebreak_deductions(): void
     {
         $spark = 15;
         $clues = [[9, 8], [12, 5], [16, 1], [21, 2], [23, 8]];
 
         $shaded = [];
-        $open = [];
         $seen = [];
 
         for ($i = 0; $i < 25; $i++) {
@@ -260,7 +258,6 @@ class BurnfrontTest extends TestCase
                 'spark' => $spark,
                 'clues' => json_encode($clues),
                 'shaded' => json_encode($shaded),
-                'open' => json_encode($open),
             ]));
 
             $response->assertStatus(200);
@@ -274,15 +271,12 @@ class BurnfrontTest extends TestCase
             $cell = $response->json('cell');
             $this->assertNotContains($cell, $seen, "Cell {$cell} was suggested more than once.");
             $seen[] = $cell;
-
-            if ($response->json('state') === 'break') {
-                $shaded[] = $cell;
-            } else {
-                $open[] = $cell;
-            }
+            $shaded[] = $cell;
         }
 
         $this->assertSame('complete', $response->json('status'));
+        sort($shaded);
+        $this->assertSame([8, 11, 17, 22], $shaded);
     }
 
     /**
@@ -351,6 +345,61 @@ class BurnfrontTest extends TestCase
         $this->assertContains($response->json('status'), ['forced', 'complete']);
     }
 
+    /**
+     * Mirrors Engine's misplacedShaded coverage at the HTTP boundary: three
+     * of the demo instance's four true breaks (8, 11, 17 — see EngineTest's
+     * demoPuzzle/demoBreaks) are committed correctly, plus one wrong guess
+     * (5) in place of the real fourth break (22, left uncommitted). The
+     * endpoint should report the contradiction and pin it on the wrong cell
+     * specifically, not on any of the correctly placed ones.
+     */
+    public function test_hint_endpoint_flags_a_misplaced_firebreak_on_contradiction(): void
+    {
+        $response = $this->getJson('/hint?'.http_build_query([
+            'difficulty' => 'lookout',
+            'spark' => 15,
+            'clues' => json_encode([[9, 8], [12, 5], [16, 1], [21, 2], [23, 8]]),
+            'shaded' => json_encode([8, 11, 17, 5]),
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertJson(['status' => 'contradiction', 'wrong' => [5]]);
+    }
+
+    public function test_solve_endpoint_returns_the_full_solution(): void
+    {
+        $puzzle = $this->getJson('/puzzle?difficulty=lookout')->json();
+
+        $response = $this->getJson('/solve?'.http_build_query([
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => json_encode($puzzle['clues']),
+        ]));
+
+        $response->assertStatus(200);
+        $solution = $response->json('solution');
+        $this->assertIsArray($solution);
+        $this->assertCount($puzzle['breaks'], $solution);
+
+        $clueCells = array_map(fn ($pair) => $pair[0], $puzzle['clues']);
+        foreach ($solution as $cell) {
+            $this->assertIsInt($cell);
+            $this->assertNotSame($puzzle['spark'], $cell);
+            $this->assertNotContains($cell, $clueCells);
+        }
+    }
+
+    public function test_solve_endpoint_rejects_unknown_difficulty(): void
+    {
+        $response = $this->getJson('/solve?'.http_build_query([
+            'difficulty' => 'arsonist',
+            'spark' => 0,
+            'clues' => json_encode([]),
+        ]));
+
+        $response->assertStatus(422);
+    }
+
     public function test_submit_daily_score_requires_authentication(): void
     {
         $response = $this->postJson('/daily/score', [
@@ -382,6 +431,35 @@ class BurnfrontTest extends TestCase
         $this->assertTrue(
             DailyScore::where('user_id', $user->id)->whereDate('date', now('UTC')->toDateString())->exists()
         );
+    }
+
+    /**
+     * The "Solve" cheat button is meant to void the run instead of scoring
+     * it (see BurnfrontController::solve()) — this asserts that void is
+     * actually enforced server-side, not just left to the client's own
+     * banner/state, by calling /solve directly and then attempting to POST
+     * the correct board straight to /daily/score, bypassing the frontend
+     * entirely.
+     */
+    public function test_submit_daily_score_rejects_a_submission_after_solve_was_called(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $solve = $this->actingAs($user)->getJson('/solve?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $daily['spark'],
+            'clues' => json_encode($daily['clues']),
+        ]));
+        $solve->assertStatus(200);
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $solve->json('solution'),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('burnfront_daily_scores', 0);
     }
 
     public function test_submit_daily_score_rejects_an_incorrect_board(): void

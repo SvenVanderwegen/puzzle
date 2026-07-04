@@ -175,4 +175,45 @@ class EngineTest extends TestCase
 
         $this->assertSame(['status' => 'contradiction'], $result);
     }
+
+    /**
+     * Three of the four true breaks (8, 11, 17) are committed correctly,
+     * alongside a wrong guess (5) standing in for the real fourth break (22,
+     * left uncommitted/unknown). misplacedShaded should pin the blame on the
+     * wrong cell specifically, not on any of the three correct ones.
+     */
+    public function test_misplaced_shaded_flags_the_wrong_firebreak_without_flagging_correct_ones(): void
+    {
+        $pz = $this->demoPuzzle();
+        $state = Engine::initialState($pz);
+        foreach ([8, 11, 17] as $cell) {
+            $state[$cell] = Engine::SHADED;
+        }
+        $state[5] = Engine::SHADED; // wrong guess, in place of the real break at 22
+
+        $this->assertFalse(Engine::feasible($pz, $state));
+        $this->assertSame([5], Engine::misplacedShaded($pz, $state));
+    }
+
+    /**
+     * misplacedShaded is only meaningful once feasible() has already
+     * rejected a state (that's the contract nextDeduction's 'contradiction'
+     * calls it under) — asserts it doesn't error and returns a non-empty
+     * blame list for the same over-budget contradiction covered above,
+     * rather than asserting a specific cell set the single-flip heuristic
+     * can't promise for every infeasible state.
+     */
+    public function test_misplaced_shaded_returns_a_cell_list_for_a_contradictory_state(): void
+    {
+        $pz = $this->demoPuzzle();
+        $state = Engine::initialState($pz);
+        foreach ([0, 1, 2, 3, 4] as $cell) {
+            $state[$cell] = Engine::SHADED; // 5 shaded cells, but the puzzle only allows 4
+        }
+
+        $this->assertFalse(Engine::feasible($pz, $state));
+        $wrong = Engine::misplacedShaded($pz, $state);
+        $this->assertIsList($wrong);
+        $this->assertNotEmpty($wrong);
+    }
 }
