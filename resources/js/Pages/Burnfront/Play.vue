@@ -2,6 +2,7 @@
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
+import LoadingVeil from './LoadingVeil.vue';
 
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily'
@@ -533,9 +534,7 @@ if (isDaily.value) {
                         <span class="bf-cell-minute">{{ cellText(i - 1) }}</span>
                     </button>
                 </div>
-                <div class="bf-veil" :class="{ 'is-visible': veilVisible }">
-                    <span>Surveying terrain&hellip;</span>
-                </div>
+                <LoadingVeil :visible="veilVisible" />
             </div>
 
             <div class="mt-3.5 flex min-h-11 items-baseline gap-3">

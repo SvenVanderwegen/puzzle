@@ -158,22 +158,70 @@
     }
 
     .bf-veil {
-        @apply absolute inset-0 z-[2] hidden items-center justify-center rounded-md bg-soot/72 backdrop-blur-[1px];
+        @apply fixed inset-0 z-[100] hidden flex-col items-center justify-center gap-4 bg-soot/92 backdrop-blur-[2px];
     }
     .bf-veil.is-visible {
         @apply flex;
     }
-    .bf-veil span {
-        @apply text-xs tracking-[.18em] text-ash uppercase;
-        animation: bf-pulse 1.2s ease-in-out infinite;
+    .bf-veil-body {
+        @apply flex flex-col items-center gap-4;
     }
-    @keyframes bf-pulse {
+    .bf-veil-grid {
+        @apply grid grid-cols-5 gap-1.5;
+        width: min(48vw, 190px);
+    }
+    .bf-veil-cell {
+        @apply aspect-square rounded-[3px] border border-line bg-char;
+        animation: bf-veil-ignite 2800ms ease-in-out infinite;
+        animation-delay: var(--delay, 0ms);
+    }
+    .bf-veil-cell.is-spark {
+        @apply border-ember-deep;
+    }
+    @keyframes bf-veil-ignite {
         0%,
-        100% {
-            opacity: 0.45;
+        8% {
+            background-color: var(--color-char);
+            box-shadow: none;
         }
-        50% {
+        18%,
+        55% {
+            background-color: var(--color-ember);
+            box-shadow: 0 0 10px rgba(255, 138, 61, 0.55);
+        }
+        75%,
+        100% {
+            background-color: var(--color-char);
+            box-shadow: none;
+        }
+    }
+    .bf-veil-log {
+        @apply flex items-center gap-[3px] text-xs tracking-[.16em] text-ash uppercase tabular-nums;
+    }
+    .bf-veil-cursor {
+        @apply inline-block h-[1em] w-[7px] bg-ember align-middle;
+        animation: bf-veil-blink 1s step-end infinite;
+    }
+    @keyframes bf-veil-blink {
+        0%,
+        49% {
             opacity: 1;
+        }
+        50%,
+        100% {
+            opacity: 0;
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bf-veil-cell {
+            animation: none;
+        }
+        .bf-veil-cell.is-spark {
+            background-color: var(--color-ember);
+            box-shadow: 0 0 10px rgba(255, 138, 61, 0.55);
+        }
+        .bf-veil-cursor {
+            animation: none;
         }
     }
 
