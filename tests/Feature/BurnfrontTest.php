@@ -828,6 +828,36 @@ class BurnfrontTest extends TestCase
         $this->assertSame(2, $score->hints_used);
     }
 
+    /**
+     * Regression test for a review finding: /hint trusts whatever spark/clues
+     * the client sends, so a request tagged difficulty=daily but carrying a
+     * different (here: freshly generated 'crew', which shares the daily
+     * tier's 6x6/8-break shape) incident must not inflate the real daily
+     * run's hint counter — only a forced result for *today's actual*
+     * persisted incident should count.
+     */
+    public function test_hint_endpoint_does_not_count_a_forced_hint_for_mismatched_daily_clues(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json(); // persists + binds today's real incident
+
+        $other = $this->puzzles()->generate('crew');
+        $this->actingAs($user)->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $other['spark'],
+            'clues' => json_encode($other['clues']),
+            'shaded' => '[]',
+            'open' => '[]',
+        ]))->assertJson(['status' => 'forced']);
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertJson(['hints_used' => 0]);
+    }
+
     public function test_hint_endpoint_does_not_count_hints_for_endless_difficulties(): void
     {
         $user = User::factory()->create();
@@ -939,6 +969,7 @@ class BurnfrontTest extends TestCase
             ->where('entries.0.date', now('UTC')->toDateString())
             ->where('entries.0.name', $daily['name'])
             ->has('entries.0.time_ms')
+            ->where('entries.0.replayable', true)
             ->where('streak.current', 1)
         );
     }
@@ -946,6 +977,39 @@ class BurnfrontTest extends TestCase
     public function test_daily_history_requires_authentication(): void
     {
         $this->get('/daily/history')->assertRedirect('/login');
+    }
+
+    public function test_daily_history_renders_for_a_user_with_no_scores_yet(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/daily/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/DailyHistory')
+            ->where('entries', [])
+            ->where('streak.current', 0)
+        );
+    }
+
+    /**
+     * Regression test for a review finding: a score recorded before
+     * incidents were persisted (or, in this test, one whose incident row
+     * was never created) must be listed as non-replayable rather than
+     * linking to a case history review that 404s.
+     */
+    public function test_daily_history_flags_a_score_without_a_persisted_incident_as_not_replayable(): void
+    {
+        $user = User::factory()->create();
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-01-01', 'time_ms' => 1000]);
+
+        $response = $this->actingAs($user)->get('/daily/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('entries.0.date', '2026-01-01')
+            ->where('entries.0.name', null)
+            ->where('entries.0.replayable', false)
+        );
     }
 
     public function test_daily_history_play_replays_a_solved_incidents_board_and_solution(): void
@@ -1037,12 +1101,18 @@ class BurnfrontTest extends TestCase
         $this->assertSame($moves, $play->moves);
     }
 
+    /**
+     * Minimal entries (7 bytes encoded each) so 20,050 of them stay well
+     * under the 256 KiB byte cap — this isolates the 20,000-entry count cap
+     * from the separate byte cap covered by
+     * test_submit_endless_score_caps_the_total_encoded_byte_size_of_moves().
+     */
     public function test_submit_endless_score_caps_an_oversized_moves_payload(): void
     {
         $user = User::factory()->create();
         $puzzle = $this->puzzles()->generate('lookout');
         $shaded = $this->solveEndless($puzzle);
-        $oversized = array_fill(0, 20050, ['t' => 0, 'type' => 'mark', 'cell' => 0, 'prev' => 0, 'value' => 1, 'prevHintSafe' => false]);
+        $oversized = array_fill(0, 20050, ['t' => 0]);
 
         $this->actingAs($user)->postJson('/endless/score', [
             'difficulty' => 'lookout',
@@ -1055,6 +1125,33 @@ class BurnfrontTest extends TestCase
 
         $play = GamePlay::where('user_id', $user->id)->where('mode', 'endless')->first();
         $this->assertCount(20000, $play->moves);
+    }
+
+    /**
+     * Entry count alone doesn't bound storage — a handful of huge entries
+     * would slip through a count-only cap while still bloating the row (or
+     * failing the JSON insert outright). Ten 60 KB entries stay well under
+     * the 20,000-entry cap but should be truncated by the 256 KiB encoded
+     * byte cap after the fourth one.
+     */
+    public function test_submit_endless_score_caps_the_total_encoded_byte_size_of_moves(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $shaded = $this->solveEndless($puzzle);
+        $huge = array_fill(0, 10, str_repeat('a', 60000));
+
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'moves' => $huge,
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+
+        $play = GamePlay::where('user_id', $user->id)->where('mode', 'endless')->first();
+        $this->assertCount(4, $play->moves);
     }
 
     public function test_submit_endless_score_only_updates_best_time_when_actually_faster(): void
@@ -1114,7 +1211,7 @@ class BurnfrontTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_submit_endless_score_rejects_the_untimed_cold_case_tier(): void
+    public function test_submit_endless_score_records_a_solve_for_the_untimed_cold_case_tier_without_a_time(): void
     {
         $user = User::factory()->create();
         $puzzle = $this->puzzles()->generate('coldcase');
@@ -1124,10 +1221,15 @@ class BurnfrontTest extends TestCase
             'spark' => $puzzle['spark'],
             'clues' => $puzzle['clues'],
             'shaded' => $this->solveEndless($puzzle),
-            'time_ms' => 1000,
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(200);
+        $response->assertJson(['solved_count' => 1, 'best_time_ms' => null, 'improved' => false]);
+
+        $record = EndlessScore::where('user_id', $user->id)->where('difficulty', 'coldcase')->first();
+        $this->assertNotNull($record);
+        $this->assertSame(1, $record->solved_count);
+        $this->assertNull($record->best_time_ms);
     }
 
     public function test_submit_endless_score_requires_authentication(): void
@@ -1188,6 +1290,50 @@ class BurnfrontTest extends TestCase
     public function test_game_history_requires_authentication(): void
     {
         $this->get('/game/history')->assertRedirect('/login');
+    }
+
+    public function test_game_history_reports_a_trainee_rank_and_no_badges_for_a_fresh_account(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/game/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('career.rank.title', 'Trainee Analyst')
+            ->where('career.rank.totalSolved', 0)
+            ->where('career.rank.nextTitle', 'Field Analyst')
+            ->where('career.rank.nextThreshold', 5)
+            ->where('career.badges.0.earned', false)
+        );
+    }
+
+    public function test_game_history_career_rank_counts_daily_and_endless_solves_together(): void
+    {
+        $user = User::factory()->create();
+        EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'lookout', 'solved_count' => 3, 'best_time_ms' => 3000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => now('UTC')->toDateString(), 'time_ms' => 1000, 'hints_used' => 0]);
+
+        $response = $this->actingAs($user)->get('/game/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('career.rank.totalSolved', 4)
+            ->where('career.rank.title', 'Trainee Analyst')
+            ->where('career.badges.0.earned', true) // first_incident
+            ->where('career.badges.1.earned', true) // clean_reconstruction
+        );
+    }
+
+    public function test_game_history_awards_the_cold_case_badge_only_after_a_cold_case_solve(): void
+    {
+        $user = User::factory()->create();
+
+        $before = $this->actingAs($user)->get('/game/history');
+        $before->assertInertia(fn (Assert $page) => $page->where('career.badges.5.earned', false));
+
+        EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'coldcase', 'solved_count' => 1]);
+
+        $after = $this->actingAs($user)->get('/game/history');
+        $after->assertInertia(fn (Assert $page) => $page->where('career.badges.5.earned', true));
     }
 
     public function test_daily_incident_is_persisted_the_first_time_it_is_generated(): void

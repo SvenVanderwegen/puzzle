@@ -24,7 +24,7 @@ return new class extends Migration
             $table->json('clues');
             $table->json('shaded_cells');
             $table->json('moves');
-            $table->unsignedInteger('time_ms');
+            $table->unsignedInteger('time_ms')->nullable();
             $table->unsignedInteger('hints_used')->default(0);
             $table->timestamps();
 

@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
 import LoadingVeil from './LoadingVeil.vue';
 import SiteBar from '@/Components/SiteBar.vue';
@@ -79,10 +79,19 @@ function stopClock() {
         clockTimer = null;
     }
 }
-function startClock() {
+/* startAtValue seeds the clock from a resumed save (see persistProgress()/
+   restoreEndlessGame() below) instead of always starting now. It's an
+   absolute timestamp, not a relative elapsed duration: persistProgress()
+   only runs on mark-changing actions, so a relative "elapsed so far" value
+   would go stale the moment the player just sits looking at the board and
+   then refreshes — every second of that idle gap would silently vanish
+   from the resumed clock. Seeding startAt itself instead means the clock
+   (and whatever time_ms eventually gets submitted) always reflects true
+   wall-clock time since the board was first opened, idle gaps included. */
+function startClock(startAtValue = Date.now()) {
     stopClock();
-    startAt = Date.now();
-    clockText.value = '0:00';
+    startAt = startAtValue;
+    clockText.value = fmtClock(Date.now() - startAt);
     clockTimer = setInterval(() => {
         clockText.value = fmtClock(Date.now() - startAt);
     }, 1000);
@@ -102,6 +111,143 @@ function showStatus(msg) {
 
 function clearWrongCells() {
     wrongCells.value = wrongCells.value.map(() => false);
+}
+
+/* localStorage persistence for an in-progress board, so a refresh, an
+   accidental back/navigation, or a closed tab doesn't silently throw away
+   marks the player already placed — previously nothing survived a reload.
+   Every read/write is best-effort (private browsing, a full quota, or
+   storage disabled entirely all just mean resume silently doesn't happen,
+   never a hard error). Keyed per difficulty (custom grids further by their
+   own rows/cols/breaks) so switching tiers can never restore the wrong
+   board; the daily incident gets one shared slot instead, since there's
+   only ever one daily board in flight at a time. */
+const DAILY_PROGRESS_KEY = 'burnfront:save:daily:v1';
+
+function endlessProgressKey(difficulty) {
+    if (difficulty === 'custom') {
+        const c = props.difficulties.custom;
+        return `burnfront:save:endless:custom:${c?.rows}x${c?.cols}x${c?.breaks}:v1`;
+    }
+    return `burnfront:save:endless:${difficulty}:v1`;
+}
+
+function currentProgressKey() {
+    const g = game.value;
+    if (!g) return null;
+    return isDaily.value ? DAILY_PROGRESS_KEY : endlessProgressKey(g.difficulty);
+}
+
+function readProgress(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function clearProgress(key) {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {
+        /* best-effort */
+    }
+}
+
+/* Called after every mark-changing action (tap/undo/reset/hint) — cheap
+   enough to write on every change rather than debounce, since a saved
+   board is at most a few hundred small integers. Skipped once boardDone is
+   set (win()/solvePuzzle() clear the save outright instead — there's
+   nothing left to resume). */
+function persistProgress() {
+    const g = game.value;
+    if (!g || isArchive.value || boardDone.value) return;
+    const key = currentProgressKey();
+    if (!key) return;
+    const payload = {
+        spark: g.spark,
+        clues: g.clues,
+        rows: g.R,
+        cols: g.C,
+        breaks: g.N,
+        difficulty: g.difficulty,
+        name: g.name,
+        blurb: g.blurb,
+        timed: g.timed,
+        date: dailyDate.value,
+        marks: marks.value,
+        hintSafe: hintSafe.value,
+        undoStack: undoStack.slice(),
+        hintsUsedThisRun: hintsUsedThisRun.value,
+        startAt: clockTimer ? startAt : null,
+    };
+    try {
+        localStorage.setItem(key, JSON.stringify(payload));
+    } catch (e) {
+        /* best-effort */
+    }
+}
+
+/* A saved endless board only matches the difficulty the player is looking
+   at right now — for 'custom' that also means the same grid, since the
+   rows/cols/breaks are player-chosen and vary per save (see
+   endlessProgressKey()); the key already encodes them, but the payload is
+   double-checked too rather than trusted blindly off a key string. */
+function endlessSaveMatches(saved) {
+    if (!saved || saved.difficulty !== diff.value) return false;
+    if (diff.value !== 'custom') return true;
+    const c = props.difficulties.custom;
+    return !!c && saved.rows === c.rows && saved.cols === c.cols && saved.breaks === c.breaks;
+}
+
+/* generateDaily() is deterministic per date, so a save for today should
+   always match today's freshly-fetched board — checked anyway rather than
+   trusted on the date alone, same caution the rest of this file applies to
+   anything read back out of client-side storage. */
+function dailySaveMatches(saved, p) {
+    return saved.date === p.date && saved.spark === p.spark && JSON.stringify(saved.clues) === JSON.stringify(p.clues);
+}
+
+/* Rebuilds `game` and every per-cell array straight from a save, with no
+   /puzzle round trip — the saved spark/clues/breaks already are the
+   incident, so there's nothing left to fetch. */
+function restoreEndlessGame(saved) {
+    const n = saved.rows * saved.cols;
+    game.value = reactive({
+        n,
+        adj: buildAdj(saved.rows, saved.cols),
+        spark: saved.spark,
+        R: saved.rows,
+        C: saved.cols,
+        N: saved.breaks,
+        clueMap: new Map(saved.clues),
+        clueIdx: saved.clues.map((cv) => cv[0]),
+        clueVal: saved.clues.map((cv) => cv[1]),
+        clues: saved.clues,
+        difficulty: saved.difficulty,
+        name: saved.name,
+        blurb: saved.blurb,
+        timed: saved.timed,
+    });
+    marks.value = saved.marks;
+    hintSafe.value = saved.hintSafe;
+    wrongCells.value = new Array(n).fill(false);
+    cellStyle.value = new Array(n).fill(null);
+    burnt.value = new Array(n).fill(false);
+    revealedMinute.value = new Array(n).fill('');
+    undoStack.length = 0;
+    undoStack.push(...(saved.undoStack ?? []));
+    focusedIndex.value = 0;
+    hintsUsedThisRun.value = saved.hintsUsedThisRun ?? 0;
+    personalBestNote.value = '';
+    dailyScorePosted.value = false;
+    voided.value = false;
+    boardDone.value = false;
+    bannerVisible.value = false;
+    veilVisible.value = false;
+    locked.value = false;
+    if (saved.timed) startClock(saved.startAt || Date.now());
 }
 
 function cellLabel(i) {
@@ -151,7 +297,90 @@ function tap(i, dir) {
     hintSafe.value[i] = false;
     undoStack.push([[i, prev, prevHintSafe]]);
     moveLog.push({ t: Date.now() - startAt, type: 'mark', cell: i, prev, value: marks.value[i], prevHintSafe });
+    persistProgress();
     maybeFinish(prev !== 1 && marks.value[i] === 1);
+}
+
+/* Roving tabindex for the board: exactly one cell is a tab stop at a time,
+   and arrow keys move both DOM focus and that stop between cells (a plain
+   Tab order over up to 64 buttons is unusable). cellEls isn't reactive —
+   it's only ever used for imperative .focus() calls, never read for
+   rendering — so a plain array is enough, and stale entries left behind by
+   a smaller subsequent board are simply never indexed into. */
+const focusedIndex = ref(0);
+let cellEls = [];
+function setCellEl(i, el) {
+    cellEls[i] = el;
+}
+function focusCell(i) {
+    cellEls[i]?.focus();
+}
+
+/* Arrow keys move focus by grid position; Backspace is the keyboard
+   equivalent of the right-click/long-press "reverse tap" (dir -1), since a
+   keyboard has no separate secondary-click gesture. Enter/Space already
+   reach tap() for free — they're native <button> activation, which fires a
+   'click' event same as a mouse tap. */
+function onCellKeydown(e, i) {
+    const g = game.value;
+    if (!g) return;
+    const col = i % g.C;
+    switch (e.key) {
+        case 'ArrowUp':
+            e.preventDefault();
+            focusCell(i - g.C);
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            focusCell(i + g.C);
+            break;
+        case 'ArrowLeft':
+            e.preventDefault();
+            if (col > 0) focusCell(i - 1);
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            if (col < g.C - 1) focusCell(i + 1);
+            break;
+        case 'Home':
+            e.preventDefault();
+            focusCell(i - col);
+            break;
+        case 'End':
+            e.preventDefault();
+            focusCell(i - col + g.C - 1);
+            break;
+        case 'Backspace':
+            e.preventDefault();
+            tap(i, -1);
+            break;
+    }
+}
+
+/* Single-letter shortcuts for the board toolbar, mirrored in the buttons'
+   title tooltips below. Ignored while a modifier key is held (so Ctrl+R
+   still refreshes the page) and while focus is in a form field (there are
+   none on this page today, but this keeps the listener safe if one is ever
+   added). Attached on window, not the board, so a shortcut works no matter
+   which cell — or nothing — currently has focus. */
+function onGlobalKeydown(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    switch (e.key.toLowerCase()) {
+        case 'u':
+            if (!undoDisabled.value) undo();
+            break;
+        case 'r':
+            if (!resetDisabled.value) reset();
+            break;
+        case 'h':
+            if (!hintDisabled.value) requestHint();
+            break;
+        case 's':
+            if (!solveDisabled.value) solvePuzzle();
+            break;
+    }
 }
 
 function undo() {
@@ -168,6 +397,7 @@ function undo() {
         type: 'undo',
         restores: entry.map(([i, prev, prevHintSafe]) => [i, prev, prevHintSafe]),
     });
+    persistProgress();
 }
 
 function reset() {
@@ -187,6 +417,7 @@ function reset() {
         undoStack.push(entry);
         moveLog.push({ t: Date.now() - startAt, type: 'reset', cleared: entry });
     }
+    persistProgress();
 }
 
 function maybeFinish(justCompleted) {
@@ -204,6 +435,7 @@ function maybeFinish(justCompleted) {
 
 function win(times) {
     const g = game.value;
+    clearProgress(currentProgressKey()); // solved — nothing left to resume
     locked.value = true;
     clearStatus();
     clearWrongCells();
@@ -244,8 +476,12 @@ function win(times) {
     // routes/web.php), so a signed-in user is always present here.
     if (isDaily.value && dailyDate.value) {
         submitDailyScore(shaded);
-    } else if (props.mode === 'endless' && props.authenticated && diff.value !== 'custom' && g.timed) {
-        submitEndlessScore(shaded, Date.now() - startAt);
+    } else if (props.mode === 'endless' && props.authenticated && diff.value !== 'custom') {
+        // Untimed tiers (Cold Case) still get recorded — just with no
+        // time_ms, since there's no clock to keep a best against (see
+        // BurnfrontController::submitEndlessScore()). That's what lets a
+        // solve there ever bump solved_count at all.
+        submitEndlessScore(shaded, g.timed ? Date.now() - startAt : null);
     }
 }
 
@@ -346,15 +582,27 @@ async function submitDailyScore(shaded) {
     }
 }
 
-/* Records a personal-best attempt for a named endless tier. Unlike the
-   daily incident, there's no server-bound start time here — time_ms is the
+/* Records a solved incident for a named endless tier. Unlike the daily
+   incident, there's no server-bound start time here — time_ms is the
    client's own clock, trusted for this personal-record feature — but the
    submitted board is still independently replayed against the actual
    engine server-side before any time is recorded (see
-   BurnfrontController::submitEndlessScore()). Best-effort: a failed
-   request just means this run's personal-best bookkeeping is skipped. */
+   BurnfrontController::submitEndlessScore()). timeMs is null for an
+   untimed tier (Cold Case): there's no clock to trust or keep a best
+   against, so the field is left out entirely rather than sent as a made-up
+   0 — the server only ever bumps solved_count for those. Best-effort: a
+   failed request just means this run's personal-best bookkeeping is
+   skipped. */
 async function submitEndlessScore(shaded, timeMs) {
     try {
+        const body = {
+            difficulty: diff.value,
+            spark: game.value.spark,
+            clues: game.value.clues,
+            shaded,
+            moves: moveLog,
+        };
+        if (timeMs !== null) body.time_ms = Math.round(timeMs);
         const resp = await fetch('/endless/score', {
             method: 'POST',
             headers: {
@@ -362,14 +610,7 @@ async function submitEndlessScore(shaded, timeMs) {
                 Accept: 'application/json',
                 'X-XSRF-TOKEN': xsrfToken(),
             },
-            body: JSON.stringify({
-                difficulty: diff.value,
-                spark: game.value.spark,
-                clues: game.value.clues,
-                shaded,
-                moves: moveLog,
-                time_ms: Math.round(timeMs),
-            }),
+            body: JSON.stringify(body),
         });
         if (!resp.ok) return;
         const data = await resp.json();
@@ -379,7 +620,24 @@ async function submitEndlessScore(shaded, timeMs) {
     }
 }
 
-async function newGame() {
+/* fresh=false (only ever passed by the initial mount, below) tries to
+   resume a saved in-progress board for the current difficulty before
+   generating anything new — see persistProgress(). fresh=true (the "New
+   fire" button) always starts a new incident and drops whichever save was
+   sitting there for this difficulty, since the player is explicitly asking
+   to abandon it. */
+async function newGame(fresh = true) {
+    const key = endlessProgressKey(diff.value);
+    if (fresh) {
+        clearProgress(key);
+    } else {
+        const saved = readProgress(key);
+        if (saved && endlessSaveMatches(saved)) {
+            restoreEndlessGame(saved);
+            return;
+        }
+    }
+
     const token = ++genToken;
     locked.value = true;
     dailyScorePosted.value = false;
@@ -421,6 +679,7 @@ async function newGame() {
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
         moveLog.length = 0;
+        focusedIndex.value = 0;
         boardDone.value = false;
         locked.value = false;
         if (timed) startClock();
@@ -482,6 +741,7 @@ async function loadDaily() {
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
         moveLog.length = 0;
+        focusedIndex.value = 0;
         dailyDate.value = p.date;
         fetchLeaderboard();
 
@@ -494,9 +754,23 @@ async function loadDaily() {
             hintsUsedThisRun.value = p.hintsUsed ?? 0;
             bannerVisible.value = true;
         } else {
+            // A save only ever resumes today's own board — dailySaveMatches()
+            // checks the date plus the spark/clues themselves, so a save left
+            // over from a previous day (or a client clock skewed a day off)
+            // can never paint onto a board it wasn't generated for.
+            const saved = readProgress(DAILY_PROGRESS_KEY);
+            if (saved && dailySaveMatches(saved, p)) {
+                marks.value = saved.marks;
+                hintSafe.value = saved.hintSafe;
+                undoStack.length = 0;
+                undoStack.push(...(saved.undoStack ?? []));
+                hintsUsedThisRun.value = saved.hintsUsedThisRun ?? 0;
+                startClock(saved.startAt || Date.now());
+            } else {
+                startClock();
+            }
             boardDone.value = false;
             locked.value = false;
-            startClock();
         }
     } catch (e) {
         if (token === genToken) locked.value = false;
@@ -555,6 +829,7 @@ async function requestHint() {
             hintsUsedThisRun.value++;
             undoStack.push([[cell, prev, prevHintSafe]]);
             moveLog.push({ t: Date.now() - startAt, type: 'hint', cell, prev, value: 1, prevHintSafe });
+            persistProgress();
             maybeFinish(prev !== 1);
         } else if (data.status === 'contradiction') {
             for (const cell of data.wrong ?? []) wrongCells.value[cell] = true;
@@ -599,6 +874,7 @@ async function solvePuzzle() {
         if (!resp.ok) throw new Error('solve request failed');
         const data = await resp.json();
         if (token !== genToken) return;
+        clearProgress(currentProgressKey()); // revealed — nothing left to resume
         marksVersion++;
         stopClock();
         clearStatus();
@@ -652,6 +928,7 @@ function loadArchive() {
     revealedMinute.value = new Array(n).fill('');
     undoStack.length = 0;
     moveLog.length = 0;
+    focusedIndex.value = 0;
     dailyDate.value = p.date;
     hintsUsedThisRun.value = p.hintsUsed ?? 0;
     revealSolution(p.solution);
@@ -704,7 +981,10 @@ async function copyReport() {
     }, 2400);
 }
 
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown));
+
 onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onGlobalKeydown);
     stopClock();
     clearTimeout(statusTimer);
     clearTimeout(winTimer);
@@ -716,7 +996,7 @@ if (isDaily.value) {
 } else if (isArchive.value) {
     loadArchive();
 } else {
-    newGame();
+    newGame(false);
 }
 </script>
 
@@ -734,12 +1014,12 @@ if (isDaily.value) {
             <div v-if="!isArchive" class="mt-2.5 flex flex-wrap items-center gap-2">
                 <template v-if="mode === 'endless'">
                     <Link href="/endless" class="bf-btn">Change difficulty</Link>
-                    <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
+                    <button type="button" class="bf-btn bf-btn-primary" @click="newGame(true)">New fire</button>
                 </template>
-                <button type="button" class="bf-btn" :disabled="hintDisabled" @click="requestHint">Hint</button>
-                <button type="button" class="bf-btn" :disabled="undoDisabled" @click="undo">Undo</button>
-                <button type="button" class="bf-btn" :disabled="resetDisabled" @click="reset">Reset</button>
-                <button type="button" class="bf-btn" :disabled="solveDisabled" @click="solvePuzzle">Solve</button>
+                <button type="button" class="bf-btn" title="Hint (H)" :disabled="hintDisabled" @click="requestHint">Hint</button>
+                <button type="button" class="bf-btn" title="Undo (U)" :disabled="undoDisabled" @click="undo">Undo</button>
+                <button type="button" class="bf-btn" title="Reset (R)" :disabled="resetDisabled" @click="reset">Reset</button>
+                <button type="button" class="bf-btn" title="Solve (S)" :disabled="solveDisabled" @click="solvePuzzle">Solve</button>
                 <div class="ml-auto flex gap-2">
                     <div class="bf-chip" :class="{ 'is-over': overBudget }">
                         <span class="bf-chip-key">Breaks</span>
@@ -763,12 +1043,16 @@ if (isDaily.value) {
                     <button
                         v-for="i in game.n"
                         :key="i - 1"
+                        :ref="(el) => setCellEl(i - 1, el)"
                         type="button"
                         :class="cellClasses(i - 1)"
                         :style="cellStyle[i - 1] || {}"
                         :aria-label="cellLabel(i - 1)"
+                        :tabindex="i - 1 === focusedIndex ? 0 : -1"
                         @click="tap(i - 1, 1)"
                         @contextmenu.prevent="tap(i - 1, -1)"
+                        @keydown="onCellKeydown($event, i - 1)"
+                        @focus="focusedIndex = i - 1"
                     >
                         <span class="bf-cell-minute">{{ cellText(i - 1) }}</span>
                     </button>
@@ -804,6 +1088,10 @@ if (isDaily.value) {
                 <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
                     Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases.
                     New here? <Link href="/how-to" class="text-ember hover:text-flame">See how it works</Link>.
+                </p>
+                <p v-if="!isArchive" class="max-w-[60ch] text-[11.5px] text-ash-dim">
+                    Keyboard: arrow keys move, Backspace reverses a cell, U undo &middot; R reset &middot; H hint &middot; S
+                    solve.
                 </p>
             </div>
 
