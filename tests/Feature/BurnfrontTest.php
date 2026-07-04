@@ -800,6 +800,36 @@ class BurnfrontTest extends TestCase
         $this->assertSame(2, $score->hints_used);
     }
 
+    /**
+     * Regression test for a review finding: /hint trusts whatever spark/clues
+     * the client sends, so a request tagged difficulty=daily but carrying a
+     * different (here: freshly generated 'crew', which shares the daily
+     * tier's 6x6/8-break shape) incident must not inflate the real daily
+     * run's hint counter — only a forced result for *today's actual*
+     * persisted incident should count.
+     */
+    public function test_hint_endpoint_does_not_count_a_forced_hint_for_mismatched_daily_clues(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json(); // persists + binds today's real incident
+
+        $other = $this->puzzles()->generate('crew');
+        $this->actingAs($user)->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $other['spark'],
+            'clues' => json_encode($other['clues']),
+            'shaded' => '[]',
+            'open' => '[]',
+        ]))->assertJson(['status' => 'forced']);
+
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertJson(['hints_used' => 0]);
+    }
+
     public function test_hint_endpoint_does_not_count_hints_for_endless_difficulties(): void
     {
         $user = User::factory()->create();
@@ -911,6 +941,7 @@ class BurnfrontTest extends TestCase
             ->where('entries.0.date', now('UTC')->toDateString())
             ->where('entries.0.name', $daily['name'])
             ->has('entries.0.time_ms')
+            ->where('entries.0.replayable', true)
             ->where('streak.current', 1)
         );
     }
@@ -918,6 +949,39 @@ class BurnfrontTest extends TestCase
     public function test_daily_history_requires_authentication(): void
     {
         $this->get('/daily/history')->assertRedirect('/login');
+    }
+
+    public function test_daily_history_renders_for_a_user_with_no_scores_yet(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/daily/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/DailyHistory')
+            ->where('entries', [])
+            ->where('streak.current', 0)
+        );
+    }
+
+    /**
+     * Regression test for a review finding: a score recorded before
+     * incidents were persisted (or, in this test, one whose incident row
+     * was never created) must be listed as non-replayable rather than
+     * linking to a case history review that 404s.
+     */
+    public function test_daily_history_flags_a_score_without_a_persisted_incident_as_not_replayable(): void
+    {
+        $user = User::factory()->create();
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-01-01', 'time_ms' => 1000]);
+
+        $response = $this->actingAs($user)->get('/daily/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('entries.0.date', '2026-01-01')
+            ->where('entries.0.name', null)
+            ->where('entries.0.replayable', false)
+        );
     }
 
     public function test_daily_history_play_replays_a_solved_incidents_board_and_solution(): void

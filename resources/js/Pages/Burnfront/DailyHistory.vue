@@ -4,7 +4,7 @@ import { fmtClock } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 
 defineProps({
-    entries: { type: Array, default: () => [] }, // {date, name, blurb, time_ms, hints_used}, most recent first
+    entries: { type: Array, default: () => [] }, // {date, name, blurb, time_ms, hints_used, replayable}, most recent first
     streak: { type: Object, default: () => ({ current: 0, best: 0 }) },
 });
 </script>
@@ -32,20 +32,26 @@ defineProps({
         </div>
 
         <section v-if="entries.length" aria-label="Past daily incidents" class="flex flex-col gap-3">
-            <Link
-                v-for="entry in entries"
-                :key="entry.date"
-                :href="`/daily/history/play?date=${entry.date}`"
-                class="bf-tile"
-            >
-                <span class="bf-tile-title">{{ entry.name || 'Unnamed incident' }}</span>
-                <span class="bf-tile-desc">{{ entry.date }}<template v-if="entry.blurb"> — {{ entry.blurb }}</template></span>
-                <span class="bf-tile-meta">
-                    {{ fmtClock(entry.time_ms) }}
-                    <template v-if="entry.hints_used === 0"> · clean</template>
-                    <template v-else> · {{ entry.hints_used }} hint{{ entry.hints_used === 1 ? '' : 's' }}</template>
-                </span>
-            </Link>
+            <template v-for="entry in entries" :key="entry.date">
+                <Link v-if="entry.replayable" :href="`/daily/history/play?date=${entry.date}`" class="bf-tile">
+                    <span class="bf-tile-title">{{ entry.name || 'Unnamed incident' }}</span>
+                    <span class="bf-tile-desc">{{ entry.date }}<template v-if="entry.blurb"> — {{ entry.blurb }}</template></span>
+                    <span class="bf-tile-meta">
+                        {{ fmtClock(entry.time_ms) }}
+                        <template v-if="entry.hints_used === 0"> · clean</template>
+                        <template v-else> · {{ entry.hints_used }} hint{{ entry.hints_used === 1 ? '' : 's' }}</template>
+                    </span>
+                </Link>
+                <div v-else class="bf-tile is-locked cursor-default">
+                    <span class="bf-tile-title">{{ entry.date }}</span>
+                    <span class="bf-tile-desc">Case filed before this record kept incident details — no replay available.</span>
+                    <span class="bf-tile-meta">
+                        {{ fmtClock(entry.time_ms) }}
+                        <template v-if="entry.hints_used === 0"> · clean</template>
+                        <template v-else> · {{ entry.hints_used }} hint{{ entry.hints_used === 1 ? '' : 's' }}</template>
+                    </span>
+                </div>
+            </template>
         </section>
         <p v-else class="text-sm text-ash">No closed cases yet — solve today&rsquo;s daily incident to start your record.</p>
     </main>
