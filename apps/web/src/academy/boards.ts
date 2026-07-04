@@ -241,4 +241,3 @@ export const PRACTICE_BOARDS: Readonly<Record<PracticePuzzleId, BoardSpec>> = {
     ],
   },
 };
-</content>

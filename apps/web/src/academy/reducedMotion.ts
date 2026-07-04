@@ -15,4 +15,3 @@ export function useReducedMotion(): boolean {
   const prefs = useLocalState().prefs;
   return prefs.reducedMotion || prefersReducedMotion();
 }
-</content>

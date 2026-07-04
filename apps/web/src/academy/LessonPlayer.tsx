@@ -65,6 +65,7 @@ export function LessonPlayer(props: { readonly lesson: Lesson }): ReactElement {
     (session: PlaySession) => {
       if (!signedIn) return;
       const puzzleId = lesson.practice[practiceIndex];
+      if (puzzleId === undefined) return; // practiceIndex is always in-bounds here
       // Fire-and-forget: the hub badge never waits on the network.
       void packSync.submit(packInput(session, puzzleId, runtime.clock.now()));
     },
@@ -97,7 +98,11 @@ export function LessonPlayer(props: { readonly lesson: Lesson }): ReactElement {
       <>
         <style>{academyCss}</style>
         <p className="bf-practice__intro">{t(lesson.blurbKey)}</p>
-        <BeatPlayer script={lesson.demo} reducedMotion={reducedMotion} onStep={deps.onTutorialStep} />
+        <BeatPlayer
+          script={lesson.demo}
+          reducedMotion={reducedMotion}
+          onStep={deps.onTutorialStep}
+        />
         <button
           type="button"
           className="bf-play"
@@ -115,6 +120,8 @@ export function LessonPlayer(props: { readonly lesson: Lesson }): ReactElement {
 
   if (stage === 'practice') {
     const puzzleId = lesson.practice[practiceIndex];
+    // practiceIndex is only ever set within bounds; this pins the type.
+    if (puzzleId === undefined) throw new Error('academy: practice index out of range');
     const isLast = practiceIndex >= lesson.practice.length - 1;
     return (
       <>
@@ -168,4 +175,3 @@ export function LessonPlayer(props: { readonly lesson: Lesson }): ReactElement {
     </section>
   );
 }
-</content>

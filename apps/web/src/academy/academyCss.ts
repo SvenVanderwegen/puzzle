@@ -147,4 +147,3 @@ export const academyCss = `
 
 .bf-app[data-motion='reduced'] .bf-demo__cell { transition: none; }
 `;
-</content>

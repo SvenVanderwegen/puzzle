@@ -68,4 +68,3 @@ export function demoShading(script: DemoScript): boolean[] {
   for (const index of script.solutionBreaks) shading[index] = true;
   return shading;
 }
-</content>

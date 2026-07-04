@@ -333,4 +333,3 @@ export const DEMO_SCRIPTS: Readonly<Record<LessonSlug, DemoScript>> = {
     ],
   },
 };
-</content>

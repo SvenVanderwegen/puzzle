@@ -153,4 +153,3 @@ export function PracticeBoard({
     </section>
   );
 }
-</content>

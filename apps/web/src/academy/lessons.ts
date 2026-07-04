@@ -132,4 +132,3 @@ export function nextLesson(slug: LessonSlug): Lesson | null {
   const lesson = BY_SLUG[slug];
   return LESSONS.find((candidate) => candidate.order === lesson.order + 1) ?? null;
 }
-</content>

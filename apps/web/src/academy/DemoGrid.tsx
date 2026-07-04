@@ -22,18 +22,20 @@ interface CellModel {
   readonly burnMinute: number;
 }
 
-export function DemoGrid(props: { readonly script: DemoScript; readonly beat: Beat }): ReactElement {
+export function DemoGrid(props: {
+  readonly script: DemoScript;
+  readonly beat: Beat;
+}): ReactElement {
   const { script, beat } = props;
   const { board } = script;
   const cols = board.cols;
 
   // Burn minutes over the full solution — the single source of truth for the
   // wave. Firebreak cells are -1 here, so they never render as burnt.
-  const times = useMemo(() => burnTimes(board.rows, cols, board.spark, demoShading(script)), [
-    board,
-    cols,
-    script,
-  ]);
+  const times = useMemo(
+    () => burnTimes(board.rows, cols, board.spark, demoShading(script)),
+    [board, cols, script],
+  );
   const maxMinute = useMemo(() => times.reduce((max, t) => (t > max ? t : max), 0), [times]);
 
   const sparkIndex = board.spark.r * cols + board.spark.c;
@@ -49,7 +51,8 @@ export function DemoGrid(props: { readonly script: DemoScript; readonly beat: Be
   );
   const highlight = useMemo(() => {
     const map = new Map<number, 'route' | 'wall' | 'focus'>();
-    if (beat.highlight) for (const cell of beat.highlight.cells) map.set(cell, beat.highlight.style);
+    if (beat.highlight)
+      for (const cell of beat.highlight.cells) map.set(cell, beat.highlight.style);
     return map;
   }, [beat.highlight]);
 
@@ -97,4 +100,3 @@ export function DemoGrid(props: { readonly script: DemoScript; readonly beat: Be
     </div>
   );
 }
-</content>

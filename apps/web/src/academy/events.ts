@@ -15,4 +15,3 @@ export type TutorialStepSink = (step: number) => void;
 export const noopTutorialStep: TutorialStepSink = () => {
   /* no transport yet — see module docstring */
 };
-</content>

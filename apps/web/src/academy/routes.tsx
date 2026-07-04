@@ -101,4 +101,3 @@ export function LessonRoute(): ReactElement {
 // The number of lessons, re-exported so the shell can assert the course size
 // without importing the whole feature eagerly.
 export { LESSON_COUNT };
-</content>

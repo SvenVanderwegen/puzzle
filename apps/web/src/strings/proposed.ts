@@ -115,7 +115,8 @@ export const proposedCatalog = {
     'Here they are — four walls, and the board wanted four. The count is complete.',
   'academy.l6.beat.3':
     'With every break accounted for, nothing else can be one. Everything that remains must burn.',
-  'academy.l6.beat.4': 'Fill it in. Once the breaks are all placed, counting alone finishes the board.',
+  'academy.l6.beat.4':
+    'Fill it in. Once the breaks are all placed, counting alone finishes the board.',
 
   // ---- Lesson 7 · The Long Way Around (capstone) --------------------------
   'academy.l7.title': 'The Long Way Around',
@@ -131,4 +132,3 @@ export const proposedCatalog = {
 } as const;
 
 export type ProposedKey = keyof typeof proposedCatalog;
-</content>

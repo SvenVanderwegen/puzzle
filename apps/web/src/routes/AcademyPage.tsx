@@ -43,4 +43,3 @@ export function AcademyLessonPage(): ReactElement {
     </div>
   );
 }
-</content>

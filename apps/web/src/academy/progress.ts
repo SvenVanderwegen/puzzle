@@ -74,4 +74,3 @@ export function markLessonComplete(storage: StorageLike, slug: LessonSlug): numb
   saveAcademyProgress(storage, { v: 1, completed });
   return completed.length;
 }
-</content>

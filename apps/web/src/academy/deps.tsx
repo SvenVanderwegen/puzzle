@@ -40,4 +40,3 @@ function defaultDeps(): AcademyDeps {
 export function useAcademyDeps(): AcademyDeps {
   return useContext(AcademyDepsContext) ?? defaultDeps();
 }
-</content>

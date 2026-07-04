@@ -73,4 +73,3 @@ export function createPackSync(client: ApiClient, rng: Rng, clock: Clock): PackS
     },
   };
 }
-</content>
