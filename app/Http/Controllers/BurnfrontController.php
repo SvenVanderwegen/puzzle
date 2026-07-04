@@ -19,12 +19,58 @@ class BurnfrontController extends Controller
 {
     public function __construct(private readonly PuzzleService $puzzles) {}
 
-    public function index(): Response
+    /**
+     * The start screen: a menu of game modes plus, for a signed-in player,
+     * their standing on today's daily incident. Deliberately reads
+     * DailyScore directly instead of going through daily()/bindDailyStart()
+     * — the start screen must never bind this account's daily start time
+     * just because the player looked at the menu.
+     */
+    public function start(Request $request): Response
     {
-        return Inertia::render('Burnfront/Index', [
+        $user = $request->user();
+        $dailyStatus = null;
+
+        if ($user !== null) {
+            $existing = DailyScore::where('user_id', $user->id)
+                ->whereDate('date', now('UTC')->toDateString())
+                ->first();
+
+            $dailyStatus = [
+                'alreadyScored' => $existing !== null,
+                'scoreTimeMs' => $existing?->time_ms,
+            ];
+        }
+
+        return Inertia::render('Burnfront/Start', [
+            'dailyStatus' => $dailyStatus,
+        ]);
+    }
+
+    public function endless(): Response
+    {
+        return Inertia::render('Burnfront/Play', [
+            'mode' => 'endless',
             'difficulties' => PuzzleService::DIFFICULTIES,
             'defaultDifficulty' => PuzzleService::DEFAULT_DIFFICULTY,
         ]);
+    }
+
+    /**
+     * Gated behind the `auth` middleware in routes/web.php — the daily
+     * puzzle is only playable while signed in, since a verified time can
+     * only ever be posted for an account.
+     */
+    public function dailyPlay(): Response
+    {
+        return Inertia::render('Burnfront/Play', [
+            'mode' => 'daily',
+        ]);
+    }
+
+    public function howTo(): Response
+    {
+        return Inertia::render('Burnfront/HowTo');
     }
 
     public function puzzle(Request $request): JsonResponse

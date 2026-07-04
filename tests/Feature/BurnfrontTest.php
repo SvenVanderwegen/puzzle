@@ -17,18 +17,77 @@ class BurnfrontTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_the_incident_desk_renders(): void
+    public function test_the_start_screen_renders(): void
     {
         $response = $this->get('/');
 
         $response->assertStatus(200);
         $response->assertSee('Burnfront', false);
         $response->assertInertia(fn (Assert $page) => $page
-            ->component('Burnfront/Index')
+            ->component('Burnfront/Start')
+            ->where('dailyStatus', null)
+        );
+    }
+
+    public function test_the_start_screen_reports_daily_status_for_a_signed_in_user(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Start')
+            ->where('dailyStatus.alreadyScored', true)
+            ->has('dailyStatus.scoreTimeMs')
+        );
+    }
+
+    public function test_the_endless_screen_renders(): void
+    {
+        $response = $this->get('/endless');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'endless')
             ->where('defaultDifficulty', PuzzleService::DEFAULT_DIFFICULTY)
             ->has('difficulties.lookout')
             ->has('difficulties.crew')
             ->has('difficulties.hotshot')
+        );
+    }
+
+    public function test_the_how_to_screen_renders(): void
+    {
+        $response = $this->get('/how-to');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page->component('Burnfront/HowTo'));
+    }
+
+    public function test_the_daily_play_screen_requires_authentication(): void
+    {
+        $response = $this->get('/daily/play');
+
+        $response->assertRedirect('/login');
+    }
+
+    public function test_the_daily_play_screen_renders_for_a_signed_in_user(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/daily/play');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'daily')
         );
     }
 
