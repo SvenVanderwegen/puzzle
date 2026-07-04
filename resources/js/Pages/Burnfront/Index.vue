@@ -1,8 +1,9 @@
 <script setup>
-import { Head } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import HowItWorksDemo from './HowItWorksDemo.vue';
 import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
+import { getDailyRecord, markDailySolved } from '@/lib/burnfront-daily';
 
 const props = defineProps({
     difficulties: { type: Object, required: true },
@@ -11,8 +12,11 @@ const props = defineProps({
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const page = usePage();
+const currentUser = computed(() => page.props.auth?.user ?? null);
+
 const diff = ref(props.defaultDifficulty);
-const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty} */
+const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty, name, blurb, timed, token} */
 const marks = ref([]); /* 0 none, 1 break, 2 dot */
 const cellStyle = ref([]); /* per-cell burn animation style, set on win */
 const burnt = ref([]); /* per-cell "burn replay" flag, set on win */
@@ -27,6 +31,11 @@ const clockText = ref('0:00');
 const statusMessage = ref('');
 const bannerVisible = ref(false);
 const finalTimeText = ref('0:00');
+
+const dailyMode = ref(false);
+const dailyDate = ref(null);
+const dailyScorePosted = ref(false);
+const leaderboard = ref([]);
 
 const undoStack = reactive([]);
 let marksVersion = 0;
@@ -184,11 +193,77 @@ function win(times) {
         finalTimeText.value = fmtClock(Date.now() - startAt);
         bannerVisible.value = true;
     }, total);
+
+    if (dailyMode.value && dailyDate.value) {
+        if (currentUser.value) {
+            // Only record "solved" locally once the server has actually
+            // accepted a verified score — never for an untrusted client-side
+            // time, and never before we know the submission succeeded.
+            const shaded = [];
+            for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
+            submitDailyScore(shaded);
+        } else {
+            // Guests have no account to post a verified time to; the local
+            // record is purely a "you already played this" courtesy for this
+            // browser, not a leaderboard entry.
+            markDailySolved(dailyDate.value, Date.now() - startAt);
+        }
+    }
+}
+
+function xsrfToken() {
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function fetchLeaderboard() {
+    try {
+        const resp = await fetch('/daily/leaderboard', { headers: { Accept: 'application/json' } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        leaderboard.value = data.entries;
+    } catch (e) {
+        /* leaderboard is a nice-to-have; a failed fetch just leaves the panel empty */
+    }
+}
+
+/* Posts a server-verified completion time for today's daily incident. The
+   server never trusts the client's clock or board — it replays `shaded`
+   against the actual engine and measures elapsed time from this account's
+   own bound start (set the first time /daily was fetched while signed in;
+   see BurnfrontController@daily), not from anything sent here. Local
+   "solved today" state is only recorded once the server confirms it (a 200
+   for a fresh score, or a 409 meaning this account already has one) — never
+   on a failure, so a genuine error doesn't silently lock the player out. */
+async function submitDailyScore(shaded) {
+    if (dailyScorePosted.value) return;
+    dailyScorePosted.value = true;
+    try {
+        const resp = await fetch('/daily/score', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body: JSON.stringify({ token: game.value.token, shaded }),
+        });
+        if (resp.ok || resp.status === 409) {
+            markDailySolved(dailyDate.value, Date.now() - startAt);
+            fetchLeaderboard();
+        } else {
+            dailyScorePosted.value = false;
+        }
+    } catch (e) {
+        dailyScorePosted.value = false;
+    }
 }
 
 async function newGame() {
     const token = ++genToken;
     locked.value = true;
+    dailyMode.value = false;
+    dailyScorePosted.value = false;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -199,6 +274,7 @@ async function newGame() {
         const p = await resp.json();
         if (token !== genToken) return; /* superseded by a newer request */
         const n = p.rows * p.cols;
+        const timed = props.difficulties[diff.value]?.timed !== false;
         game.value = reactive({
             n,
             adj: buildAdj(p.rows, p.cols),
@@ -211,6 +287,9 @@ async function newGame() {
             clueVal: p.clues.map((cv) => cv[1]),
             clues: p.clues,
             difficulty: diff.value,
+            name: p.name,
+            blurb: p.blurb,
+            timed,
         });
         marks.value = new Array(n).fill(0);
         cellStyle.value = new Array(n).fill(null);
@@ -220,13 +299,97 @@ async function newGame() {
         boardDone.value = false;
         clearHint();
         locked.value = false;
-        startClock();
+        if (timed) startClock();
     } catch (e) {
         if (token === genToken) {
             /* Restore whatever board was already up rather than leaving it
                locked forever: tap/undo/reset all bail out while locked. */
             locked.value = false;
         }
+        showStatus("Couldn't reach the incident desk. Try again.");
+    } finally {
+        if (token === genToken) veilVisible.value = false;
+    }
+}
+
+/* Loads the shared daily incident, seeded from today's date so every player
+   sees the same board (see PuzzleService::generateDaily). If this browser
+   already recorded a solve today, the board is shown locked with the
+   completion banner up front rather than replaying the puzzle. */
+async function loadDaily() {
+    const token = ++genToken;
+    locked.value = true;
+    dailyMode.value = false;
+    dailyScorePosted.value = false;
+    stopClock();
+    clearStatus();
+    veilVisible.value = true;
+    bannerVisible.value = false;
+    try {
+        const resp = await fetch('/daily');
+        if (!resp.ok) throw new Error('daily request failed');
+        const p = await resp.json();
+        if (token !== genToken) return;
+        const n = p.rows * p.cols;
+        game.value = reactive({
+            n,
+            adj: buildAdj(p.rows, p.cols),
+            spark: p.spark,
+            R: p.rows,
+            C: p.cols,
+            N: p.breaks,
+            clueMap: new Map(p.clues),
+            clueIdx: p.clues.map((cv) => cv[0]),
+            clueVal: p.clues.map((cv) => cv[1]),
+            clues: p.clues,
+            difficulty: p.difficulty,
+            name: p.name,
+            blurb: p.blurb,
+            timed: true,
+            token: p.token,
+        });
+        marks.value = new Array(n).fill(0);
+        cellStyle.value = new Array(n).fill(null);
+        burnt.value = new Array(n).fill(false);
+        revealedMinute.value = new Array(n).fill('');
+        undoStack.length = 0;
+        clearHint();
+        dailyMode.value = true;
+        dailyDate.value = p.date;
+        fetchLeaderboard();
+
+        // For a signed-in player, "already solved today" is whatever the
+        // server says (a verified score exists) — never a locally-stored
+        // flag, since that could be stale from an earlier guest session
+        // that never actually posted a score. Guests have no server truth
+        // to check, so their own browser's record is all there is.
+        if (currentUser.value) {
+            if (p.alreadyScored) {
+                dailyScorePosted.value = true;
+                locked.value = true;
+                boardDone.value = true;
+                finalTimeText.value = fmtClock(p.scoreTimeMs);
+                bannerVisible.value = true;
+            } else {
+                boardDone.value = false;
+                locked.value = false;
+                startClock();
+            }
+        } else {
+            const record = getDailyRecord(p.date);
+            if (record) {
+                locked.value = true;
+                boardDone.value = true;
+                finalTimeText.value = fmtClock(record.timeMs);
+                bannerVisible.value = true;
+            } else {
+                boardDone.value = false;
+                locked.value = false;
+                startClock();
+            }
+        }
+    } catch (e) {
+        if (token === genToken) locked.value = false;
         showStatus("Couldn't reach the incident desk. Try again.");
     } finally {
         if (token === genToken) veilVisible.value = false;
@@ -302,7 +465,20 @@ newGame();
 
     <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-10 pb-16">
         <header class="flex flex-col gap-2">
-            <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">Incident report &middot; deduction puzzle</p>
+            <div class="flex items-start justify-between gap-3">
+                <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">Incident report &middot; deduction puzzle</p>
+                <p class="text-[11px] whitespace-nowrap text-ash-dim">
+                    <template v-if="currentUser">
+                        Signed in as {{ currentUser.name }} ·
+                        <Link href="/logout" method="post" as="button" class="cursor-pointer text-ember hover:text-flame">Log out</Link>
+                    </template>
+                    <template v-else>
+                        <Link href="/login" class="text-ember hover:text-flame">Sign in</Link>
+                        ·
+                        <Link href="/register" class="text-ember hover:text-flame">Register</Link>
+                    </template>
+                </p>
+            </div>
             <h1 class="font-staatliches text-[clamp(52px,11vw,76px)] leading-[0.95] font-normal tracking-[.035em] text-paper text-balance">
                 BURNFRONT<span class="text-flame" style="text-shadow: 0 0 18px rgba(255, 216, 107, 0.45)">★</span>
             </h1>
@@ -313,6 +489,10 @@ newGame();
         </header>
 
         <section class="relative" aria-label="Puzzle board">
+            <p v-if="game && game.name" class="mb-2.5 text-sm text-ash">
+                <span class="font-medium text-paper">{{ game.name }}</span> — {{ game.blurb }}
+            </p>
+
             <div class="flex flex-wrap items-center gap-2.5">
                 <div class="bf-seg" role="group" aria-label="Difficulty">
                     <button
@@ -320,12 +500,13 @@ newGame();
                         :key="key"
                         type="button"
                         class="bf-seg-btn"
-                        :class="{ 'is-active': key === diff }"
+                        :class="{ 'is-active': !dailyMode && key === diff }"
                         @click="selectDifficulty(key)"
                     >
                         {{ config.label }}
                     </button>
                 </div>
+                <button type="button" class="bf-btn" :class="{ 'bf-btn-primary': dailyMode }" @click="loadDaily">Daily</button>
                 <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
                 <button type="button" class="bf-btn" :disabled="hintDisabled" @click="requestHint">Hint</button>
                 <button type="button" class="bf-btn" :disabled="undoDisabled" @click="undo">Undo</button>
@@ -335,7 +516,7 @@ newGame();
                         <span class="bf-chip-key">Breaks</span>
                         <span class="bf-chip-value">{{ breakCountText }}</span>
                     </div>
-                    <div class="bf-chip">
+                    <div v-if="!game || game.timed" class="bf-chip">
                         <span class="bf-chip-key">Time</span>
                         <span class="bf-chip-value">{{ clockText }}</span>
                     </div>
@@ -371,9 +552,14 @@ newGame();
             <div class="mt-3.5 flex min-h-11 items-baseline gap-3">
                 <div v-if="bannerVisible" class="flex flex-col gap-1.5">
                     <span class="bf-banner-headline">FIRE MAPPED</span>
-                    <p class="text-sm text-ash">
+                    <p v-if="game.timed" class="text-sm text-ash">
                         Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span> — every clue burns on
                         time.
+                    </p>
+                    <p v-else class="text-sm text-ash">Every clue burns on time.</p>
+                    <p v-if="dailyMode && !currentUser" class="text-xs text-ash-dim">
+                        <Link href="/login" class="text-ember hover:text-flame">Sign in</Link> to post this time to the
+                        leaderboard.
                     </p>
                 </div>
                 <p v-else-if="statusMessage" class="bf-status" role="status">{{ statusMessage }}</p>
@@ -381,6 +567,20 @@ newGame();
                     Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases. New
                     here? The walkthrough below shows exactly how the fire moves.
                 </p>
+            </div>
+
+            <div
+                v-if="dailyMode && leaderboard.length"
+                class="mt-3 flex flex-col gap-1.5 rounded-md border border-line p-3.5"
+                aria-label="Today's fastest"
+            >
+                <h3 class="text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
+                <ol class="flex flex-col gap-1 text-sm text-ash">
+                    <li v-for="entry in leaderboard" :key="entry.rank" class="flex justify-between gap-3 tabular-nums">
+                        <span>{{ entry.rank }}. {{ entry.name }}</span>
+                        <span class="text-paper">{{ fmtClock(entry.time_ms) }}</span>
+                    </li>
+                </ol>
             </div>
         </section>
 
