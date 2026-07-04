@@ -79,11 +79,14 @@
     /* ---------- board ---------- */
     .bf-board-grid {
         @apply grid touch-manipulation gap-[5px];
-        width: min(92vw, var(--cell-max));
+        /* Every difficulty tier is a square grid, so bounding width alone by
+           the smaller of viewport width and viewport height keeps the whole
+           board (and everything around it) inside one screen's height. */
+        width: min(92vw, 56dvh, var(--cell-max));
     }
     .bf-cell {
         @apply relative aspect-square cursor-pointer appearance-none rounded-[5px] border border-line bg-char p-0 font-staatliches leading-none text-paper transition-[background-color,color,border-color] duration-300 ease-out;
-        font-size: min(calc(84vw / var(--cols) * 0.44), calc(var(--cell-max) / var(--cols) * 0.44));
+        font-size: min(calc(84vw / var(--cols) * 0.44), calc(51dvh / var(--cols) * 0.44), calc(var(--cell-max) / var(--cols) * 0.44));
     }
     .bf-cell:not(.is-fixed):hover {
         @apply border-ash-dim;

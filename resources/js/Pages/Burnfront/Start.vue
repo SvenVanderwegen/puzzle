@@ -2,6 +2,7 @@
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { fmtClock } from '@/lib/burnfront-engine';
+import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null }, // {alreadyScored, scoreTimeMs} | null, signed-in users only
@@ -20,23 +21,10 @@ const dailyMeta = computed(() => {
 <template>
     <Head title="Burnfront" />
 
-    <main class="mx-auto flex max-w-[900px] flex-col gap-8 px-4 pt-10 pb-16">
+    <main class="mx-auto flex max-w-[900px] flex-col gap-7 px-4 pt-6 pb-12 sm:gap-8 sm:pt-10 sm:pb-16">
         <header class="flex flex-col gap-2">
-            <div class="flex items-start justify-between gap-3">
-                <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">Incident report &middot; deduction puzzle</p>
-                <p class="text-[11px] whitespace-nowrap text-ash-dim">
-                    <template v-if="currentUser">
-                        Signed in as {{ currentUser.name }} ·
-                        <Link href="/logout" method="post" as="button" class="cursor-pointer text-ember hover:text-flame">Log out</Link>
-                    </template>
-                    <template v-else>
-                        <Link href="/login" class="text-ember hover:text-flame">Sign in</Link>
-                        ·
-                        <Link href="/register" class="text-ember hover:text-flame">Register</Link>
-                    </template>
-                </p>
-            </div>
-            <h1 class="font-staatliches text-[clamp(52px,11vw,76px)] leading-[0.95] font-normal tracking-[.035em] text-paper text-balance">
+            <SiteBar label="Incident report &middot; deduction puzzle" />
+            <h1 class="font-staatliches text-[clamp(44px,13vw,80px)] leading-[0.95] font-normal tracking-[.035em] text-paper text-balance">
                 BURNFRONT<span class="text-flame" style="text-shadow: 0 0 18px rgba(255, 216, 107, 0.45)">★</span>
             </h1>
             <p class="mt-0.5 max-w-[52ch] text-ash">

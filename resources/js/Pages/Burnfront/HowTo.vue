@@ -1,15 +1,14 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import HowItWorksDemo from './HowItWorksDemo.vue';
+import SiteBar from '@/Components/SiteBar.vue';
 </script>
 
 <template>
     <Head title="How Burnfront works" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-10 pb-16">
-        <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">
-            <Link href="/" class="text-ash-dim hover:text-ember">&larr; Menu</Link>
-        </p>
+    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-6 pb-12 sm:pt-10 sm:pb-16">
+        <SiteBar :back="{ href: '/', text: 'Menu' }" />
 
         <section class="flex flex-col gap-4" aria-label="How Burnfront works">
             <h1 class="font-staatliches text-[clamp(40px,9vw,56px)] leading-[0.95] font-normal tracking-[.035em] text-paper">

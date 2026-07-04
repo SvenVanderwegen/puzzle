@@ -1,8 +1,9 @@
 <script setup>
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
 import LoadingVeil from './LoadingVeil.vue';
+import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily'
@@ -14,10 +15,13 @@ const isDaily = computed(() => props.mode === 'daily');
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const page = usePage();
-const currentUser = computed(() => page.props.auth?.user ?? null);
-
 const diff = ref(props.difficulty);
+
+const crumbText = computed(() => {
+    if (isDaily.value) return 'Daily incident';
+    const label = props.difficulties[diff.value]?.label;
+    return label ? `Endless · ${label}` : 'Endless';
+});
 const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty, name, blurb, timed, token} */
 const marks = ref([]); /* 0 none, 1 break, 2 dot */
 const cellStyle = ref([]); /* per-cell burn animation style, set on win */
@@ -459,41 +463,15 @@ if (isDaily.value) {
 <template>
     <Head title="Burnfront" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-10 pb-16">
-        <header class="flex flex-col gap-2">
-            <div class="flex items-start justify-between gap-3">
-                <p class="text-[11px] tracking-[.22em] text-ash-dim uppercase">
-                    <Link href="/" class="text-ash-dim hover:text-ember">&larr; Menu</Link>
-                    &middot; {{ isDaily ? 'Daily incident' : 'Endless' }}
-                    <template v-if="!isDaily && difficulties[diff]"> &middot; {{ difficulties[diff].label }}</template>
-                </p>
-                <p class="text-[11px] whitespace-nowrap text-ash-dim">
-                    <template v-if="currentUser">
-                        Signed in as {{ currentUser.name }} ·
-                        <Link href="/logout" method="post" as="button" class="cursor-pointer text-ember hover:text-flame">Log out</Link>
-                    </template>
-                    <template v-else>
-                        <Link href="/login" class="text-ember hover:text-flame">Sign in</Link>
-                        ·
-                        <Link href="/register" class="text-ember hover:text-flame">Register</Link>
-                    </template>
-                </p>
-            </div>
-            <h1 class="font-staatliches text-[clamp(52px,11vw,76px)] leading-[0.95] font-normal tracking-[.035em] text-paper text-balance">
-                BURNFRONT<span class="text-flame" style="text-shadow: 0 0 18px rgba(255, 216, 107, 0.45)">★</span>
-            </h1>
-            <p class="mt-0.5 max-w-[46ch] text-ash">
-                The fire is out. The report says when it reached each numbered cell. Reconstruct the firebreaks that shaped its
-                path — there is exactly one way, and pure logic finds it.
-            </p>
-        </header>
+    <main class="mx-auto flex min-h-dvh max-w-[640px] flex-col gap-2.5 px-4 pt-3 pb-4">
+        <SiteBar :back="{ href: '/', text: 'Menu' }" :crumb="crumbText" />
 
-        <section class="relative" aria-label="Puzzle board">
-            <p v-if="game && game.name" class="mb-2.5 text-sm text-ash">
+        <section class="flex min-h-0 flex-1 flex-col" aria-label="Puzzle board">
+            <p v-if="game && game.name" class="text-sm text-ash">
                 <span class="font-medium text-paper">{{ game.name }}</span> — {{ game.blurb }}
             </p>
 
-            <div class="flex flex-wrap items-center gap-2.5">
+            <div class="mt-2.5 flex flex-wrap items-center gap-2">
                 <template v-if="!isDaily">
                     <Link href="/endless" class="bf-btn">Change difficulty</Link>
                     <button type="button" class="bf-btn bf-btn-primary" @click="newGame">New fire</button>
@@ -501,7 +479,7 @@ if (isDaily.value) {
                 <button type="button" class="bf-btn" :disabled="hintDisabled" @click="requestHint">Hint</button>
                 <button type="button" class="bf-btn" :disabled="undoDisabled" @click="undo">Undo</button>
                 <button type="button" class="bf-btn" :disabled="resetDisabled" @click="reset">Reset</button>
-                <div class="ml-auto flex gap-2.5">
+                <div class="ml-auto flex gap-2">
                     <div class="bf-chip" :class="{ 'is-over': overBudget }">
                         <span class="bf-chip-key">Breaks</span>
                         <span class="bf-chip-value">{{ breakCountText }}</span>
@@ -513,7 +491,7 @@ if (isDaily.value) {
                 </div>
             </div>
 
-            <div class="relative mt-3.5">
+            <div class="relative mt-2.5 flex min-h-0 flex-1 items-center justify-center">
                 <div
                     v-if="game"
                     class="bf-board-grid"
@@ -537,7 +515,7 @@ if (isDaily.value) {
                 <LoadingVeil :visible="veilVisible" />
             </div>
 
-            <div class="mt-3.5 flex min-h-11 items-baseline gap-3">
+            <div class="mt-2.5 flex min-h-9 items-baseline gap-3">
                 <div v-if="bannerVisible" class="flex flex-col gap-1.5">
                     <span class="bf-banner-headline">FIRE MAPPED</span>
                     <p v-if="game.timed" class="text-sm text-ash">
@@ -555,7 +533,7 @@ if (isDaily.value) {
 
             <div
                 v-if="isDaily && leaderboard.length"
-                class="mt-3 flex flex-col gap-1.5 rounded-md border border-line p-3.5"
+                class="mt-1 flex flex-col gap-1.5 rounded-md border border-line p-3.5"
                 aria-label="Today's fastest"
             >
                 <h3 class="text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
@@ -567,12 +545,5 @@ if (isDaily.value) {
                 </ol>
             </div>
         </section>
-
-        <footer>
-            <p class="max-w-[58ch] text-[12.5px] text-ash-dim">
-                Every fire is generated on the Burnfront incident desk and machine-verified: exactly one valid placement of
-                breaks, a solving path that needs no guessing, and no firebreak the clues can&rsquo;t justify.
-            </p>
-        </footer>
     </main>
 </template>
