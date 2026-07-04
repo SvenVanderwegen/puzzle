@@ -51,6 +51,13 @@ const hintsUsedThisRun = ref(0);
 const personalBestNote = ref('');
 
 const undoStack = reactive([]);
+/* Chronological, append-only log of every mark/undo/reset/hint action this
+   run (never popped, unlike undoStack) — sent alongside the final board so
+   a completed game can be reviewed/replayed later (see
+   BurnfrontController::submitDailyScore()/submitEndlessScore()). Purely a
+   client-reported record: it's never replayed against the engine and never
+   affects scoring. */
+const moveLog = reactive([]);
 let marksVersion = 0;
 let genToken = 0;
 let startAt = 0;
@@ -143,6 +150,7 @@ function tap(i, dir) {
     marks.value[i] = (prev + dir + 3) % 3;
     hintSafe.value[i] = false;
     undoStack.push([[i, prev, prevHintSafe]]);
+    moveLog.push({ t: Date.now() - startAt, type: 'mark', cell: i, prev, value: marks.value[i], prevHintSafe });
     maybeFinish(prev !== 1 && marks.value[i] === 1);
 }
 
@@ -155,6 +163,11 @@ function undo() {
         marks.value[i] = prev;
         hintSafe.value[i] = prevHintSafe;
     }
+    moveLog.push({
+        t: Date.now() - startAt,
+        type: 'undo',
+        restores: entry.map(([i, prev, prevHintSafe]) => [i, prev, prevHintSafe]),
+    });
 }
 
 function reset() {
@@ -170,7 +183,10 @@ function reset() {
             hintSafe.value[i] = false;
         }
     }
-    if (entry.length) undoStack.push(entry);
+    if (entry.length) {
+        undoStack.push(entry);
+        moveLog.push({ t: Date.now() - startAt, type: 'reset', cleared: entry });
+    }
 }
 
 function maybeFinish(justCompleted) {
@@ -314,7 +330,7 @@ async function submitDailyScore(shaded) {
                 Accept: 'application/json',
                 'X-XSRF-TOKEN': xsrfToken(),
             },
-            body: JSON.stringify({ token: game.value.token, shaded }),
+            body: JSON.stringify({ token: game.value.token, shaded, moves: moveLog }),
         });
         if (resp.ok) {
             const data = await resp.json();
@@ -351,6 +367,7 @@ async function submitEndlessScore(shaded, timeMs) {
                 spark: game.value.spark,
                 clues: game.value.clues,
                 shaded,
+                moves: moveLog,
                 time_ms: Math.round(timeMs),
             }),
         });
@@ -403,6 +420,7 @@ async function newGame() {
         burnt.value = new Array(n).fill(false);
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
+        moveLog.length = 0;
         boardDone.value = false;
         locked.value = false;
         if (timed) startClock();
@@ -463,6 +481,7 @@ async function loadDaily() {
         burnt.value = new Array(n).fill(false);
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
+        moveLog.length = 0;
         dailyDate.value = p.date;
         fetchLeaderboard();
 
@@ -535,6 +554,7 @@ async function requestHint() {
             hintSafe.value[cell] = true;
             hintsUsedThisRun.value++;
             undoStack.push([[cell, prev, prevHintSafe]]);
+            moveLog.push({ t: Date.now() - startAt, type: 'hint', cell, prev, value: 1, prevHintSafe });
             maybeFinish(prev !== 1);
         } else if (data.status === 'contradiction') {
             for (const cell of data.wrong ?? []) wrongCells.value[cell] = true;
@@ -583,6 +603,7 @@ async function solvePuzzle() {
         stopClock();
         clearStatus();
         undoStack.length = 0;
+        moveLog.length = 0;
         marks.value = new Array(n).fill(0);
         hintSafe.value = new Array(n).fill(false);
         wrongCells.value = new Array(n).fill(false);
@@ -630,6 +651,7 @@ function loadArchive() {
     burnt.value = new Array(n).fill(false);
     revealedMinute.value = new Array(n).fill('');
     undoStack.length = 0;
+    moveLog.length = 0;
     dailyDate.value = p.date;
     hintsUsedThisRun.value = p.hintsUsed ?? 0;
     revealSolution(p.solution);

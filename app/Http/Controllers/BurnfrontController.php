@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DailyIncident;
 use App\Models\DailyScore;
 use App\Models\EndlessScore;
+use App\Models\GamePlay;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
@@ -20,6 +21,13 @@ use Inertia\Response;
 
 class BurnfrontController extends Controller
 {
+    /**
+     * Move logs are unverified client-reported telemetry (see
+     * normalizeMoves()) kept only for review/replay, never for scoring — a
+     * hard cap keeps a pathological client from bloating a GamePlay row.
+     */
+    private const MAX_MOVES = 20000;
+
     public function __construct(private readonly PuzzleService $puzzles) {}
 
     /**
@@ -279,6 +287,22 @@ class BurnfrontController extends Controller
             return response()->json(['message' => "Already on today's board."], 409);
         }
 
+        GamePlay::create([
+            'user_id' => $userId,
+            'mode' => 'daily',
+            'difficulty' => null,
+            'date' => $date,
+            'rows' => $puzzlePayload['rows'],
+            'cols' => $puzzlePayload['cols'],
+            'breaks' => $puzzlePayload['breaks'],
+            'spark' => $spark,
+            'clues' => $puzzlePayload['clues'],
+            'shaded_cells' => array_keys($shaded),
+            'moves' => $this->normalizeMoves($request->input('moves')),
+            'time_ms' => $timeMs,
+            'hints_used' => $hintsUsed,
+        ]);
+
         $rank = DailyScore::whereDate('date', $date)->where('time_ms', '<', $score->time_ms)->count() + 1;
 
         return response()->json(['time_ms' => $score->time_ms, 'rank' => $rank, 'hints_used' => $score->hints_used]);
@@ -449,8 +473,10 @@ class BurnfrontController extends Controller
             return response()->json(['message' => "Board doesn't solve the incident."], 422);
         }
 
+        $userId = $request->user()->id;
+
         $record = EndlessScore::firstOrNew([
-            'user_id' => $request->user()->id,
+            'user_id' => $userId,
             'difficulty' => $difficulty,
         ]);
         $record->solved_count = ($record->solved_count ?? 0) + 1;
@@ -460,6 +486,22 @@ class BurnfrontController extends Controller
         }
         $record->last_solved_at = now();
         $record->save();
+
+        GamePlay::create([
+            'user_id' => $userId,
+            'mode' => 'endless',
+            'difficulty' => $difficulty,
+            'date' => null,
+            'rows' => $config['rows'],
+            'cols' => $config['cols'],
+            'breaks' => $config['breaks'],
+            'spark' => $spark,
+            'clues' => collect($clues)->map(fn ($minute, $cell) => [$cell, $minute])->values()->all(),
+            'shaded_cells' => array_keys($shaded),
+            'moves' => $this->normalizeMoves($request->input('moves')),
+            'time_ms' => $timeMsRaw,
+            'hints_used' => 0,
+        ]);
 
         return response()->json([
             'solved_count' => $record->solved_count,
@@ -674,6 +716,24 @@ class BurnfrontController extends Controller
         }
 
         return $shaded;
+    }
+
+    /**
+     * The move log is unverified client-reported telemetry kept only for
+     * review/replay (GamePlay::moves) — it's never replayed against the
+     * engine and never affects scoring, so this only guards against a
+     * pathological client bloating storage with an oversized array. Any
+     * shape reported by the client is stored as-is beyond that cap.
+     *
+     * @return list<mixed>
+     */
+    private function normalizeMoves(mixed $movesRaw): array
+    {
+        if (! is_array($movesRaw)) {
+            return [];
+        }
+
+        return array_slice(array_values($movesRaw), 0, self::MAX_MOVES);
     }
 
     /**

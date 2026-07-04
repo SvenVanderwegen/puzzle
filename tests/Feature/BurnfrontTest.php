@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DailyIncident;
 use App\Models\DailyScore;
 use App\Models\EndlessScore;
+use App\Models\GamePlay;
 use App\Models\User;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
@@ -561,6 +562,33 @@ class BurnfrontTest extends TestCase
         );
     }
 
+    public function test_submit_daily_score_records_a_game_play_with_the_board_and_moves(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+        $shaded = $this->solveDaily($daily);
+        $moves = [['t' => 120, 'type' => 'mark', 'cell' => $shaded[0], 'prev' => 0, 'value' => 1, 'prevHintSafe' => false]];
+
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $shaded,
+            'moves' => $moves,
+        ])->assertStatus(200);
+
+        $play = GamePlay::where('user_id', $user->id)->where('mode', 'daily')->first();
+        $this->assertNotNull($play);
+        $this->assertSame(now('UTC')->toDateString(), $play->date->toDateString());
+        $this->assertSame($daily['rows'], $play->rows);
+        $this->assertSame($daily['cols'], $play->cols);
+        $this->assertSame($daily['breaks'], $play->breaks);
+        $this->assertSame($daily['spark'], $play->spark);
+        sort($shaded);
+        $stored = $play->shaded_cells;
+        sort($stored);
+        $this->assertSame($shaded, $stored);
+        $this->assertSame($moves, $play->moves);
+    }
+
     /**
      * The "Solve" cheat button is meant to void the run instead of scoring
      * it (see BurnfrontController::solve()) — this asserts that void is
@@ -979,6 +1007,54 @@ class BurnfrontTest extends TestCase
         $this->assertNotNull($record);
         $this->assertSame(1, $record->solved_count);
         $this->assertSame(5000, $record->best_time_ms);
+    }
+
+    public function test_submit_endless_score_records_a_game_play_with_the_board_and_moves(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $shaded = $this->solveEndless($puzzle);
+        $moves = [['t' => 340, 'type' => 'mark', 'cell' => $shaded[0], 'prev' => 0, 'value' => 1, 'prevHintSafe' => false]];
+
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'moves' => $moves,
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+
+        $play = GamePlay::where('user_id', $user->id)->where('mode', 'endless')->first();
+        $this->assertNotNull($play);
+        $this->assertSame('lookout', $play->difficulty);
+        $this->assertNull($play->date);
+        $this->assertSame($puzzle['spark'], $play->spark);
+        sort($shaded);
+        $stored = $play->shaded_cells;
+        sort($stored);
+        $this->assertSame($shaded, $stored);
+        $this->assertSame($moves, $play->moves);
+    }
+
+    public function test_submit_endless_score_caps_an_oversized_moves_payload(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $shaded = $this->solveEndless($puzzle);
+        $oversized = array_fill(0, 20050, ['t' => 0, 'type' => 'mark', 'cell' => 0, 'prev' => 0, 'value' => 1, 'prevHintSafe' => false]);
+
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'moves' => $oversized,
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+
+        $play = GamePlay::where('user_id', $user->id)->where('mode', 'endless')->first();
+        $this->assertCount(20000, $play->moves);
     }
 
     public function test_submit_endless_score_only_updates_best_time_when_actually_faster(): void
