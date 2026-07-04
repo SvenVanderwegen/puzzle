@@ -14,10 +14,5 @@
 
   <rect width="512" height="512" fill="#171310"/>
 
-  <g font-family="Staatliches" text-anchor="middle">
-    <text x="256" y="256" font-size="230" fill="url(#wordGlow)">B</text>
-    <text x="256" y="464" font-size="230" fill="#f3ead9">F</text>
-  </g>
-
-  <rect x="176" y="290" width="160" height="8" rx="4" fill="#ff8a3d"/>
+  <text x="256" y="395" font-family="Staatliches" text-anchor="middle" font-size="400"><tspan fill="url(#wordGlow)">B</tspan><tspan fill="#f3ead9">F</tspan></text>
 </svg>
