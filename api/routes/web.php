@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\DailyShareController;
 use App\Http\Controllers\ExportDownloadController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\SitemapController;
@@ -13,6 +14,13 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [LandingController::class, 'index'])->name('landing');
 Route::get('/about', [LandingController::class, 'about'])->name('landing.about');
 Route::get('/rules', [LandingController::class, 'rules'])->name('landing.rules');
+
+// GET /daily/{date} — dated Burn Order unfurl (WS-10). The date-shaped
+// constraint keeps `/daily` (today, SPA-served from WS-16/17) and any
+// non-date path off this handler; impossible dates 404 inside the controller.
+Route::get('/daily/{date}', [DailyShareController::class, 'show'])
+    ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+    ->name('daily.share');
 
 // The one deferred hydration module (committed at resources/landing/hero.js;
 // resources/ is not web-served, so Laravel hands it out with immutable caching).
