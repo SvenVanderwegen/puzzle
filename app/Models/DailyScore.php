@@ -14,7 +14,7 @@ class DailyScore extends Model
 {
     protected $table = 'burnfront_daily_scores';
 
-    protected $fillable = ['user_id', 'date', 'time_ms'];
+    protected $fillable = ['user_id', 'date', 'time_ms', 'hints_used'];
 
     protected function casts(): array
     {

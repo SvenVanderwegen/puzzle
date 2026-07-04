@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { fmtClock } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
@@ -9,11 +10,14 @@ const props = defineProps({
         type: Object,
         default: () => ({ minDim: 4, maxDim: 10, minBreaks: 2, breaksRatio: 0.28 }),
     },
+    bestTimes: { type: Object, default: () => ({}) }, // signed-in players only: difficulty => {solvedCount, bestTimeMs}
 });
 
-function meta(config) {
+function meta(config, key) {
     const size = `${config.rows}×${config.cols} grid · ${config.breaks} firebreaks`;
-    return config.timed ? size : `${size} · untimed`;
+    const base = config.timed ? size : `${size} · untimed`;
+    const best = props.bestTimes[key];
+    return best?.bestTimeMs != null ? `${base} · best ${fmtClock(best.bestTimeMs)}` : base;
 }
 
 const customOpen = ref(false);
@@ -67,7 +71,7 @@ function clampBreaks() {
         <nav class="flex flex-col gap-3" aria-label="Difficulty tiers">
             <Link v-for="(config, key) in difficulties" :key="key" :href="`/endless/play?difficulty=${key}`" class="bf-tile">
                 <span class="bf-tile-title">{{ config.label }}</span>
-                <span class="bf-tile-meta">{{ meta(config) }}</span>
+                <span class="bf-tile-meta">{{ meta(config, key) }}</span>
             </Link>
 
             <div class="flex flex-col gap-3 rounded-md border border-line px-5 py-4">

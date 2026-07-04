@@ -11,10 +11,15 @@ const props = defineProps({
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user ?? null);
 
+const streakSuffix = computed(() => {
+    const current = props.dailyStatus?.streak?.current ?? 0;
+    return current > 0 ? ` · ${current}-day streak` : '';
+});
+
 const dailyMeta = computed(() => {
     if (!currentUser.value) return 'Sign in to unlock';
-    if (props.dailyStatus?.alreadyScored) return `Solved in ${fmtClock(props.dailyStatus.scoreTimeMs)}`;
-    return "Today's incident awaits";
+    if (props.dailyStatus?.alreadyScored) return `Solved in ${fmtClock(props.dailyStatus.scoreTimeMs)}${streakSuffix.value}`;
+    return `Today's incident awaits${streakSuffix.value}`;
 });
 </script>
 

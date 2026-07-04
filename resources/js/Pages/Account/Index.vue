@@ -27,17 +27,15 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
                 <span class="bf-tile-desc">Update your name, email, or password.</span>
             </Link>
 
-            <div class="bf-tile is-locked cursor-default">
+            <Link href="/game/history" class="bf-tile">
                 <span class="bf-tile-title">Game History</span>
                 <span class="bf-tile-desc">A record of every fire you've solved.</span>
-                <span class="bf-tile-meta">Coming soon</span>
-            </div>
+            </Link>
 
-            <div class="bf-tile is-locked cursor-default">
+            <Link href="/daily/history" class="bf-tile">
                 <span class="bf-tile-title">Daily History</span>
                 <span class="bf-tile-desc">Your streak and past daily results.</span>
-                <span class="bf-tile-meta">Coming soon</span>
-            </div>
+            </Link>
 
             <Link href="/logout" method="post" as="button" class="bf-tile cursor-pointer text-left">
                 <span class="bf-tile-title text-ember">Log Out</span>

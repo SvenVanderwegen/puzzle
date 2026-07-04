@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\DailyIncident;
 use App\Models\DailyScore;
+use App\Models\EndlessScore;
 use App\Models\User;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
@@ -753,6 +755,409 @@ class BurnfrontTest extends TestCase
                 ['rank' => 2, 'name' => 'Slow Analyst', 'time_ms' => 5000],
             ],
         ]);
+    }
+
+    public function test_hint_endpoint_increments_the_daily_hint_counter_only_on_a_forced_firebreak(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $clues = [];
+        foreach ($daily['clues'] as [$cell, $minute]) {
+            $clues[$cell] = $minute;
+        }
+        $puzzle = new Puzzle($daily['rows'], $daily['cols'], $daily['spark'], $clues, $daily['breaks']);
+        $state = Engine::deductionSolve($puzzle);
+        $this->assertNotNull($state);
+
+        // Ask for a hint with a clean slate: the very first forced deduction
+        // should count. Asking again with the exact same (still empty)
+        // board replays the same forced cell and counts again — the
+        // counter tracks hints drawn, not distinct cells.
+        $this->actingAs($user)->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $daily['spark'],
+            'clues' => json_encode($daily['clues']),
+            'shaded' => '[]',
+            'open' => '[]',
+        ]))->assertJson(['status' => 'forced']);
+
+        $this->actingAs($user)->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $daily['spark'],
+            'clues' => json_encode($daily['clues']),
+            'shaded' => '[]',
+            'open' => '[]',
+        ]))->assertJson(['status' => 'forced']);
+
+        $shaded = $this->solveDaily($daily);
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $shaded,
+        ])->assertJson(['hints_used' => 2]);
+
+        $score = DailyScore::where('user_id', $user->id)->whereDate('date', now('UTC')->toDateString())->first();
+        $this->assertSame(2, $score->hints_used);
+    }
+
+    public function test_hint_endpoint_does_not_count_hints_for_endless_difficulties(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+
+        $puzzle = $this->puzzles()->generate('lookout');
+        $this->actingAs($user)->getJson('/hint?'.http_build_query([
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => json_encode($puzzle['clues']),
+            'shaded' => '[]',
+            'open' => '[]',
+        ]));
+
+        $shaded = $this->solveDaily($daily);
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $shaded,
+        ]);
+
+        $response->assertJson(['hints_used' => 0]);
+    }
+
+    public function test_daily_leaderboard_flags_a_zero_hint_solve_as_clean(): void
+    {
+        $date = now('UTC')->toDateString();
+        $user = User::factory()->create(['name' => 'Clean Analyst']);
+        DailyScore::create(['user_id' => $user->id, 'date' => $date, 'time_ms' => 1000, 'hints_used' => 0]);
+
+        $response = $this->getJson('/daily/leaderboard');
+
+        $response->assertJson(['entries' => [['hints_used' => 0]]]);
+    }
+
+    public function test_start_screen_reports_a_zero_streak_for_a_fresh_user(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('dailyStatus.streak.current', 0)
+            ->where('dailyStatus.streak.best', 0)
+        );
+    }
+
+    public function test_start_screen_reports_a_multi_day_streak(): void
+    {
+        $user = User::factory()->create();
+
+        Carbon::setTestNow(Carbon::parse('2026-07-02 12:00:00', 'UTC'));
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-01', 'time_ms' => 1000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-02', 'time_ms' => 1000]);
+
+        $response = $this->actingAs($user)->get('/');
+        Carbon::setTestNow();
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('dailyStatus.streak.current', 2)
+            ->where('dailyStatus.streak.best', 2)
+        );
+    }
+
+    public function test_start_screen_streak_is_still_current_if_yesterday_was_solved_but_not_yet_today(): void
+    {
+        $user = User::factory()->create();
+
+        Carbon::setTestNow(Carbon::parse('2026-07-02 12:00:00', 'UTC'));
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-01', 'time_ms' => 1000]);
+
+        $response = $this->actingAs($user)->get('/');
+        Carbon::setTestNow();
+
+        $response->assertInertia(fn (Assert $page) => $page->where('dailyStatus.streak.current', 1));
+    }
+
+    public function test_start_screen_streak_resets_after_a_missed_day(): void
+    {
+        $user = User::factory()->create();
+
+        Carbon::setTestNow(Carbon::parse('2026-07-03 12:00:00', 'UTC'));
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-06-30', 'time_ms' => 1000]);
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-01', 'time_ms' => 1000]);
+        // 2026-07-02 skipped
+        DailyScore::create(['user_id' => $user->id, 'date' => '2026-07-03', 'time_ms' => 1000]);
+
+        $response = $this->actingAs($user)->get('/');
+        Carbon::setTestNow();
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('dailyStatus.streak.current', 1)
+            ->where('dailyStatus.streak.best', 2)
+        );
+    }
+
+    public function test_daily_history_lists_past_solved_incidents_with_name_and_time(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->get('/daily/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/DailyHistory')
+            ->where('entries.0.date', now('UTC')->toDateString())
+            ->where('entries.0.name', $daily['name'])
+            ->has('entries.0.time_ms')
+            ->where('streak.current', 1)
+        );
+    }
+
+    public function test_daily_history_requires_authentication(): void
+    {
+        $this->get('/daily/history')->assertRedirect('/login');
+    }
+
+    public function test_daily_history_play_replays_a_solved_incidents_board_and_solution(): void
+    {
+        $user = User::factory()->create();
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+        $expectedSolution = $this->solveDaily($daily);
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $expectedSolution,
+        ])->assertStatus(200);
+
+        $date = now('UTC')->toDateString();
+        $response = $this->actingAs($user)->get("/daily/history/play?date={$date}");
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'archive')
+            ->where('archivePuzzle.date', $date)
+            ->where('archivePuzzle.name', $daily['name'])
+            ->has('archivePuzzle.solution')
+        );
+    }
+
+    public function test_daily_history_play_rejects_a_date_this_account_never_scored(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->getJson('/daily'); // generates + persists today's incident, but no score
+
+        $date = now('UTC')->toDateString();
+        $this->actingAs($user)->get("/daily/history/play?date={$date}")->assertStatus(404);
+    }
+
+    public function test_daily_history_play_rejects_a_malformed_date(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/daily/history/play?date=not-a-date')->assertStatus(422);
+    }
+
+    public function test_submit_endless_score_records_a_verified_time_and_flags_an_improvement(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $shaded = $this->solveEndless($puzzle);
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'time_ms' => 5000,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['solved_count' => 1, 'best_time_ms' => 5000, 'improved' => true]);
+
+        $record = EndlessScore::where('user_id', $user->id)->where('difficulty', 'lookout')->first();
+        $this->assertNotNull($record);
+        $this->assertSame(1, $record->solved_count);
+        $this->assertSame(5000, $record->best_time_ms);
+    }
+
+    public function test_submit_endless_score_only_updates_best_time_when_actually_faster(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $shaded = $this->solveEndless($puzzle);
+
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'time_ms' => 9000,
+        ]);
+
+        $response->assertJson(['solved_count' => 2, 'best_time_ms' => 5000, 'improved' => false]);
+    }
+
+    public function test_submit_endless_score_rejects_an_incorrect_board(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => [],
+            'time_ms' => 5000,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(0, EndlessScore::count());
+    }
+
+    public function test_submit_endless_score_rejects_the_custom_difficulty(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'custom',
+            'spark' => 0,
+            'clues' => [],
+            'shaded' => [],
+            'time_ms' => 1000,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_submit_endless_score_rejects_the_untimed_cold_case_tier(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('coldcase');
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'coldcase',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $this->solveEndless($puzzle),
+            'time_ms' => 1000,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_submit_endless_score_requires_authentication(): void
+    {
+        $this->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => 0,
+            'clues' => [],
+            'shaded' => [],
+            'time_ms' => 1000,
+        ])->assertStatus(401);
+    }
+
+    public function test_endless_setup_screen_reports_a_signed_in_players_best_times(): void
+    {
+        $user = User::factory()->create();
+        EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'lookout', 'solved_count' => 3, 'best_time_ms' => 4200]);
+
+        $response = $this->actingAs($user)->get('/endless');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('bestTimes.lookout.solvedCount', 3)
+            ->where('bestTimes.lookout.bestTimeMs', 4200)
+        );
+    }
+
+    public function test_endless_setup_screen_reports_no_best_times_for_a_guest(): void
+    {
+        $response = $this->get('/endless');
+
+        $response->assertInertia(fn (Assert $page) => $page->where('bestTimes', []));
+    }
+
+    public function test_endless_play_screen_reports_whether_the_player_is_authenticated(): void
+    {
+        $user = User::factory()->create();
+
+        $this->get('/endless/play')->assertInertia(fn (Assert $page) => $page->where('authenticated', false));
+        $this->actingAs($user)->get('/endless/play')->assertInertia(fn (Assert $page) => $page->where('authenticated', true));
+    }
+
+    public function test_game_history_lists_every_tier_with_a_default_row_for_untried_ones(): void
+    {
+        $user = User::factory()->create();
+        EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'lookout', 'solved_count' => 2, 'best_time_ms' => 3000]);
+
+        $response = $this->actingAs($user)->get('/game/history');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/GameHistory')
+            ->where('tiers.0.solvedCount', 2)
+            ->where('tiers.0.bestTimeMs', 3000)
+            ->where('tiers.1.solvedCount', 0)
+            ->where('tiers.1.bestTimeMs', null)
+        );
+    }
+
+    public function test_game_history_requires_authentication(): void
+    {
+        $this->get('/game/history')->assertRedirect('/login');
+    }
+
+    public function test_daily_incident_is_persisted_the_first_time_it_is_generated(): void
+    {
+        $user = User::factory()->create();
+        $date = now('UTC')->toDateString();
+
+        $this->assertSame(0, DailyIncident::count());
+
+        $this->actingAs($user)->getJson('/daily');
+
+        $incident = DailyIncident::whereDate('date', $date)->first();
+        $this->assertNotNull($incident);
+        $this->assertSame(1, DailyIncident::count());
+
+        // A second request the same day must not try (and fail) to
+        // persist a duplicate row for the same date.
+        $this->actingAs($user)->getJson('/daily');
+        $this->assertSame(1, DailyIncident::count());
+    }
+
+    private function puzzles(): PuzzleService
+    {
+        return app(PuzzleService::class);
+    }
+
+    /** @return list<int> the shaded cells of a valid solution for a /puzzle-shaped payload (spark/clues/rows/cols/breaks) */
+    private function solveEndless(array $puzzle): array
+    {
+        $clues = [];
+        foreach ($puzzle['clues'] as [$cell, $minute]) {
+            $clues[$cell] = $minute;
+        }
+        $p = new Puzzle($puzzle['rows'], $puzzle['cols'], $puzzle['spark'], $clues, $puzzle['breaks']);
+
+        $state = Engine::deductionSolve($p);
+        $this->assertNotNull($state, 'incident should be solvable by pure deduction');
+
+        $shaded = [];
+        foreach ($state as $cell => $value) {
+            if ($value === Engine::SHADED) {
+                $shaded[] = $cell;
+            }
+        }
+
+        return $shaded;
     }
 
     /** @return list<int> the shaded cells of a valid solution for a /daily payload */

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DailyIncident;
 use App\Models\DailyScore;
+use App\Models\EndlessScore;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
@@ -10,6 +12,7 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Inertia\Inertia;
@@ -39,6 +42,7 @@ class BurnfrontController extends Controller
             $dailyStatus = [
                 'alreadyScored' => $existing !== null,
                 'scoreTimeMs' => $existing?->time_ms,
+                'streak' => $this->computeStreaks($user->id),
             ];
         }
 
@@ -51,7 +55,7 @@ class BurnfrontController extends Controller
      * The setup screen between the start menu and an endless game: the
      * player picks a difficulty tier here before a board is ever generated.
      */
-    public function endlessSetup(): Response
+    public function endlessSetup(Request $request): Response
     {
         return Inertia::render('Burnfront/EndlessSetup', [
             'difficulties' => PuzzleService::DIFFICULTIES,
@@ -61,6 +65,7 @@ class BurnfrontController extends Controller
                 'minBreaks' => PuzzleService::CUSTOM_MIN_BREAKS,
                 'breaksRatio' => PuzzleService::CUSTOM_BREAKS_RATIO,
             ],
+            'bestTimes' => $this->endlessBestTimes($request->user()?->id),
         ]);
     }
 
@@ -75,6 +80,8 @@ class BurnfrontController extends Controller
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
 
+        $authenticated = $request->user() !== null;
+
         if ($difficulty === 'custom') {
             $config = $this->resolveCustomConfig($request);
             if ($config !== null) {
@@ -82,6 +89,7 @@ class BurnfrontController extends Controller
                     'mode' => 'endless',
                     'difficulties' => PuzzleService::DIFFICULTIES + ['custom' => $config],
                     'difficulty' => 'custom',
+                    'authenticated' => $authenticated,
                 ]);
             }
             $difficulty = PuzzleService::DEFAULT_DIFFICULTY;
@@ -93,6 +101,7 @@ class BurnfrontController extends Controller
             'mode' => 'endless',
             'difficulties' => PuzzleService::DIFFICULTIES,
             'difficulty' => $difficulty,
+            'authenticated' => $authenticated,
         ]);
     }
 
@@ -158,6 +167,8 @@ class BurnfrontController extends Controller
             fn () => $this->puzzles->generateDaily($date)
         );
 
+        $this->persistDailyIncident($date, $payload);
+
         $userId = $request->user()->id;
         $this->bindDailyStart($userId, $date);
 
@@ -166,6 +177,7 @@ class BurnfrontController extends Controller
         $payload['scoreTimeMs'] = $existing?->time_ms;
         if ($existing !== null) {
             $payload['solution'] = $this->solveDaily($payload);
+            $payload['hintsUsed'] = $existing->hints_used;
         }
         $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
@@ -220,22 +232,15 @@ class BurnfrontController extends Controller
             return response()->json(['message' => 'Incident expired, refresh.'], 422);
         }
 
-        $cellCount = $puzzlePayload['rows'] * $puzzlePayload['cols'];
         $clues = [];
         foreach ($puzzlePayload['clues'] as $pair) {
             $clues[$pair[0]] = $pair[1];
         }
         $spark = $puzzlePayload['spark'];
 
-        $shaded = [];
-        foreach ($shadedRaw as $cell) {
-            if (
-                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
-                || array_key_exists($cell, $clues) || array_key_exists($cell, $shaded)
-            ) {
-                return response()->json(['message' => 'Invalid shaded cells.'], 422);
-            }
-            $shaded[$cell] = true;
+        $shaded = $this->shadedCellsFromRequest($puzzlePayload, $spark, $clues, $shadedRaw);
+        if ($shaded === null) {
+            return response()->json(['message' => 'Invalid shaded cells.'], 422);
         }
 
         $puzzle = new Puzzle($puzzlePayload['rows'], $puzzlePayload['cols'], $spark, $clues, $puzzlePayload['breaks']);
@@ -257,6 +262,7 @@ class BurnfrontController extends Controller
         }
 
         $timeMs = max(0, now('UTC')->valueOf() - $startedAt * 1000);
+        $hintsUsed = Cache::get($this->dailyHintKey($userId, $date), 0);
 
         if (DailyScore::where('user_id', $userId)->whereDate('date', $date)->exists()) {
             return response()->json(['message' => "Already on today's board."], 409);
@@ -267,6 +273,7 @@ class BurnfrontController extends Controller
                 'user_id' => $userId,
                 'date' => $date,
                 'time_ms' => $timeMs,
+                'hints_used' => $hintsUsed,
             ]);
         } catch (UniqueConstraintViolationException) {
             return response()->json(['message' => "Already on today's board."], 409);
@@ -274,12 +281,15 @@ class BurnfrontController extends Controller
 
         $rank = DailyScore::whereDate('date', $date)->where('time_ms', '<', $score->time_ms)->count() + 1;
 
-        return response()->json(['time_ms' => $score->time_ms, 'rank' => $rank]);
+        return response()->json(['time_ms' => $score->time_ms, 'rank' => $rank, 'hints_used' => $score->hints_used]);
     }
 
     /**
-     * @return JsonResponse list of {rank, name, time_ms} for the given (or
-     *                      today's) date's fastest verified completions.
+     * @return JsonResponse list of {rank, name, time_ms, hints_used} for the
+     *                      given (or today's) date's fastest verified
+     *                      completions. hints_used === 0 marks a "clean"
+     *                      reconstruction — no forced deductions borrowed
+     *                      from the incident desk.
      */
     public function dailyLeaderboard(Request $request): JsonResponse
     {
@@ -295,9 +305,190 @@ class BurnfrontController extends Controller
             'rank' => $i + 1,
             'name' => $score->user->name,
             'time_ms' => $score->time_ms,
+            'hints_used' => $score->hints_used,
         ]);
 
         return response()->json(['date' => $date, 'entries' => $entries]);
+    }
+
+    /**
+     * This account's case history: every past daily incident it holds a
+     * verified time for (most recent first), plus its current/best streak.
+     * Names/blurbs come from the persisted DailyIncident row rather than
+     * re-running the generator, which the streak/leaderboard math never
+     * needs to touch.
+     */
+    public function dailyHistory(Request $request): Response
+    {
+        $userId = $request->user()->id;
+
+        $scores = DailyScore::where('user_id', $userId)
+            ->orderByDesc('date')
+            ->limit(90)
+            ->get();
+
+        $dateStrings = $scores->pluck('date')->map(fn ($date) => $date->toDateString());
+
+        // whereDate() range, not whereIn('date', ...): the 'date' cast
+        // stores a full datetime string, so exact-match membership checks
+        // against Y-m-d strings would never hit (see persistDailyIncident()).
+        $incidents = DailyIncident::whereDate('date', '>=', $dateStrings->min())
+            ->whereDate('date', '<=', $dateStrings->max())
+            ->get()
+            ->keyBy(fn (DailyIncident $incident) => $incident->date->toDateString());
+
+        $entries = $scores->map(function (DailyScore $score) use ($incidents) {
+            $date = $score->date->toDateString();
+            $incident = $incidents->get($date);
+
+            return [
+                'date' => $date,
+                'name' => $incident?->name,
+                'blurb' => $incident?->blurb,
+                'time_ms' => $score->time_ms,
+                'hints_used' => $score->hints_used,
+            ];
+        })->values();
+
+        return Inertia::render('Burnfront/DailyHistory', [
+            'entries' => $entries,
+            'streak' => $this->computeStreaks($userId),
+        ]);
+    }
+
+    /**
+     * A read-only replay of one of this account's past daily incidents:
+     * the board, its (rederived) solution, and how this account did on it.
+     * Only reachable for a date this account actually has a verified score
+     * for — this is a case-file review, not a way to preview an unsolved
+     * (or someone else's) incident.
+     */
+    public function dailyHistoryPlay(Request $request): Response|JsonResponse
+    {
+        $date = $request->string('date', '')->toString();
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return response()->json(['message' => 'Invalid date.'], 422);
+        }
+
+        $userId = $request->user()->id;
+        $score = DailyScore::where('user_id', $userId)->whereDate('date', $date)->first();
+        $incident = DailyIncident::whereDate('date', $date)->first();
+        if ($score === null || $incident === null) {
+            return response()->json(['message' => 'No case on file for that date.'], 404);
+        }
+
+        $payload = [
+            'rows' => $incident->rows,
+            'cols' => $incident->cols,
+            'breaks' => $incident->breaks,
+            'spark' => $incident->spark,
+            'clues' => $incident->clues,
+            'name' => $incident->name,
+            'blurb' => $incident->blurb,
+        ];
+        $payload['solution'] = $this->solveDaily($payload);
+        $payload['date'] = $date;
+        $payload['timeMs'] = $score->time_ms;
+        $payload['hintsUsed'] = $score->hints_used;
+
+        return Inertia::render('Burnfront/Play', [
+            'mode' => 'archive',
+            'archivePuzzle' => $payload,
+        ]);
+    }
+
+    /**
+     * Records a verified board (replayed against the actual engine, same as
+     * submitDailyScore()) as one more solved incident for this account's
+     * running best on a named endless tier — 'custom' grids and untimed
+     * tiers are rejected since there's no comparable clock to keep a best
+     * against. Unlike the daily incident, endless play has no server-bound
+     * start time to measure from, so time_ms is trusted from the client:
+     * this is a personal-best record, not a competitive leaderboard, and
+     * the board itself is still independently verified before any time is
+     * recorded.
+     */
+    public function submitEndlessScore(Request $request): JsonResponse
+    {
+        $difficulty = $request->string('difficulty', '')->toString();
+        if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
+            return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);
+        }
+        if (PuzzleService::DIFFICULTIES[$difficulty]['timed'] === false) {
+            return response()->json(['message' => 'This tier has no clock to record.'], 422);
+        }
+
+        $parsed = $this->parsePuzzleConfig($request);
+        if ($parsed instanceof JsonResponse) {
+            return $parsed;
+        }
+        [$config, $spark, $clues] = $parsed;
+
+        $shaded = $this->shadedCellsFromRequest($config, $spark, $clues, $request->input('shaded'));
+        if ($shaded === null) {
+            return response()->json(['message' => 'Invalid shaded cells.'], 422);
+        }
+
+        $timeMsRaw = $request->input('time_ms');
+        if (! is_int($timeMsRaw) || $timeMsRaw < 0) {
+            return response()->json(['message' => 'Invalid time.'], 422);
+        }
+
+        $puzzle = new Puzzle($config['rows'], $config['cols'], $spark, $clues, $config['breaks']);
+        $state = Engine::initialState($puzzle);
+        foreach (array_keys($shaded) as $cell) {
+            $state[$cell] = Engine::SHADED;
+        }
+        foreach ($state as $cell => $value) {
+            if ($value === Engine::UNKNOWN) {
+                $state[$cell] = Engine::OPEN;
+            }
+        }
+
+        if (! Engine::exactCheck($puzzle, $state)) {
+            return response()->json(['message' => "Board doesn't solve the incident."], 422);
+        }
+
+        $record = EndlessScore::firstOrNew([
+            'user_id' => $request->user()->id,
+            'difficulty' => $difficulty,
+        ]);
+        $record->solved_count = ($record->solved_count ?? 0) + 1;
+        $improved = $record->best_time_ms === null || $timeMsRaw < $record->best_time_ms;
+        if ($improved) {
+            $record->best_time_ms = $timeMsRaw;
+        }
+        $record->last_solved_at = now();
+        $record->save();
+
+        return response()->json([
+            'solved_count' => $record->solved_count,
+            'best_time_ms' => $record->best_time_ms,
+            'improved' => $improved,
+        ]);
+    }
+
+    /**
+     * This account's running record across every named endless tier: how
+     * many incidents it's closed and its fastest verified board, per tier.
+     * Every tier is listed even with no record yet, so the page can show a
+     * consistent "not yet attempted" row instead of omitting it.
+     */
+    public function gameHistory(Request $request): Response
+    {
+        $best = $this->endlessBestTimes($request->user()->id);
+
+        $tiers = collect(PuzzleService::DIFFICULTIES)->map(function (array $config, string $key) use ($best) {
+            return [
+                'difficulty' => $key,
+                'label' => $config['label'],
+                'timed' => $config['timed'],
+                'solvedCount' => $best[$key]['solvedCount'] ?? 0,
+                'bestTimeMs' => $best[$key]['bestTimeMs'] ?? null,
+            ];
+        })->values();
+
+        return Inertia::render('Burnfront/GameHistory', ['tiers' => $tiers]);
     }
 
     /**
@@ -359,6 +550,149 @@ class BurnfrontController extends Controller
     private function dailyVoidKey(int $userId, string $date): string
     {
         return "burnfront:daily:void:v1:{$date}:{$userId}";
+    }
+
+    /**
+     * Counts forced-firebreak hints this account has drawn from the
+     * incident desk for the given day, for the daily leaderboard's "clean"
+     * (no-hints) badge. Cache::add seeds the counter at 0 the first time
+     * it's touched so increment() always has something to add to,
+     * regardless of cache driver.
+     */
+    private function incrementDailyHints(int $userId, string $date): void
+    {
+        $key = $this->dailyHintKey($userId, $date);
+        Cache::add($key, 0, now('UTC')->endOfDay());
+        Cache::increment($key);
+    }
+
+    private function dailyHintKey(int $userId, string $date): string
+    {
+        return "burnfront:daily:hints:v1:{$date}:{$userId}";
+    }
+
+    /**
+     * Persists the "pure" incident shape (grid, spark, clues, name, blurb)
+     * for a date the first time it's generated — idempotent, since every
+     * later /daily request for the same date hits the same cached payload
+     * anyway. This is what makes case history cheap to display later: the
+     * generator's uniqueness search never has to run again for a past date,
+     * only the (fast) deduction solver does.
+     */
+    private function persistDailyIncident(string $date, array $payload): void
+    {
+        // whereDate(), not where('date', $date): the 'date' cast stores a
+        // full datetime string, so a plain equality check against the
+        // Y-m-d $date argument would never match an existing row (see
+        // DailyScore's own lookups elsewhere in this class, which use the
+        // same whereDate() pattern for the same reason).
+        if (DailyIncident::whereDate('date', $date)->exists()) {
+            return;
+        }
+
+        try {
+            DailyIncident::create([
+                'date' => $date,
+                'rows' => $payload['rows'],
+                'cols' => $payload['cols'],
+                'breaks' => $payload['breaks'],
+                'spark' => $payload['spark'],
+                'clues' => $payload['clues'],
+                'name' => $payload['name'],
+                'blurb' => $payload['blurb'],
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // Another request already persisted today's incident first.
+        }
+    }
+
+    /**
+     * @return array{current: int, best: int} this account's current daily
+     *                                        streak (consecutive days up
+     *                                        to and including today or
+     *                                        yesterday) and its longest
+     *                                        streak ever.
+     */
+    private function computeStreaks(int $userId): array
+    {
+        $dates = DailyScore::where('user_id', $userId)
+            ->orderBy('date')
+            ->pluck('date')
+            ->map(fn ($date) => $date->toDateString())
+            ->all();
+
+        $bySet = array_flip($dates);
+
+        $best = 0;
+        $run = 0;
+        $prev = null;
+        foreach ($dates as $date) {
+            $run = ($prev !== null && Carbon::parse($prev)->addDay()->toDateString() === $date) ? $run + 1 : 1;
+            $best = max($best, $run);
+            $prev = $date;
+        }
+
+        $today = now('UTC')->toDateString();
+        $cursor = match (true) {
+            isset($bySet[$today]) => now('UTC'),
+            isset($bySet[now('UTC')->subDay()->toDateString()]) => now('UTC')->subDay(),
+            default => null,
+        };
+
+        $current = 0;
+        while ($cursor !== null && isset($bySet[$cursor->toDateString()])) {
+            $current++;
+            $cursor = $cursor->copy()->subDay();
+        }
+
+        return ['current' => $current, 'best' => $best];
+    }
+
+    /**
+     * @return array{cell: int, ...}|null the shaded-cell membership map (a
+     *                                    cell => true dictionary) for a
+     *                                    raw request array, or null if any
+     *                                    entry is out of range, a clue, the
+     *                                    spark, or repeated.
+     */
+    private function shadedCellsFromRequest(array $config, int $spark, array $clues, mixed $shadedRaw): ?array
+    {
+        if (! is_array($shadedRaw)) {
+            return null;
+        }
+
+        $cellCount = $config['rows'] * $config['cols'];
+        $shaded = [];
+        foreach ($shadedRaw as $cell) {
+            if (
+                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
+                || array_key_exists($cell, $clues) || array_key_exists($cell, $shaded)
+            ) {
+                return null;
+            }
+            $shaded[$cell] = true;
+        }
+
+        return $shaded;
+    }
+
+    /**
+     * @return array<string, array{solvedCount: int, bestTimeMs: int|null}>
+     *                                                                      empty if $userId is null (guest)
+     */
+    private function endlessBestTimes(?int $userId): array
+    {
+        if ($userId === null) {
+            return [];
+        }
+
+        return EndlessScore::where('user_id', $userId)->get()
+            ->mapWithKeys(fn (EndlessScore $score) => [
+                $score->difficulty => [
+                    'solvedCount' => $score->solved_count,
+                    'bestTimeMs' => $score->best_time_ms,
+                ],
+            ])->all();
     }
 
     /**
@@ -471,6 +805,15 @@ class BurnfrontController extends Controller
         $payload = ['status' => $result['status']];
         if ($result['status'] === 'forced') {
             $payload['cell'] = $result['cell'];
+
+            // Only a forced *firebreak* actually reveals a cell to the
+            // player (see the "stays clear" note above) — that's the only
+            // outcome worth charging against the daily leaderboard's "clean"
+            // (no-hints) badge, so only that case increments the counter.
+            $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+            if ($difficulty === 'daily' && $request->user() !== null) {
+                $this->incrementDailyHints($request->user()->id, now('UTC')->toDateString());
+            }
         } elseif ($result['status'] === 'contradiction') {
             $payload['wrong'] = Engine::misplacedShaded($puzzle, $state);
         }
@@ -548,16 +891,25 @@ class BurnfrontController extends Controller
         $cellCount = $config['rows'] * $config['cols'];
         $invalid = fn (string $message) => response()->json(['message' => $message], 422);
 
-        $sparkRaw = $request->query('spark');
-        if (! is_string($sparkRaw) || ! ctype_digit($sparkRaw)) {
+        // input(), not query(): this is shared by GET callers (hint()/solve(),
+        // spark/clues as query-string values, clues JSON-encoded as a
+        // string) and POST callers (submitEndlessScore(), spark/clues as
+        // native JSON body values, clues already an array) — input() reads
+        // both, but the two shapes still need normalizing below.
+        $sparkRaw = $request->input('spark');
+        if (is_string($sparkRaw) && ctype_digit($sparkRaw)) {
+            $spark = (int) $sparkRaw;
+        } elseif (is_int($sparkRaw)) {
+            $spark = $sparkRaw;
+        } else {
             return $invalid('Invalid spark.');
         }
-        $spark = (int) $sparkRaw;
-        if ($spark >= $cellCount) {
+        if ($spark < 0 || $spark >= $cellCount) {
             return $invalid('Invalid spark.');
         }
 
-        $cluesRaw = json_decode((string) $request->query('clues', ''), true);
+        $cluesInput = $request->input('clues');
+        $cluesRaw = is_string($cluesInput) ? json_decode($cluesInput, true) : $cluesInput;
         if (! is_array($cluesRaw) || count($cluesRaw) > $cellCount) {
             return $invalid('Invalid clues.');
         }

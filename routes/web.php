@@ -27,6 +27,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/daily/play', [BurnfrontController::class, 'dailyPlay'])->name('burnfront.daily.play');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
     Route::post('/daily/score', [BurnfrontController::class, 'submitDailyScore'])->name('burnfront.daily.score');
+    Route::get('/daily/history', [BurnfrontController::class, 'dailyHistory'])->name('burnfront.daily.history');
+    Route::get('/daily/history/play', [BurnfrontController::class, 'dailyHistoryPlay'])->name('burnfront.daily.history.play');
+    Route::post('/endless/score', [BurnfrontController::class, 'submitEndlessScore'])->name('burnfront.endless.score');
+    Route::get('/game/history', [BurnfrontController::class, 'gameHistory'])->name('burnfront.game.history');
 
     Route::get('/account', [AccountController::class, 'index'])->name('account');
     Route::get('/account/settings', [AccountController::class, 'edit'])->name('account.settings');
