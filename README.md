@@ -38,7 +38,8 @@ for the premise and lore.
 - `reference/` — the frozen prototype (`firebreak.py` + a self-contained
   `index.html`) that `app/Support/Burnfront/Engine.php` is ported from. Do not
   edit; it's the ground truth other implementations are checked against.
-- `docs/` — concept and design docs.
+- `docs/` — concept and design docs. `docs/design/` has the redesign brief
+  and screenshots prepared for Claude Design.
 
 ## Setup
 

@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+@import './fonts.css';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-staatliches: 'Staatliches', system-ui, sans-serif;
+
+    --color-soot: #171310;
+    --color-char: #221c15;
+    --color-char-2: #2c2519;
+    --color-line: #3b3325;
+    --color-ash: #a89d8c;
+    --color-ash-dim: #998f80;
+    --color-paper: #f3ead9;
+    --color-ember: #ff8a3d;
+    --color-ember-deep: #e06a1f;
+    --color-flame: #ffd86b;
+    --color-danger: #e5484d;
+    --color-safe: #5fae72;
+}
+
+
+/*
+This file is an extract of resources/css/app.css's @theme block for design
+reference only — it is not built or imported anywhere. The full component
+layer (.bf-btn, .bf-cell, .bf-tile, .bf-node, etc.) lives in that file; see
+docs/design/claude-design-redesign-prompt.md for the component inventory.
+*/
