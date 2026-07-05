@@ -530,7 +530,10 @@ function revealSolution(shaded) {
    the server, since /puzzle and /hint can't otherwise know what a custom
    grid even is. */
 function difficultyQuery(difficulty) {
-    if (difficulty === 'campaign') return { difficulty: 'campaign' }; /* level is derived server-side from this account's XP, never sent */
+    /* Campaign never sends a level or the board itself — hint()/solve() recover
+       both from the signed run token puzzle() issued (see
+       CampaignService::decodeRun()), so a request can't probe a fabricated board. */
+    if (difficulty === 'campaign') return { difficulty: 'campaign', token: game.value?.token ?? '' };
     const params = { difficulty };
     if (difficulty === 'custom') {
         const custom = props.difficulties.custom;
@@ -627,12 +630,15 @@ async function submitEndlessScore(shaded, timeMs) {
     }
 }
 
-/* Converts a verified solve at this account's current campaign level into
-   XP (server re-derives the level itself from CampaignProfile — see
-   CampaignController::submitScore() — a client can never claim a level it
-   hasn't earned). Best-effort like submitEndlessScore(): a failed post just
-   means this run's XP/level-up banner is skipped, nothing is lost since the
-   server is the only source of truth for total_xp. */
+/* Converts a verified solve into XP. Sends only the run token puzzle()
+   issued plus the shaded cells — the server recovers level/spark/clues from
+   the token and reads this run's actual hint count from its own cache
+   (see CampaignController::submitScore()), rather than trusting anything
+   this client reports, so hintsUsedThisRun below is purely this run's own
+   local display copy, never what the server scores against. Best-effort
+   like submitEndlessScore(): a failed post just means this run's XP/
+   level-up banner is skipped, nothing is lost since the server is the only
+   source of truth for total_xp. */
 async function submitCampaignScore(shaded) {
     try {
         const resp = await fetch('/campaign/score', {
@@ -643,10 +649,8 @@ async function submitCampaignScore(shaded) {
                 'X-XSRF-TOKEN': xsrfToken(),
             },
             body: JSON.stringify({
-                spark: game.value.spark,
-                clues: game.value.clues,
+                token: game.value.token,
                 shaded,
-                hints_used: hintsUsedThisRun.value,
             }),
         });
         if (!resp.ok) return;
@@ -767,6 +771,7 @@ async function loadCampaign() {
             name: p.name,
             blurb: p.blurb,
             timed: true,
+            token: p.token,
         });
         marks.value = new Array(n).fill(0);
         hintSafe.value = new Array(n).fill(false);

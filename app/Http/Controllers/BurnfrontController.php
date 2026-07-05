@@ -966,6 +966,13 @@ class BurnfrontController extends Controller
             $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
             if ($difficulty === 'daily' && $request->user() !== null && $this->matchesTodaysDailyIncident($spark, $clues)) {
                 $this->incrementDailyHints($request->user()->id, now('UTC')->toDateString());
+            } elseif ($difficulty === 'campaign') {
+                // The token is already proven valid (parsePuzzleConfig() ->
+                // parseCampaignRun() decoded it to get here), so this run
+                // unambiguously identifies which board just earned a hint —
+                // no separate "matches the real incident" check needed the
+                // way daily's does, since the token *is* that check.
+                $this->incrementCampaignHints($request->string('token')->toString());
             }
         } elseif ($result['status'] === 'contradiction') {
             $payload['wrong'] = Engine::misplacedShaded($puzzle, $state);
@@ -1033,11 +1040,14 @@ class BurnfrontController extends Controller
     private function parsePuzzleConfig(Request $request): array|JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
-        $config = match (true) {
-            $difficulty === 'custom' => $this->resolveCustomConfig($request),
-            $difficulty === 'campaign' => $this->resolveCampaignConfig($request),
-            default => PuzzleService::tierConfig($difficulty),
-        };
+
+        if ($difficulty === 'campaign') {
+            return $this->parseCampaignRun($request);
+        }
+
+        $config = $difficulty === 'custom'
+            ? $this->resolveCustomConfig($request)
+            : PuzzleService::tierConfig($difficulty);
 
         if ($config === null) {
             return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);
@@ -1061,24 +1071,37 @@ class BurnfrontController extends Controller
     }
 
     /**
-     * Campaign has no client-chosen difficulty at all — the level a hint()/
-     * solve() request should be scored against is always this account's
-     * *current* level, derived from CampaignProfile::total_xp the same way
-     * CampaignController does, never trusted from the request. Returns null
-     * (and therefore a 422 from the caller) for a guest, since campaign
-     * routes are auth-gated and there's no profile to read without a user.
+     * Campaign never trusts a client-supplied spark/clues pair at all —
+     * every hint()/solve() call must carry the signed token /campaign/puzzle
+     * issued for this run, which is the only source of the board (see
+     * CampaignService::decodeRun()). Without this, a client could probe
+     * hints against — or ask solve() to reveal the answer for — a
+     * fabricated board that no /campaign/puzzle call ever generated.
      *
-     * @return array{label: string, rows: int, cols: int, breaks: int, budgetMs: int, minClues: int, timed: bool}|null
+     * @return array{0: array{rows: int, cols: int, breaks: int}, 1: int, 2: array<int, int>}|JsonResponse
      */
-    private function resolveCampaignConfig(Request $request): ?array
+    private function parseCampaignRun(Request $request): array|JsonResponse
     {
-        $user = $request->user();
-        if ($user === null) {
-            return null;
+        $run = CampaignService::decodeRun($request->input('token'));
+        if ($run === null) {
+            return response()->json(['message' => 'Invalid or expired token.'], 422);
         }
 
-        $profile = CampaignProfile::firstOrCreate(['user_id' => $user->id], ['total_xp' => 0, 'puzzles_solved' => 0]);
+        $config = CampaignService::levelConfig($run['level']);
 
-        return CampaignService::levelConfig(CampaignService::levelForXp($profile->total_xp));
+        return [$config, $run['spark'], $run['clues']];
+    }
+
+    /**
+     * Records this run's server-tracked hint count (see
+     * CampaignController::submitScore(), which reads it back instead of
+     * trusting a client-reported hints_used field) — capped at the same
+     * TTL as the token itself so the cache entry never outlives it.
+     */
+    private function incrementCampaignHints(string $token): void
+    {
+        $key = CampaignService::hintCacheKey($token);
+        Cache::add($key, 0, now()->addSeconds(CampaignService::TOKEN_TTL_SECONDS));
+        Cache::increment($key);
     }
 }

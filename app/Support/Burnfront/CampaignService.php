@@ -2,16 +2,34 @@
 
 namespace App\Support\Burnfront;
 
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Crypt;
+
 /**
  * Campaign mode: a fixed 20-level, 5-chapter difficulty ladder (grid size,
  * firebreak density, and clue sparsity all ramp up within each chapter, not
  * just between chapters) plus the XP formulas that turn solves into levels.
  * A player's current level is always derived from their total XP — there is
  * no separately-tracked "unlocked" flag to desync (see CampaignProfile).
+ *
+ * Also owns the signed run token that binds hint()/solve()/score requests to
+ * an incident /campaign/puzzle actually generated (mirrors the daily
+ * incident's Crypt-based token in BurnfrontController) — without it, a
+ * client could fabricate a trivial spark/clues pair that satisfies
+ * Engine::exactCheck() without ever solving a generated board, or claim a
+ * hint-free solve after hinting the whole thing.
  */
 final class CampaignService
 {
     public const TOTAL_LEVELS = 20;
+
+    /**
+     * How long a run token (and the hint-count/redemption cache entries
+     * keyed off it) stays valid — generous enough that no real solve ever
+     * expires mid-attempt, short enough to bound cache growth and the
+     * window a leaked token could be replayed in.
+     */
+    public const TOKEN_TTL_SECONDS = 7200;
 
     private const CHAPTERS = [
         1 => 'Lookout',
@@ -169,7 +187,13 @@ final class CampaignService
     {
         $level = self::levelForXp($totalXp);
         $config = self::levelConfig($level);
-        $maxed = $level === self::TOTAL_LEVELS;
+        // Reaching level 20 isn't the same as clearing it: levelForXp() caps
+        // display at TOTAL_LEVELS, so "maxed" has to check XP against the
+        // threshold *past* it (xpToNext()/cumulativeXpForLevel() are plain
+        // formulas, not bounded by TOTAL_LEVELS, so this is well-defined)
+        // — otherwise the campaign reports "complete" the instant a player
+        // unlocks the last level, before they've ever played it.
+        $maxed = $totalXp >= self::cumulativeXpForLevel(self::TOTAL_LEVELS + 1);
 
         return [
             'level' => $level,
@@ -180,5 +204,83 @@ final class CampaignService
             'totalXp' => $totalXp,
             'maxed' => $maxed,
         ];
+    }
+
+    /**
+     * Signs the exact incident /campaign/puzzle just generated (level,
+     * spark, clues, plus an issue time for expiry) so hint()/solve()/
+     * submitScore() can later recover that same board without trusting
+     * whatever spark/clues a request claims. Crypt::encryptString's random
+     * IV means encrypting the same payload twice never yields the same
+     * string, so the token doubles as a unique per-run identifier for the
+     * hint-count and single-redemption cache keys below.
+     *
+     * @param  list<array{0: int, 1: int}>  $clues
+     */
+    public static function issueToken(int $level, int $spark, array $clues): string
+    {
+        return Crypt::encryptString(json_encode([
+            'level' => $level,
+            'spark' => $spark,
+            'clues' => $clues,
+            'issuedAt' => now()->timestamp,
+        ]));
+    }
+
+    /**
+     * Recovers the level/spark/clues a run token was issued for, or null if
+     * the token is missing, malformed, expired, or names a level that no
+     * longer resolves (the level ladder shrinking, in practice never
+     * happens, but this stays defensive rather than assume it can't).
+     *
+     * @return array{level: int, spark: int, clues: array<int, int>}|null
+     */
+    public static function decodeRun(mixed $tokenRaw): ?array
+    {
+        if (! is_string($tokenRaw) || $tokenRaw === '') {
+            return null;
+        }
+
+        try {
+            $decoded = json_decode(Crypt::decryptString($tokenRaw), true);
+        } catch (DecryptException) {
+            return null;
+        }
+
+        if (
+            ! is_array($decoded)
+            || ! isset($decoded['level'], $decoded['spark'], $decoded['clues'], $decoded['issuedAt'])
+            || ! is_int($decoded['level']) || ! is_int($decoded['issuedAt'])
+        ) {
+            return null;
+        }
+        if (now()->timestamp - $decoded['issuedAt'] > self::TOKEN_TTL_SECONDS) {
+            return null;
+        }
+
+        $config = self::levelConfig($decoded['level']);
+        if ($config === null) {
+            return null;
+        }
+
+        $parsed = Engine::parseSparkAndClues($config['rows'] * $config['cols'], $decoded['spark'], $decoded['clues']);
+        if ($parsed === null) {
+            return null;
+        }
+        [$spark, $clues] = $parsed;
+
+        return ['level' => $decoded['level'], 'spark' => $spark, 'clues' => $clues];
+    }
+
+    /** Cache key for this run's server-tracked hint count (see BurnfrontController::hint()). */
+    public static function hintCacheKey(string $token): string
+    {
+        return 'burnfront:campaign:hints:v1:'.hash('sha256', $token);
+    }
+
+    /** Cache key guarding a run token from being redeemed for XP more than once. */
+    public static function redeemedCacheKey(string $token): string
+    {
+        return 'burnfront:campaign:redeemed:v1:'.hash('sha256', $token);
     }
 }

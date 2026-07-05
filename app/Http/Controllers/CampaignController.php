@@ -9,6 +9,7 @@ use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -71,44 +72,55 @@ class CampaignController extends Controller
         ]);
     }
 
-    public function puzzle(Request $request): JsonResponse
-    {
-        $profile = $this->profile($request->user()->id);
-        $config = CampaignService::levelConfig(CampaignService::levelForXp($profile->total_xp));
-
-        return response()->json($this->puzzles->generateCampaign($config));
-    }
-
     /**
-     * Records a verified board (replayed against the actual engine, same as
-     * BurnfrontController::submitEndlessScore()) as one more solved
-     * incident at this account's current level, converts it to XP
-     * (CampaignService::xpAwarded() — reduced per hint used, zeroed once
-     * hints reach the level's firebreak count), and reports whether that
-     * XP crossed into a new level. The level scored against is always
-     * re-derived from this account's own profile, never trusted from the
-     * request, so a client can't claim a level it hasn't earned.
+     * Generates a fresh board at this account's current level and signs it
+     * into a run token (CampaignService::issueToken()) that hint(), solve(),
+     * and submitScore() all require — the puzzle spec itself is never
+     * client-suppliable from here on, only ever recovered from a token this
+     * endpoint actually issued.
      */
-    public function submitScore(Request $request): JsonResponse
+    public function puzzle(Request $request): JsonResponse
     {
         $profile = $this->profile($request->user()->id);
         $level = CampaignService::levelForXp($profile->total_xp);
         $config = CampaignService::levelConfig($level);
 
-        $parsed = Engine::parseSparkAndClues($config['rows'] * $config['cols'], $request->input('spark'), $request->input('clues'));
-        if ($parsed === null) {
-            return response()->json(['message' => 'Invalid spark or clues.'], 422);
+        $result = $this->puzzles->generateCampaign($config);
+        $result['token'] = CampaignService::issueToken($level, $result['spark'], $result['clues']);
+
+        return response()->json($result);
+    }
+
+    /**
+     * Records a verified board (replayed against the actual engine, same as
+     * BurnfrontController::submitEndlessScore()) as one more solved
+     * incident, converts it to XP (CampaignService::xpAwarded() — reduced
+     * per hint used, zeroed once hints reach the level's firebreak count),
+     * and reports whether that XP crossed into a new level.
+     *
+     * Both the puzzle (level/spark/clues) and the hint count come from the
+     * signed run token puzzle() issued, never from the request body — a
+     * client can neither claim credit for a level/board it never generated
+     * nor under-report hints it actually used (see CampaignService::
+     * decodeRun(), BurnfrontController::incrementCampaignHints()). A token
+     * can also only ever be redeemed for XP once, so replaying the same
+     * solved board can't farm XP repeatedly.
+     */
+    public function submitScore(Request $request): JsonResponse
+    {
+        $token = $request->input('token');
+        $run = CampaignService::decodeRun($token);
+        if ($run === null) {
+            return response()->json(['message' => 'Invalid or expired token.'], 422);
         }
-        [$spark, $clues] = $parsed;
+        $level = $run['level'];
+        $spark = $run['spark'];
+        $clues = $run['clues'];
+        $config = CampaignService::levelConfig($level);
 
         $shaded = Engine::shadedCellsFromRequest($config['rows'] * $config['cols'], $spark, $clues, $request->input('shaded'));
         if ($shaded === null) {
             return response()->json(['message' => 'Invalid shaded cells.'], 422);
-        }
-
-        $hintsUsed = $request->input('hints_used');
-        if (! is_int($hintsUsed) || $hintsUsed < 0) {
-            return response()->json(['message' => 'Invalid hints_used.'], 422);
         }
 
         $puzzle = new Puzzle($config['rows'], $config['cols'], $spark, $clues, $config['breaks']);
@@ -126,6 +138,15 @@ class CampaignController extends Controller
             return response()->json(['message' => "Board doesn't solve the incident."], 422);
         }
 
+        // Atomic: a retried or duplicated request for the same token can
+        // never double-redeem it, even under a race.
+        if (! Cache::add(CampaignService::redeemedCacheKey($token), true, now()->addSeconds(CampaignService::TOKEN_TTL_SECONDS))) {
+            return response()->json(['message' => 'This incident has already been scored.'], 409);
+        }
+
+        $hintsUsed = Cache::get(CampaignService::hintCacheKey($token), 0);
+
+        $profile = $this->profile($request->user()->id);
         $xpAwarded = CampaignService::xpAwarded($level, $hintsUsed);
         $profile->total_xp += $xpAwarded;
         $profile->puzzles_solved += 1;

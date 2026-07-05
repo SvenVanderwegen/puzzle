@@ -132,4 +132,22 @@ class CampaignServiceTest extends TestCase
         $this->assertTrue($maxedProgress['maxed']);
         $this->assertNull($maxedProgress['xpToNextLevel']);
     }
+
+    /**
+     * Regression test for a reviewer-flagged risk: just reaching level 20
+     * (the XP threshold that makes levelForXp() return TOTAL_LEVELS) must
+     * not be reported as "maxed" — the player hasn't cleared level 20 yet,
+     * only unlocked it. Only earning enough XP to have cleared it (i.e.
+     * enough to have "leveled up" past 20, were there a level 21) counts.
+     */
+    public function test_reaching_level_20_is_not_maxed_until_it_is_cleared(): void
+    {
+        $justReached = CampaignService::progressForXp(CampaignService::cumulativeXpForLevel(CampaignService::TOTAL_LEVELS));
+        $this->assertSame(CampaignService::TOTAL_LEVELS, $justReached['level']);
+        $this->assertFalse($justReached['maxed']);
+        $this->assertNotNull($justReached['xpToNextLevel']);
+
+        $cleared = CampaignService::progressForXp(CampaignService::cumulativeXpForLevel(CampaignService::TOTAL_LEVELS + 1));
+        $this->assertTrue($cleared['maxed']);
+    }
 }

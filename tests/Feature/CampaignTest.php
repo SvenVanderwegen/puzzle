@@ -7,8 +7,8 @@ use App\Models\User;
 use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
-use App\Support\Burnfront\PuzzleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -56,7 +56,7 @@ class CampaignTest extends TestCase
         );
     }
 
-    public function test_puzzle_endpoint_generates_a_board_at_the_accounts_current_level(): void
+    public function test_puzzle_endpoint_generates_a_board_at_the_accounts_current_level_and_issues_a_token(): void
     {
         $user = User::factory()->create();
 
@@ -64,6 +64,9 @@ class CampaignTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJson(['difficulty' => 'campaign', 'rows' => 5, 'cols' => 5, 'breaks' => 3]);
+        $response->assertJsonStructure(['token']);
+        $this->assertIsString($response->json('token'));
+        $this->assertNotSame('', $response->json('token'));
     }
 
     public function test_puzzle_endpoint_reflects_a_higher_level_once_earned(): void
@@ -83,14 +86,12 @@ class CampaignTest extends TestCase
     public function test_submit_score_awards_xp_for_a_clean_solve(): void
     {
         $user = User::factory()->create();
-        $puzzle = $this->generateLevel(1);
+        $puzzle = $this->issuePuzzle($user);
         $shaded = $this->solveLevel($puzzle);
 
         $response = $this->actingAs($user)->postJson('/campaign/score', [
-            'spark' => $puzzle['spark'],
-            'clues' => $puzzle['clues'],
+            'token' => $puzzle['token'],
             'shaded' => $shaded,
-            'hints_used' => 0,
         ]);
 
         $response->assertStatus(200);
@@ -105,17 +106,20 @@ class CampaignTest extends TestCase
         $this->assertSame(1, $profile->puzzles_solved);
     }
 
-    public function test_submit_score_zeroes_xp_once_hints_reach_the_break_count(): void
+    public function test_submit_score_zeroes_xp_once_the_server_tracked_hint_count_reaches_the_break_count(): void
     {
         $user = User::factory()->create();
-        $puzzle = $this->generateLevel(1);
+        $puzzle = $this->issuePuzzle($user);
         $shaded = $this->solveLevel($puzzle);
 
+        // Seeds the same cache entry BurnfrontController::incrementCampaignHints()
+        // would have built up via real /hint calls — exercised end to end by
+        // test_hint_endpoint_increments_the_server_tracked_hint_count() below.
+        Cache::put(CampaignService::hintCacheKey($puzzle['token']), $puzzle['breaks'], now()->addMinutes(5));
+
         $response = $this->actingAs($user)->postJson('/campaign/score', [
-            'spark' => $puzzle['spark'],
-            'clues' => $puzzle['clues'],
+            'token' => $puzzle['token'],
             'shaded' => $shaded,
-            'hints_used' => $puzzle['breaks'],
         ]);
 
         $response->assertJson(['xpAwarded' => 0]);
@@ -125,13 +129,11 @@ class CampaignTest extends TestCase
     public function test_submit_score_rejects_an_incorrect_board(): void
     {
         $user = User::factory()->create();
-        $puzzle = $this->generateLevel(1);
+        $puzzle = $this->issuePuzzle($user);
 
         $response = $this->actingAs($user)->postJson('/campaign/score', [
-            'spark' => $puzzle['spark'],
-            'clues' => $puzzle['clues'],
+            'token' => $puzzle['token'],
             'shaded' => [],
-            'hints_used' => 0,
         ]);
 
         $response->assertStatus(422);
@@ -142,26 +144,74 @@ class CampaignTest extends TestCase
         $this->assertTrue($profile === null || ($profile->total_xp === 0 && $profile->puzzles_solved === 0));
     }
 
-    public function test_submit_score_ignores_a_client_supplied_level_and_scores_against_the_earned_one(): void
+    /**
+     * Regression test for a reviewer-flagged risk: submitScore() used to
+     * accept spark/clues straight from the request body, so a client could
+     * fabricate a trivial valid-looking board (e.g. an almost-empty clue
+     * set) that satisfies Engine::exactCheck() without ever solving an
+     * incident /campaign/puzzle actually generated. Now the board comes
+     * only from the signed token, so a fabricated or missing one is
+     * rejected outright regardless of what "shaded" claims.
+     */
+    public function test_submit_score_rejects_a_missing_or_fabricated_token(): void
     {
         $user = User::factory()->create();
-        $puzzle = $this->generateLevel(1);
+
+        $this->actingAs($user)->postJson('/campaign/score', [
+            'shaded' => [],
+        ])->assertStatus(422);
+
+        $this->actingAs($user)->postJson('/campaign/score', [
+            'token' => 'not-a-real-token',
+            'shaded' => [],
+        ])->assertStatus(422);
+
+        $this->assertSame(0, CampaignProfile::count());
+    }
+
+    /**
+     * Regression test: a token must be redeemable for XP exactly once —
+     * otherwise a client could keep replaying the same solved board to farm
+     * XP indefinitely without ever generating (or solving) a new incident.
+     */
+    public function test_submit_score_rejects_reusing_the_same_token_twice(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->issuePuzzle($user);
         $shaded = $this->solveLevel($puzzle);
 
-        // This account has never earned past level 1, so even a request
-        // that claims to be level 16 must be scored against level 1's XP
-        // award — the controller never reads a "level" field from the
-        // request body at all, only this account's own CampaignProfile.
+        $this->actingAs($user)->postJson('/campaign/score', [
+            'token' => $puzzle['token'],
+            'shaded' => $shaded,
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($user)->postJson('/campaign/score', [
+            'token' => $puzzle['token'],
+            'shaded' => $shaded,
+        ]);
+
+        $response->assertStatus(409);
+        $this->assertSame(CampaignService::baseXp(1), CampaignProfile::where('user_id', $user->id)->value('total_xp'));
+        $this->assertSame(1, CampaignProfile::where('user_id', $user->id)->value('puzzles_solved'));
+    }
+
+    public function test_submit_score_ignores_any_client_supplied_level_since_only_the_token_is_trusted(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->issuePuzzle($user); // this account is at level 1
+        $shaded = $this->solveLevel($puzzle);
+
+        // decodeRun() never reads a "level" field from the request body at
+        // all — the level is baked into the signed token itself — so this
+        // extra field is inert either way. It's still worth asserting the
+        // award matches level 1 (the token's real level), not level 16.
         $response = $this->actingAs($user)->postJson('/campaign/score', [
             'level' => 16,
-            'spark' => $puzzle['spark'],
-            'clues' => $puzzle['clues'],
+            'token' => $puzzle['token'],
             'shaded' => $shaded,
-            'hints_used' => 0,
         ]);
 
         $response->assertJson(['xpAwarded' => CampaignService::baseXp(1)]);
-        $this->assertSame(CampaignService::baseXp(1), CampaignProfile::where('user_id', $user->id)->value('total_xp'));
     }
 
     public function test_leveling_up_crosses_into_the_next_level_and_updates_chapter(): void
@@ -173,28 +223,25 @@ class CampaignTest extends TestCase
             'puzzles_solved' => 3,
         ]);
 
-        $puzzle = $this->generateLevel(1);
+        $puzzle = $this->issuePuzzle($user);
         $shaded = $this->solveLevel($puzzle);
 
         $response = $this->actingAs($user)->postJson('/campaign/score', [
-            'spark' => $puzzle['spark'],
-            'clues' => $puzzle['clues'],
+            'token' => $puzzle['token'],
             'shaded' => $shaded,
-            'hints_used' => 0,
         ]);
 
         $response->assertJson(['level' => 2, 'leveledUp' => true, 'chapterLabel' => 'Lookout']);
     }
 
-    public function test_hint_endpoint_accepts_the_campaign_difficulty(): void
+    public function test_hint_endpoint_accepts_the_campaign_difficulty_via_token(): void
     {
         $user = User::factory()->create();
-        $puzzle = $this->generateLevel(1);
+        $puzzle = $this->issuePuzzle($user);
 
         $response = $this->actingAs($user)->getJson('/hint?'.http_build_query([
             'difficulty' => 'campaign',
-            'spark' => $puzzle['spark'],
-            'clues' => json_encode($puzzle['clues']),
+            'token' => $puzzle['token'],
             'shaded' => json_encode([]),
             'open' => json_encode([]),
         ]));
@@ -203,39 +250,67 @@ class CampaignTest extends TestCase
         $response->assertJsonStructure(['status']);
     }
 
-    public function test_hint_endpoint_rejects_the_campaign_difficulty_for_a_guest(): void
+    /**
+     * Regression test for a reviewer-flagged risk: hints_used used to be a
+     * self-reported field on the score request, so a client could hint the
+     * entire board and still submit hints_used: 0 for full XP. Now the
+     * server counts hints itself, keyed to this run's token.
+     */
+    public function test_hint_endpoint_increments_the_server_tracked_hint_count_for_campaign(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->issuePuzzle($user);
+
+        $this->assertNull(Cache::get(CampaignService::hintCacheKey($puzzle['token'])));
+
+        $response = $this->actingAs($user)->getJson('/hint?'.http_build_query([
+            'difficulty' => 'campaign',
+            'token' => $puzzle['token'],
+            'shaded' => json_encode([]),
+            'open' => json_encode([]),
+        ]));
+
+        $response->assertJson(['status' => 'forced']);
+        $this->assertSame(1, Cache::get(CampaignService::hintCacheKey($puzzle['token'])));
+    }
+
+    public function test_hint_endpoint_rejects_the_campaign_difficulty_without_a_token(): void
     {
         $response = $this->getJson('/hint?'.http_build_query([
             'difficulty' => 'campaign',
-            'spark' => 0,
-            'clues' => json_encode([]),
         ]));
 
         $response->assertStatus(422);
     }
 
-    public function test_solve_endpoint_returns_the_full_solution_for_the_campaign_difficulty(): void
+    public function test_solve_endpoint_returns_the_full_solution_for_the_campaign_difficulty_via_token(): void
     {
         $user = User::factory()->create();
-        $puzzle = $this->generateLevel(1);
+        $puzzle = $this->issuePuzzle($user);
 
         $response = $this->actingAs($user)->getJson('/solve?'.http_build_query([
             'difficulty' => 'campaign',
-            'spark' => $puzzle['spark'],
-            'clues' => json_encode($puzzle['clues']),
+            'token' => $puzzle['token'],
         ]));
 
         $response->assertStatus(200);
         $this->assertCount($puzzle['breaks'], $response->json('solution'));
     }
 
-    /** @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>} */
-    private function generateLevel(int $level): array
+    /**
+     * Issues a real run through the actual /campaign/puzzle endpoint (not
+     * PuzzleService directly) so the returned token is genuinely valid for
+     * hint()/solve()/submitScore() — those endpoints only ever accept a
+     * token this route produced.
+     *
+     * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string, token: string}
+     */
+    private function issuePuzzle(User $user): array
     {
-        return app(PuzzleService::class)->generateCampaign(CampaignService::levelConfig($level));
+        return $this->actingAs($user)->getJson('/campaign/puzzle')->json();
     }
 
-    /** @return list<int> the shaded cells of a valid solution for a generateLevel()-shaped payload */
+    /** @return list<int> the shaded cells of a valid solution for an issuePuzzle()-shaped payload */
     private function solveLevel(array $puzzle): array
     {
         $clues = [];
