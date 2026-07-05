@@ -114,6 +114,18 @@
     .bf-cell.is-break.is-hint-wrong {
         @apply border-danger bg-[repeating-linear-gradient(135deg,rgba(229,72,77,.5)_0_3px,#2c1a1b_3px_9px)];
     }
+    /* Hint safe/wrong also gets a shape cue (check/cross), not just a
+       red/green tint — red-green colorblind players can't tell the two
+       backgrounds apart otherwise. Same glyphs as .bf-dcell.is-ok/.is-x in
+       the How To Play demo. */
+    .bf-cell.is-break.is-hint-safe::after {
+        content: '\2713';
+        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-safe opacity-90;
+    }
+    .bf-cell.is-break.is-hint-wrong::after {
+        content: '\2715';
+        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-danger opacity-90;
+    }
     .bf-cell.is-dot::after {
         content: '';
         @apply absolute inset-0 m-auto size-[12%] rounded-full bg-ash opacity-90;
