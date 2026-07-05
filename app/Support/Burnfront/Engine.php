@@ -497,6 +497,80 @@ final class Engine
         return true;
     }
 
+    /**
+     * Shared spark/clues parsing for every endpoint that accepts a played
+     * board: spark arrives as either a digit string (GET query, hint()/
+     * solve()) or a native int (POST JSON body, score-submission
+     * endpoints); clues arrives as either a JSON-encoded string (GET query)
+     * or a native array (POST JSON body). Returns null if either input is
+     * malformed, out of range, or a clue collides with the spark or another
+     * clue cell.
+     *
+     * @return array{0: int, 1: array<int, int>}|null [$spark, $clues]
+     */
+    public static function parseSparkAndClues(int $cellCount, mixed $sparkRaw, mixed $cluesRaw): ?array
+    {
+        if (is_string($sparkRaw) && ctype_digit($sparkRaw)) {
+            $spark = (int) $sparkRaw;
+        } elseif (is_int($sparkRaw)) {
+            $spark = $sparkRaw;
+        } else {
+            return null;
+        }
+        if ($spark < 0 || $spark >= $cellCount) {
+            return null;
+        }
+
+        $cluesDecoded = is_string($cluesRaw) ? json_decode($cluesRaw, true) : $cluesRaw;
+        if (! is_array($cluesDecoded) || count($cluesDecoded) > $cellCount) {
+            return null;
+        }
+        $clues = [];
+        foreach ($cluesDecoded as $pair) {
+            if (! is_array($pair) || ! array_is_list($pair) || count($pair) !== 2) {
+                return null;
+            }
+            [$cell, $minute] = $pair;
+            if (
+                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
+                || array_key_exists($cell, $clues) || ! is_int($minute) || $minute < 0
+            ) {
+                return null;
+            }
+            $clues[$cell] = $minute;
+        }
+
+        return [$spark, $clues];
+    }
+
+    /**
+     * @return array<int, true>|null the shaded-cell membership map (a cell
+     *                               => true dictionary) for a raw request
+     *                               array, or null if any entry is out of
+     *                               range, a clue, the spark, or repeated.
+     *                               Shared by every mode's score-submission
+     *                               endpoint.
+     */
+    public static function shadedCellsFromRequest(int $cellCount, int $spark, array $clues, mixed $shadedRaw): ?array
+    {
+        if (! is_array($shadedRaw)) {
+            return null;
+        }
+
+        $shaded = [];
+        foreach ($shadedRaw as $cell) {
+            if (
+                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
+                || array_key_exists($cell, $clues) || array_key_exists($cell, $shaded)
+            ) {
+                return null;
+            }
+            $shaded[$cell] = true;
+        }
+
+        return $shaded;
+    }
+
     /** @return list<int> */
     public static function shuffle(array $items, callable $rand): array
     {

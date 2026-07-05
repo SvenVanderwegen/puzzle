@@ -327,4 +327,122 @@
     .bf-tile.is-locked {
         @apply opacity-70;
     }
+
+    /* ---------- XP bar (start tile + campaign map) ---------- */
+    .bf-xp-track {
+        @apply h-[3px] w-full overflow-hidden rounded-full bg-line;
+    }
+    .bf-xp-fill {
+        @apply h-full rounded-full bg-ember transition-[width] duration-500 ease-out;
+    }
+
+    /* ---------- campaign map ---------- */
+    .bf-chapter {
+        @apply flex flex-col gap-3;
+    }
+    .bf-chapter-title {
+        @apply text-[11px] font-semibold tracking-[.18em] text-ash-dim uppercase;
+    }
+    .bf-node-path {
+        @apply flex flex-wrap items-center gap-0;
+    }
+    .bf-node {
+        @apply relative flex aspect-square w-12 shrink-0 items-center justify-center rounded-full border border-line bg-char font-staatliches text-base text-paper sm:w-14;
+    }
+    .bf-node.is-locked {
+        @apply cursor-default text-ash-dim opacity-40;
+    }
+    .bf-node.is-reached {
+        @apply border-ember-deep bg-ember/15 text-flame;
+    }
+    .bf-node.is-reached::after {
+        content: '\2713';
+        @apply absolute top-0 right-0 flex size-4 items-center justify-center rounded-full bg-ember-deep font-sans text-[9px] font-bold text-soot;
+    }
+    .bf-node.is-current {
+        @apply cursor-pointer border-ember bg-char-2 text-flame;
+        animation: bf-node-pulse 1800ms ease-out 3;
+    }
+    .bf-node.is-current:hover {
+        @apply border-flame;
+    }
+    .bf-node.is-current:focus-visible {
+        @apply outline-2 outline-offset-2 outline-flame;
+    }
+    .bf-node-connector {
+        @apply h-[3px] w-5 shrink-0 rounded-full bg-line sm:w-7;
+    }
+    .bf-node-connector.is-lit {
+        animation: bf-fuse-burn 900ms ease-out both;
+        animation-delay: var(--delay, 0ms);
+    }
+    @keyframes bf-fuse-burn {
+        0% {
+            background-color: var(--color-line);
+            box-shadow: none;
+        }
+        40% {
+            background-color: var(--color-ember);
+            box-shadow: 0 0 8px rgba(255, 138, 61, 0.5);
+        }
+        100% {
+            background-color: var(--color-flame);
+            box-shadow: none;
+        }
+    }
+    @keyframes bf-node-pulse {
+        0%,
+        100% {
+            box-shadow: 0 0 0 0 rgba(255, 138, 61, 0.55);
+        }
+        50% {
+            box-shadow: 0 0 0 8px rgba(255, 138, 61, 0);
+        }
+    }
+    .bf-node-in-enter-from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.9);
+    }
+    .bf-node-in-enter-active {
+        transition:
+            opacity 260ms ease-out,
+            transform 260ms ease-out;
+        transition-delay: var(--delay, 0ms);
+    }
+    .bf-levelup {
+        @apply inline-block text-flame;
+        animation: bf-levelup-burst 700ms ease-out;
+    }
+    @keyframes bf-levelup-burst {
+        0% {
+            transform: scale(0.8);
+            text-shadow: none;
+        }
+        50% {
+            transform: scale(1.08);
+            text-shadow: 0 0 14px rgba(255, 216, 107, 0.6);
+        }
+        100% {
+            transform: scale(1);
+            text-shadow: 0 0 14px rgba(255, 216, 107, 0.35);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bf-node.is-current {
+            animation: none;
+        }
+        .bf-node-connector.is-lit {
+            animation: none;
+            background-color: var(--color-flame);
+        }
+        .bf-node-in-enter-active {
+            transition: none;
+        }
+        .bf-levelup {
+            animation: none;
+        }
+        .bf-xp-fill {
+            transition: none;
+        }
+    }
 }

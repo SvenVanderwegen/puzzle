@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CampaignProfile;
 use App\Models\DailyIncident;
 use App\Models\DailyScore;
 use App\Models\EndlessScore;
 use App\Models\GamePlay;
+use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\CareerProgress;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\Puzzle;
@@ -45,6 +47,7 @@ class BurnfrontController extends Controller
     {
         $user = $request->user();
         $dailyStatus = null;
+        $campaignStatus = null;
 
         if ($user !== null) {
             $existing = DailyScore::where('user_id', $user->id)
@@ -56,10 +59,17 @@ class BurnfrontController extends Controller
                 'scoreTimeMs' => $existing?->time_ms,
                 'streak' => $this->computeStreaks($user->id),
             ];
+
+            // Read-only, same as dailyStatus above — viewing the menu must
+            // never create a CampaignProfile row; a guest-shaped 0-XP
+            // profile is never persisted just because someone looked.
+            $totalXp = CampaignProfile::where('user_id', $user->id)->value('total_xp') ?? 0;
+            $campaignStatus = CampaignService::progressForXp($totalXp);
         }
 
         return Inertia::render('Burnfront/Start', [
             'dailyStatus' => $dailyStatus,
+            'campaignStatus' => $campaignStatus,
         ]);
     }
 
@@ -772,23 +782,7 @@ class BurnfrontController extends Controller
      */
     private function shadedCellsFromRequest(array $config, int $spark, array $clues, mixed $shadedRaw): ?array
     {
-        if (! is_array($shadedRaw)) {
-            return null;
-        }
-
-        $cellCount = $config['rows'] * $config['cols'];
-        $shaded = [];
-        foreach ($shadedRaw as $cell) {
-            if (
-                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
-                || array_key_exists($cell, $clues) || array_key_exists($cell, $shaded)
-            ) {
-                return null;
-            }
-            $shaded[$cell] = true;
-        }
-
-        return $shaded;
+        return Engine::shadedCellsFromRequest($config['rows'] * $config['cols'], $spark, $clues, $shadedRaw);
     }
 
     /**
@@ -972,6 +966,13 @@ class BurnfrontController extends Controller
             $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
             if ($difficulty === 'daily' && $request->user() !== null && $this->matchesTodaysDailyIncident($spark, $clues)) {
                 $this->incrementDailyHints($request->user()->id, now('UTC')->toDateString());
+            } elseif ($difficulty === 'campaign') {
+                // The token is already proven valid (parsePuzzleConfig() ->
+                // parseCampaignRun() decoded it to get here), so this run
+                // unambiguously identifies which board just earned a hint —
+                // no separate "matches the real incident" check needed the
+                // way daily's does, since the token *is* that check.
+                $this->incrementCampaignHints($request->string('token')->toString());
             }
         } elseif ($result['status'] === 'contradiction') {
             $payload['wrong'] = Engine::misplacedShaded($puzzle, $state);
@@ -1039,6 +1040,11 @@ class BurnfrontController extends Controller
     private function parsePuzzleConfig(Request $request): array|JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+
+        if ($difficulty === 'campaign') {
+            return $this->parseCampaignRun($request);
+        }
+
         $config = $difficulty === 'custom'
             ? $this->resolveCustomConfig($request)
             : PuzzleService::tierConfig($difficulty);
@@ -1048,45 +1054,54 @@ class BurnfrontController extends Controller
         }
 
         $cellCount = $config['rows'] * $config['cols'];
-        $invalid = fn (string $message) => response()->json(['message' => $message], 422);
 
         // input(), not query(): this is shared by GET callers (hint()/solve(),
         // spark/clues as query-string values, clues JSON-encoded as a
         // string) and POST callers (submitEndlessScore(), spark/clues as
         // native JSON body values, clues already an array) — input() reads
-        // both, but the two shapes still need normalizing below.
-        $sparkRaw = $request->input('spark');
-        if (is_string($sparkRaw) && ctype_digit($sparkRaw)) {
-            $spark = (int) $sparkRaw;
-        } elseif (is_int($sparkRaw)) {
-            $spark = $sparkRaw;
-        } else {
-            return $invalid('Invalid spark.');
+        // both, but the two shapes still need normalizing, which
+        // Engine::parseSparkAndClues() does.
+        $parsed = Engine::parseSparkAndClues($cellCount, $request->input('spark'), $request->input('clues'));
+        if ($parsed === null) {
+            return response()->json(['message' => 'Invalid spark or clues.'], 422);
         }
-        if ($spark < 0 || $spark >= $cellCount) {
-            return $invalid('Invalid spark.');
-        }
-
-        $cluesInput = $request->input('clues');
-        $cluesRaw = is_string($cluesInput) ? json_decode($cluesInput, true) : $cluesInput;
-        if (! is_array($cluesRaw) || count($cluesRaw) > $cellCount) {
-            return $invalid('Invalid clues.');
-        }
-        $clues = [];
-        foreach ($cluesRaw as $pair) {
-            if (! is_array($pair) || ! array_is_list($pair) || count($pair) !== 2) {
-                return $invalid('Invalid clues.');
-            }
-            [$cell, $minute] = $pair;
-            if (
-                ! is_int($cell) || $cell < 0 || $cell >= $cellCount || $cell === $spark
-                || array_key_exists($cell, $clues) || ! is_int($minute) || $minute < 0
-            ) {
-                return $invalid('Invalid clues.');
-            }
-            $clues[$cell] = $minute;
-        }
+        [$spark, $clues] = $parsed;
 
         return [$config, $spark, $clues];
+    }
+
+    /**
+     * Campaign never trusts a client-supplied spark/clues pair at all —
+     * every hint()/solve() call must carry the signed token /campaign/puzzle
+     * issued for this run, which is the only source of the board (see
+     * CampaignService::decodeRun()). Without this, a client could probe
+     * hints against — or ask solve() to reveal the answer for — a
+     * fabricated board that no /campaign/puzzle call ever generated.
+     *
+     * @return array{0: array{rows: int, cols: int, breaks: int}, 1: int, 2: array<int, int>}|JsonResponse
+     */
+    private function parseCampaignRun(Request $request): array|JsonResponse
+    {
+        $run = CampaignService::decodeRun($request->input('token'));
+        if ($run === null) {
+            return response()->json(['message' => 'Invalid or expired token.'], 422);
+        }
+
+        $config = CampaignService::levelConfig($run['level']);
+
+        return [$config, $run['spark'], $run['clues']];
+    }
+
+    /**
+     * Records this run's server-tracked hint count (see
+     * CampaignController::submitScore(), which reads it back instead of
+     * trusting a client-reported hints_used field) — capped at the same
+     * TTL as the token itself so the cache entry never outlives it.
+     */
+    private function incrementCampaignHints(string $token): void
+    {
+        $key = CampaignService::hintCacheKey($token);
+        Cache::add($key, 0, now()->addSeconds(CampaignService::TOKEN_TTL_SECONDS));
+        Cache::increment($key);
     }
 }

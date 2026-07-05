@@ -6,15 +6,17 @@ import LoadingVeil from './LoadingVeil.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 
 const props = defineProps({
-    mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive'
+    mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive' | 'campaign'
     difficulties: { type: Object, default: () => ({}) },
     difficulty: { type: String, default: '' },
     authenticated: { type: Boolean, default: false },
     archivePuzzle: { type: Object, default: null }, // set for mode 'archive': a past daily incident this account already solved
+    levelConfig: { type: Object, default: null }, // set for mode 'campaign': this account's current level, from CampaignService::levelConfig()
 });
 
 const isDaily = computed(() => props.mode === 'daily');
 const isArchive = computed(() => props.mode === 'archive');
+const isCampaign = computed(() => props.mode === 'campaign');
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -23,6 +25,7 @@ const diff = ref(props.difficulty);
 const crumbText = computed(() => {
     if (isDaily.value) return 'Daily incident';
     if (isArchive.value) return 'Case history · review';
+    if (isCampaign.value) return props.levelConfig ? `Campaign · ${props.levelConfig.label}` : 'Campaign';
     const label = props.difficulties[diff.value]?.label;
     return label ? `Endless · ${label}` : 'Endless';
 });
@@ -49,6 +52,7 @@ const dailyScorePosted = ref(false);
 const leaderboard = ref([]);
 const hintsUsedThisRun = ref(0);
 const personalBestNote = ref('');
+const campaignResult = ref(null); /* {xpAwarded, level, leveledUp, xpIntoLevel, xpToNextLevel, chapterLabel, campaignComplete}, set on a campaign win */
 
 const undoStack = reactive([]);
 /* Chronological, append-only log of every mark/undo/reset/hint action this
@@ -482,6 +486,8 @@ function win(times) {
         // BurnfrontController::submitEndlessScore()). That's what lets a
         // solve there ever bump solved_count at all.
         submitEndlessScore(shaded, g.timed ? Date.now() - startAt : null);
+    } else if (isCampaign.value) {
+        submitCampaignScore(shaded);
     }
 }
 
@@ -524,6 +530,10 @@ function revealSolution(shaded) {
    the server, since /puzzle and /hint can't otherwise know what a custom
    grid even is. */
 function difficultyQuery(difficulty) {
+    /* Campaign never sends a level or the board itself — hint()/solve() recover
+       both from the signed run token puzzle() issued (see
+       CampaignService::decodeRun()), so a request can't probe a fabricated board. */
+    if (difficulty === 'campaign') return { difficulty: 'campaign', token: game.value?.token ?? '' };
     const params = { difficulty };
     if (difficulty === 'custom') {
         const custom = props.difficulties.custom;
@@ -620,6 +630,36 @@ async function submitEndlessScore(shaded, timeMs) {
     }
 }
 
+/* Converts a verified solve into XP. Sends only the run token puzzle()
+   issued plus the shaded cells — the server recovers level/spark/clues from
+   the token and reads this run's actual hint count from its own cache
+   (see CampaignController::submitScore()), rather than trusting anything
+   this client reports, so hintsUsedThisRun below is purely this run's own
+   local display copy, never what the server scores against. Best-effort
+   like submitEndlessScore(): a failed post just means this run's XP/
+   level-up banner is skipped, nothing is lost since the server is the only
+   source of truth for total_xp. */
+async function submitCampaignScore(shaded) {
+    try {
+        const resp = await fetch('/campaign/score', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body: JSON.stringify({
+                token: game.value.token,
+                shaded,
+            }),
+        });
+        if (!resp.ok) return;
+        campaignResult.value = await resp.json();
+    } catch (e) {
+        /* XP is a nice-to-have; a failed post just skips this run's banner */
+    }
+}
+
 /* fresh=false (only ever passed by the initial mount, below) tries to
    resume a saved in-progress board for the current difficulty before
    generating anything new — see persistProgress(). fresh=true (the "New
@@ -689,6 +729,62 @@ async function newGame(fresh = true) {
                locked forever: tap/undo/reset all bail out while locked. */
             locked.value = false;
         }
+        showStatus("Couldn't reach the incident desk. Try again.");
+    } finally {
+        if (token === genToken) veilVisible.value = false;
+    }
+}
+
+/* Loads a fresh puzzle at this account's current campaign level. Unlike
+   newGame(), there's no difficulty to pick — the level is earned via XP
+   (CampaignController::puzzle() derives it from CampaignProfile), so this
+   never sends a level and the board is always whatever the player has
+   reached, win or lose the last attempt. */
+async function loadCampaign() {
+    const token = ++genToken;
+    locked.value = true;
+    hintsUsedThisRun.value = 0;
+    campaignResult.value = null;
+    stopClock();
+    clearStatus();
+    veilVisible.value = true;
+    bannerVisible.value = false;
+    voided.value = false;
+    try {
+        const resp = await fetch('/campaign/puzzle');
+        if (!resp.ok) throw new Error('campaign puzzle request failed');
+        const p = await resp.json();
+        if (token !== genToken) return;
+        const n = p.rows * p.cols;
+        game.value = reactive({
+            n,
+            adj: buildAdj(p.rows, p.cols),
+            spark: p.spark,
+            R: p.rows,
+            C: p.cols,
+            N: p.breaks,
+            clueMap: new Map(p.clues),
+            clueIdx: p.clues.map((cv) => cv[0]),
+            clueVal: p.clues.map((cv) => cv[1]),
+            clues: p.clues,
+            difficulty: 'campaign',
+            name: p.name,
+            blurb: p.blurb,
+            timed: true,
+            token: p.token,
+        });
+        marks.value = new Array(n).fill(0);
+        hintSafe.value = new Array(n).fill(false);
+        wrongCells.value = new Array(n).fill(false);
+        cellStyle.value = new Array(n).fill(null);
+        burnt.value = new Array(n).fill(false);
+        revealedMinute.value = new Array(n).fill('');
+        undoStack.length = 0;
+        boardDone.value = false;
+        locked.value = false;
+        startClock();
+    } catch (e) {
+        if (token === genToken) locked.value = false;
         showStatus("Couldn't reach the incident desk. Try again.");
     } finally {
         if (token === genToken) veilVisible.value = false;
@@ -946,7 +1042,11 @@ function loadArchive() {
 const shareText = computed(() => {
     const g = game.value;
     if (!g) return '';
-    const tierLabel = isDaily.value || isArchive.value ? 'Daily incident' : (props.difficulties[diff.value]?.label ?? 'Endless');
+    const tierLabel = isDaily.value || isArchive.value
+        ? 'Daily incident'
+        : isCampaign.value
+          ? `Campaign · ${props.levelConfig?.label ?? ''}`.trim()
+          : (props.difficulties[diff.value]?.label ?? 'Endless');
     const lines = [`Burnfront — ${g.name || 'Unnamed incident'}`, tierLabel];
 
     if (voided.value) {
@@ -960,6 +1060,11 @@ const shareText = computed(() => {
         );
     } else {
         lines.push('Every clue burns on time');
+    }
+
+    if (isCampaign.value && campaignResult.value) {
+        lines.push(`+${campaignResult.value.xpAwarded} XP`);
+        if (campaignResult.value.leveledUp) lines.push(`Leveled up to ${campaignResult.value.level} · ${campaignResult.value.chapterLabel}`);
     }
 
     return lines.join('\n');
@@ -995,6 +1100,8 @@ if (isDaily.value) {
     loadDaily();
 } else if (isArchive.value) {
     loadArchive();
+} else if (isCampaign.value) {
+    loadCampaign();
 } else {
     newGame(false);
 }
@@ -1015,6 +1122,10 @@ if (isDaily.value) {
                 <template v-if="mode === 'endless'">
                     <Link href="/endless" class="bf-btn">Change difficulty</Link>
                     <button type="button" class="bf-btn bf-btn-primary" @click="newGame(true)">New fire</button>
+                </template>
+                <template v-else-if="mode === 'campaign'">
+                    <Link href="/campaign" class="bf-btn">Case file</Link>
+                    <button type="button" class="bf-btn bf-btn-primary" @click="loadCampaign">New fire</button>
                 </template>
                 <button type="button" class="bf-btn" title="Hint (H)" :disabled="hintDisabled" @click="requestHint">Hint</button>
                 <button type="button" class="bf-btn" title="Undo (U)" :disabled="undoDisabled" @click="undo">Undo</button>
@@ -1078,8 +1189,24 @@ if (isDaily.value) {
                             }}
                         </p>
                         <p v-if="personalBestNote" class="text-[12.5px] text-flame">{{ personalBestNote }}</p>
+                        <template v-if="isCampaign && campaignResult">
+                            <p class="text-[12.5px] text-paper">
+                                +{{ campaignResult.xpAwarded }} XP
+                                <span v-if="campaignResult.xpAwarded === 0" class="text-ash-dim"> — no breaks left un-hinted</span>
+                            </p>
+                            <p v-if="campaignResult.leveledUp" class="bf-levelup text-[15px] font-semibold tracking-[.06em] uppercase">
+                                Level up &rarr; {{ campaignResult.level }} &middot; {{ campaignResult.chapterLabel }}
+                            </p>
+                            <p v-if="campaignResult.campaignComplete" class="text-[12.5px] text-ember">
+                                Every case file in the record is closed.
+                            </p>
+                        </template>
                     </template>
                     <div class="flex items-center gap-2">
+                        <template v-if="isCampaign">
+                            <Link href="/campaign" class="bf-btn">Case file</Link>
+                            <button type="button" class="bf-btn bf-btn-primary" @click="loadCampaign">Next fire</button>
+                        </template>
                         <button type="button" class="bf-btn" @click="copyReport">Copy report</button>
                         <span v-if="copyFeedback" class="text-[12px] text-ash-dim">{{ copyFeedback }}</span>
                     </div>
