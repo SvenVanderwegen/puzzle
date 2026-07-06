@@ -18,7 +18,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 </script>
 
 <template>
-    <div class="flex items-center justify-between gap-3 text-[11px]">
+    <div class="flex items-center justify-between gap-3 font-mono text-[11px]">
         <p class="flex min-w-0 items-center truncate tracking-[.18em] text-ash-dim uppercase">
             <template v-if="back">
                 <Link
@@ -37,7 +37,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
             class="group -mr-1 inline-flex shrink-0 items-center gap-2.5 rounded-full py-1 pr-1 pl-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flame"
             :aria-label="currentUser ? `Account, signed in as ${currentUser.name}` : 'Sign in'"
         >
-            <span class="hidden text-[11px] tracking-[.09em] text-ash-dim uppercase group-hover:text-ember group-focus-visible:text-ember sm:inline">
+            <span class="hidden tracking-[.09em] text-ash-dim uppercase group-hover:text-ember group-focus-visible:text-ember sm:inline">
                 {{ currentUser ? currentUser.name : 'Sign in' }}
             </span>
             <Avatar :name="currentUser?.name" />

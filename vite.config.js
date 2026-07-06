@@ -19,6 +19,9 @@ export default defineConfig({
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],
                 }),
+                bunny('Courier Prime', {
+                    weights: [400, 700],
+                }),
             ],
         }),
         vue({

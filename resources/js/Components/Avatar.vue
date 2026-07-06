@@ -9,7 +9,7 @@ defineProps({
 
 <template>
     <span
-        class="flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-char-2 font-staatliches text-base tracking-[.02em] text-paper transition-colors group-hover:border-ember group-focus-visible:border-ember sm:size-9 sm:text-sm"
+        class="flex size-11 shrink-0 items-center justify-center rounded-full border border-rule-2 bg-folder font-mono text-sm font-bold tracking-[.02em] text-ember-hi transition-colors group-hover:border-ember group-focus-visible:border-ember sm:size-9 sm:text-[13px]"
     >
         <template v-if="name">{{ name.trim().charAt(0).toUpperCase() }}</template>
         <svg v-else viewBox="0 0 24 24" fill="none" class="size-5 text-ash transition-colors group-hover:text-ember group-focus-visible:text-ember" aria-hidden="true">

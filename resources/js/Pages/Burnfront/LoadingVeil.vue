@@ -5,6 +5,7 @@
    smallest ("Lookout") tier, so the loading state teaches the mechanic
    instead of just spinning. */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import FlameGlyph from '@/Components/FlameGlyph.vue';
 
 const props = defineProps({
     visible: { type: Boolean, default: false },
@@ -61,7 +62,9 @@ onBeforeUnmount(stop);
                     class="bf-veil-cell"
                     :class="{ 'is-spark': cell.dist === 0 }"
                     :style="{ '--delay': cell.dist * 220 + 'ms' }"
-                ></div>
+                >
+                    <FlameGlyph v-if="cell.dist === 0" />
+                </div>
             </div>
             <p class="bf-veil-log">
                 <span>{{ phrase }}</span><span class="bf-veil-cursor"></span>
