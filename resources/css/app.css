@@ -4,23 +4,44 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/* ============================================================
+   Burnfront — "Case File" design tokens (round 02 handoff).
+   Three type roles: font-staatliches (display/titles/board
+   numbers/stamps), font-sans (Instrument Sans, body + buttons),
+   font-mono (Courier Prime, all data: timestamps, coordinates,
+   case numbers, meta labels).
+   ============================================================ */
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
     --font-staatliches: 'Staatliches', system-ui, sans-serif;
+    --font-mono: 'Courier Prime', ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
 
-    --color-soot: #171310;
-    --color-char: #221c15;
-    --color-char-2: #2c2519;
-    --color-line: #3b3325;
-    --color-ash: #a89d8c;
-    --color-ash-dim: #998f80;
-    --color-paper: #f3ead9;
-    --color-ember: #ff8a3d;
-    --color-ember-deep: #e06a1f;
-    --color-flame: #ffd86b;
-    --color-danger: #e5484d;
-    --color-safe: #5fae72;
+    /* surfaces (warm char / manila-in-shadow) */
+    --color-desk: #141010;
+    --color-folder: #1e1815;
+    --color-raised: #251e18;
+    --color-rule: #3a2f24;
+    --color-rule-2: #4a3c2c;
+
+    /* ink */
+    --color-stock: #f1e7d5;
+    --color-ash: #b6a890;
+    --color-ash-dim: #7c6f5d;
+
+    /* ember — fire is evidence */
+    --color-ember: #ff7a2d;
+    --color-ember-hi: #ff9a4d;
+    --color-ember-deep: #c85618;
+    --color-flame: #ffd06b;
+
+    /* steel — the analyst's verified marks (use sparingly) */
+    --color-steel: #7fb0b8;
+    --color-steel-deep: #4d7078;
+
+    /* status — always paired with a glyph, never color alone */
+    --color-verify: #5fae72;
+    --color-void: #d0453f;
 }
 
 @layer base {
@@ -30,12 +51,7 @@
     }
 
     body {
-        font-family:
-            system-ui,
-            -apple-system,
-            'Segoe UI',
-            Roboto,
-            sans-serif;
+        font-family: var(--font-sans);
         line-height: 1.55;
     }
 }
@@ -43,51 +59,84 @@
 @layer components {
     /* ---------- buttons & controls ---------- */
     .bf-btn {
-        @apply cursor-pointer appearance-none rounded-[5px] border border-line bg-transparent px-3.5 py-2 text-[11px] font-semibold tracking-[.09em] whitespace-nowrap text-ash uppercase;
+        @apply cursor-pointer appearance-none rounded-[7px] border border-rule-2 bg-transparent px-3.5 py-2.5 text-[11px] font-bold tracking-[.09em] whitespace-nowrap text-ash uppercase transition-colors duration-150;
     }
     .bf-btn:hover:not(:disabled) {
-        @apply border-ember text-paper;
+        @apply border-stock text-stock;
     }
     .bf-btn:disabled {
-        @apply cursor-default opacity-35;
+        @apply cursor-default border-rule text-ash opacity-35;
     }
-    .bf-btn:disabled:hover {
-        @apply border-line text-ash;
-    }
+    /* Primary: filled ember — the single main action (New fire, Sign in, Next incident). */
     .bf-btn-primary {
-        @apply border-ember-deep text-ember;
+        @apply border-ember bg-ember text-desk;
     }
     .bf-btn-primary:hover:not(:disabled) {
-        @apply bg-ember/10 text-flame;
+        @apply border-ember-hi bg-ember-hi text-desk;
+    }
+    .bf-btn-primary:disabled {
+        @apply border-rule bg-transparent text-ash;
+    }
+    /* Outline: ember border, translucent fill — Hint. */
+    .bf-btn-outline {
+        @apply border-[1.5px] border-ember bg-ember/10 text-ember-hi;
+    }
+    .bf-btn-outline:hover:not(:disabled) {
+        @apply border-flame bg-ember/15 text-flame;
+    }
+    .bf-btn-outline:disabled {
+        @apply border-rule bg-transparent text-ash;
     }
     .bf-btn:focus-visible {
         @apply outline-2 outline-offset-2 outline-flame;
     }
 
     .bf-chip {
-        @apply flex items-baseline gap-[7px] rounded-[5px] border border-line px-3 py-2 text-xs whitespace-nowrap text-ash tabular-nums;
+        @apply flex flex-1 flex-col gap-0.5 rounded-md border border-rule-2 px-2.5 py-2 whitespace-nowrap tabular-nums;
     }
     .bf-chip-key {
-        @apply text-[10px] tracking-[.14em] text-ash-dim uppercase;
+        @apply font-mono text-[8.5px] tracking-[.13em] text-ash-dim uppercase;
     }
     .bf-chip-value {
-        @apply font-semibold text-paper;
+        @apply font-staatliches text-[20px] leading-none text-stock;
+    }
+    .bf-chip.is-over {
+        @apply border-void bg-void/[.06];
     }
     .bf-chip.is-over .bf-chip-value {
-        @apply text-danger;
+        @apply text-void;
     }
 
-    /* ---------- board ---------- */
-    .bf-board-grid {
-        @apply grid touch-manipulation gap-[5px];
+    /* ---------- board / plot sheet ---------- */
+    .bf-plotsheet {
+        @apply relative mx-auto rounded-lg border border-rule-2 bg-[#160f0c] p-2.5;
         /* Every difficulty tier is a square grid, so bounding width alone by
            the smaller of viewport width and viewport height keeps the whole
            board (and everything around it) inside one screen's height. */
-        width: min(92vw, 56dvh, var(--cell-max));
+        width: min(90vw, 54dvh, calc(var(--cell-max) + 30px));
+    }
+    .bf-plotsheet-grid {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr);
+        gap: 5px;
+    }
+    .bf-rail-cols,
+    .bf-rail-rows {
+        @apply grid gap-[5px];
+    }
+    .bf-rail-label {
+        @apply flex items-center justify-center font-mono text-[10px] text-ash-dim tabular-nums;
+    }
+    .bf-discrepancy {
+        @apply pointer-events-none absolute right-2.5 bottom-2.5;
+    }
+
+    .bf-board-grid {
+        @apply grid w-full touch-manipulation gap-[5px];
     }
     .bf-cell {
-        @apply relative aspect-square cursor-pointer appearance-none rounded-[5px] border border-line bg-char p-0 font-staatliches leading-none text-paper transition-[background-color,color,border-color] duration-300 ease-out;
-        font-size: min(calc(84vw / var(--cols) * 0.44), calc(51dvh / var(--cols) * 0.44), calc(var(--cell-max) / var(--cols) * 0.44));
+        @apply relative aspect-square cursor-pointer appearance-none rounded-[3px] border border-rule bg-[#1c1510] p-0 font-staatliches leading-none text-stock transition-[background-color,color,border-color] duration-300 ease-out;
+        font-size: min(calc(78vw / var(--cols) * 0.44), calc(46dvh / var(--cols) * 0.44), calc(var(--cell-max) / var(--cols) * 0.44));
     }
     .bf-cell:not(.is-fixed):hover {
         @apply border-ash-dim;
@@ -99,48 +148,57 @@
         @apply cursor-default;
     }
     .bf-cell.is-spark {
-        @apply bg-char-2 text-flame;
-        text-shadow: 0 0 14px rgba(255, 216, 107, 0.5);
+        border-color: var(--color-ember-deep);
+        background: radial-gradient(circle at 50% 62%, rgba(255, 122, 45, 0.3), #2a1a10 72%);
+        box-shadow: inset 0 0 10px rgba(255, 122, 45, 0.22);
+    }
+    .bf-cell.is-spark .bf-cell-flame {
+        filter: drop-shadow(0 0 6px rgba(255, 122, 45, 0.55));
+        width: 62%;
+        height: 62%;
     }
     .bf-cell.is-clue {
-        @apply bg-char-2;
+        @apply border-rule-2 bg-raised;
     }
     .bf-cell.is-break {
-        @apply border-[#6e6146] bg-[repeating-linear-gradient(135deg,#564b38_0_3px,#241f16_3px_9px)];
+        border-color: #8a6238;
+        background: repeating-linear-gradient(135deg, #6f4c2b 0 3px, #241a12 3px 9px);
     }
     .bf-cell.is-break.is-hint-safe {
-        @apply border-safe bg-[repeating-linear-gradient(135deg,rgba(95,174,114,.5)_0_3px,#1c2b20_3px_9px)];
+        border-color: var(--color-verify);
+        border-width: 1.5px;
     }
     .bf-cell.is-break.is-hint-wrong {
-        @apply border-danger bg-[repeating-linear-gradient(135deg,rgba(229,72,77,.5)_0_3px,#2c1a1b_3px_9px)];
+        border-color: var(--color-void);
+        border-width: 1.5px;
     }
     /* Hint safe/wrong also gets a shape cue (check/cross), not just a
        red/green tint — red-green colorblind players can't tell the two
-       backgrounds apart otherwise. Same glyphs as .bf-dcell.is-ok/.is-x in
-       the How To Play demo. */
+       otherwise. */
     .bf-cell.is-break.is-hint-safe::after {
         content: '\2713';
-        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-safe opacity-90;
+        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-verify;
     }
     .bf-cell.is-break.is-hint-wrong::after {
         content: '\2715';
-        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-danger opacity-90;
+        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-void;
     }
     .bf-cell.is-dot::after {
         content: '';
-        @apply absolute inset-0 m-auto size-[12%] rounded-full bg-ash opacity-90;
+        @apply absolute inset-0 m-auto size-[12%] rounded-full opacity-90;
+        background: #8a7d6a;
     }
     .bf-cell .bf-cell-minute {
         @apply absolute inset-0 flex items-center justify-center;
     }
     /* burn replay */
     .bf-cell.is-burnt {
-        @apply border-transparent text-soot;
+        @apply border-transparent text-desk;
         background: var(--burn-bg, var(--color-ember));
-        text-shadow: none;
     }
     .bf-cell.is-burnt.is-spark {
         color: #5a1d00;
+        box-shadow: none;
     }
     .bf-board-grid.is-done .bf-cell {
         @apply cursor-default;
@@ -151,12 +209,32 @@
         }
     }
 
-    .bf-banner-headline {
-        @apply font-staatliches text-[30px] leading-none tracking-[.05em] text-flame;
+    /* ---------- solve payoff ("Contained") ---------- */
+    .bf-payoff-hero {
+        @apply relative overflow-hidden rounded-lg border border-rule;
+        background: radial-gradient(circle at 50% 74%, rgba(255, 122, 45, 0.28), transparent 60%), #150d0a;
+    }
+    .bf-stat-tile {
+        @apply flex flex-1 flex-col items-center gap-1 rounded-md border border-rule-2 px-2 py-3 text-center;
+    }
+    .bf-stat-tile.is-good {
+        @apply border-verify bg-verify/[.06];
+    }
+    .bf-stat-value {
+        @apply font-staatliches text-[26px] leading-none text-stock;
+    }
+    .bf-stat-value.is-good {
+        color: var(--color-verify);
+    }
+    .bf-stat-label {
+        @apply font-mono text-[8.5px] tracking-[.12em] text-ash-dim uppercase;
+    }
+    .bf-xp-card {
+        @apply flex flex-col gap-2 rounded-lg border border-rule-2 bg-folder p-3.5;
     }
 
     .bf-veil {
-        @apply fixed inset-0 z-[100] hidden flex-col items-center justify-center gap-4 bg-soot/92 backdrop-blur-[2px];
+        @apply fixed inset-0 z-[100] hidden flex-col items-center justify-center gap-4 bg-desk/92 backdrop-blur-[2px];
     }
     .bf-veil.is-visible {
         @apply flex;
@@ -169,17 +247,21 @@
         width: min(48vw, 190px);
     }
     .bf-veil-cell {
-        @apply aspect-square rounded-[3px] border border-line bg-char;
+        @apply relative aspect-square rounded-[3px] border border-rule bg-folder;
         animation: bf-veil-ignite 2800ms ease-in-out infinite;
         animation-delay: var(--delay, 0ms);
     }
     .bf-veil-cell.is-spark {
         @apply border-ember-deep;
     }
+    .bf-veil-cell .bf-cell-flame {
+        @apply absolute inset-0 m-auto size-[60%];
+        filter: drop-shadow(0 0 4px rgba(255, 122, 45, 0.5));
+    }
     @keyframes bf-veil-ignite {
         0%,
         8% {
-            background-color: var(--color-char);
+            background-color: var(--color-folder);
             box-shadow: none;
         }
         18%,
@@ -189,12 +271,12 @@
         }
         75%,
         100% {
-            background-color: var(--color-char);
+            background-color: var(--color-folder);
             box-shadow: none;
         }
     }
     .bf-veil-log {
-        @apply flex items-center gap-[3px] text-xs tracking-[.16em] text-ash uppercase tabular-nums;
+        @apply flex items-center gap-[3px] font-mono text-xs tracking-[.16em] text-ash uppercase tabular-nums;
     }
     .bf-veil-cursor {
         @apply inline-block h-[1em] w-[7px] bg-ember align-middle;
@@ -225,40 +307,47 @@
 
     /* ---------- how it works demo ---------- */
     .bf-demo {
-        @apply flex flex-col gap-4 rounded-md border border-line p-[18px];
+        @apply flex flex-col gap-4 rounded-lg border border-rule-2 bg-folder p-[18px];
     }
     .bf-stress {
-        @apply text-ember;
+        @apply text-ember-hi;
     }
     .bf-demo-grid {
-        @apply grid w-full max-w-[300px] shrink-0 grid-cols-5 gap-1;
+        @apply grid w-full max-w-[300px] shrink-0 grid-cols-5 gap-1.5;
     }
     .bf-dcell {
-        @apply relative flex aspect-square items-center justify-center rounded border border-line bg-char font-staatliches text-[clamp(15px,4.6vw,24px)] leading-none text-paper transition-[background-color,color,opacity] duration-300 ease-out;
+        @apply relative flex aspect-square items-center justify-center rounded-[3px] border border-rule bg-[#1c1510] font-staatliches text-[clamp(15px,4.6vw,24px)] leading-none text-stock transition-[background-color,color,opacity] duration-300 ease-out;
     }
     .bf-dcell.is-spark {
-        @apply bg-char-2 text-flame;
-        text-shadow: 0 0 10px rgba(255, 216, 107, 0.5);
+        border-color: var(--color-ember-deep);
+        background: radial-gradient(circle at 50% 62%, rgba(255, 122, 45, 0.3), #2a1a10 72%);
+        box-shadow: inset 0 0 10px rgba(255, 122, 45, 0.22);
+    }
+    .bf-dcell.is-spark .bf-cell-flame {
+        filter: drop-shadow(0 0 5px rgba(255, 122, 45, 0.5));
+        width: 60%;
+        height: 60%;
     }
     .bf-dcell.is-clue {
-        @apply bg-char-2;
+        @apply border-rule-2 bg-raised;
     }
     .bf-dcell.is-break {
-        @apply border-[#6e6146] bg-[repeating-linear-gradient(135deg,#564b38_0_3px,#241f16_3px_9px)];
+        border-color: #8a6238;
+        background: repeating-linear-gradient(135deg, #6f4c2b 0 3px, #241a12 3px 9px);
     }
     .bf-dcell.is-burnt {
-        @apply border-transparent text-soot;
+        @apply border-transparent text-desk;
         background: var(--burn-bg, var(--color-ember));
-        text-shadow: none;
     }
     .bf-dcell.is-burnt.is-spark {
         color: #5a1d00;
+        box-shadow: none;
     }
     .bf-dcell.is-route {
-        @apply z-[1] outline-3 -outline-offset-1 outline-paper;
+        @apply z-[1] outline-3 -outline-offset-1 outline-stock;
     }
     .bf-dcell.is-blocked {
-        @apply z-[1] outline-3 -outline-offset-1 outline-dashed outline-danger;
+        @apply z-[1] outline-3 -outline-offset-1 outline-dashed outline-void;
     }
     .bf-demo-grid.is-focus .bf-dcell {
         @apply opacity-30;
@@ -270,11 +359,11 @@
     }
     .bf-dcell.is-x::before {
         content: '\2715';
-        @apply absolute inset-0 flex items-center justify-center font-sans text-sm font-bold text-danger;
+        @apply absolute inset-0 flex items-center justify-center font-sans text-sm font-bold text-void;
     }
     .bf-dcell.is-ok::after {
         content: '\2713';
-        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-soot opacity-85;
+        @apply absolute top-px right-[3px] font-sans text-[11px] leading-none font-bold text-desk opacity-85;
     }
     @media (prefers-reduced-motion: reduce) {
         .bf-dcell {
@@ -287,128 +376,195 @@
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     }
     .bf-rulecol h3 {
-        @apply text-[11px] font-semibold tracking-[.18em] text-ash-dim uppercase;
+        @apply font-mono text-[11px] font-bold tracking-[.18em] text-ash-dim uppercase;
     }
     .bf-rulecol ol,
     .bf-rulecol ul {
         @apply flex flex-col gap-[9px] pl-5 text-sm text-ash;
     }
     .bf-rulecol li strong {
-        @apply font-semibold text-paper;
+        @apply font-semibold text-stock;
     }
 
     /* ---------- status message ---------- */
     .bf-status {
-        @apply max-w-[60ch] border-l-[3px] border-l-danger py-0.5 pl-2.5 text-[13px] text-paper;
+        @apply max-w-[60ch] border-l-[3px] border-l-void py-0.5 pl-2.5 text-[13px] text-stock;
     }
 
-    /* ---------- start screen tiles ---------- */
-    .bf-tile {
-        @apply flex cursor-pointer flex-col gap-1.5 rounded-md border border-line px-5 py-4 text-left transition-colors duration-150;
+    /* ---------- eyebrow / mono labels ---------- */
+    .bf-eyebrow {
+        @apply font-mono text-[11px] tracking-[.22em] text-ash-dim uppercase;
     }
-    .bf-tile:hover {
+
+    /* ---------- folder card list rows (no tab) ---------- */
+    .bf-row {
+        @apply relative flex items-center gap-3.5 rounded-lg border border-rule-2 bg-folder px-4 py-3.5 text-left transition-colors duration-150;
+    }
+    a.bf-row:hover,
+    button.bf-row:hover {
+        @apply border-ember;
+    }
+    .bf-row:focus-visible {
+        @apply outline-2 outline-offset-2 outline-flame;
+    }
+    .bf-row.is-locked {
+        @apply cursor-default opacity-70;
+    }
+    .bf-row.is-selected {
+        @apply border-[1.5px] border-ember bg-ember/[.08];
+    }
+    .bf-row.is-dashed {
+        @apply border-dashed;
+    }
+
+    /* ---------- mode tile (start screen: filing-folder w/ tab) ---------- */
+    .bf-tile {
+        @apply relative block pt-[15px] text-left;
+    }
+    .bf-tile-tab {
+        @apply absolute top-0 left-0 z-[1] rounded-t-[5px] border border-b-0 border-rule-2 bg-raised px-3 py-0.5 font-mono text-[8.5px] font-bold tracking-[.14em] text-ash-dim uppercase;
+    }
+    .bf-tile-card {
+        @apply flex flex-col gap-1.5 rounded-tr-lg rounded-b-lg border border-rule-2 bg-folder px-4 py-3.5 transition-colors duration-150;
+    }
+    .bf-tile:hover .bf-tile-card {
         @apply border-ember;
     }
     .bf-tile:focus-visible {
         @apply outline-2 outline-offset-2 outline-flame;
     }
+    .bf-tile.is-locked .bf-tile-card {
+        @apply opacity-70;
+    }
     .bf-tile-title {
-        @apply font-staatliches text-[22px] tracking-[.04em] text-paper;
+        @apply font-staatliches text-[24px] leading-none tracking-[.02em] text-stock;
     }
     .bf-tile-desc {
         @apply text-[13px] text-ash;
     }
     .bf-tile-meta {
-        @apply text-[11px] tracking-[.08em] text-ash-dim uppercase tabular-nums;
+        @apply font-mono text-[10.5px] tracking-[.08em] text-ash-dim uppercase tabular-nums;
     }
     .bf-tile-meta.is-solved {
-        @apply text-ember normal-case tracking-normal;
+        @apply text-ember-hi normal-case tracking-normal;
     }
-    .bf-tile.is-locked {
-        @apply opacity-70;
+    .bf-tile-sealed {
+        @apply absolute top-[24px] right-2.5 z-[1];
     }
 
-    /* ---------- XP bar (start tile + campaign map) ---------- */
+    /* ---------- XP bar (start tile + campaign map + payoff) ---------- */
     .bf-xp-track {
-        @apply h-[3px] w-full overflow-hidden rounded-full bg-line;
+        @apply relative h-[5px] w-full overflow-hidden rounded-full bg-raised;
     }
     .bf-xp-fill {
-        @apply h-full rounded-full bg-ember transition-[width] duration-500 ease-out;
+        @apply h-full rounded-full transition-[width] duration-500 ease-out;
+        background: linear-gradient(90deg, var(--color-ember-deep), var(--color-ember));
+    }
+    /* just-earned segment overlay, shown on the solve payoff's rank card */
+    .bf-xp-fill-new {
+        @apply absolute top-0 h-full;
+        background: repeating-linear-gradient(90deg, rgba(255, 209, 107, 0.55) 0 4px, transparent 4px 8px);
     }
 
-    /* ---------- campaign map ---------- */
-    .bf-chapter {
-        @apply flex flex-col gap-3;
+    /* ---------- rubber stamps ---------- */
+    .bf-stamp {
+        @apply inline-block rounded font-staatliches text-[13px] leading-none tracking-[.05em] uppercase;
+        padding: 3px 10px;
+        border-width: 2px;
+        border-style: solid;
     }
-    .bf-chapter-title {
-        @apply text-[11px] font-semibold tracking-[.18em] text-ash-dim uppercase;
+    .bf-stamp-ember {
+        @apply border-ember text-ember;
     }
-    .bf-node-path {
-        @apply flex flex-wrap items-center gap-0;
+    .bf-stamp-steel {
+        @apply border-steel text-steel;
     }
-    .bf-node {
-        @apply relative flex aspect-square w-12 shrink-0 items-center justify-center rounded-full border border-line bg-char font-staatliches text-base text-paper sm:w-14;
+    .bf-stamp-void {
+        @apply border-void text-void;
     }
-    .bf-node.is-locked {
-        @apply cursor-default text-ash-dim opacity-40;
+    .bf-stamp-dashed {
+        @apply border-dashed border-rule-2 text-ash-dim;
     }
-    .bf-node.is-reached {
-        @apply border-ember-deep bg-ember/15 text-flame;
+
+    /* ---------- campaign incident-marker trail ---------- */
+    .bf-district {
+        @apply mt-4 mb-1 flex w-full items-center gap-2.5;
     }
-    .bf-node.is-reached::after {
-        content: '\2713';
-        @apply absolute top-0 right-0 flex size-4 items-center justify-center rounded-full bg-ember-deep font-sans text-[9px] font-bold text-soot;
+    .bf-district-title {
+        @apply font-staatliches text-[15px] tracking-[.04em];
     }
-    .bf-node.is-current {
-        @apply cursor-pointer border-ember bg-char-2 text-flame;
-        animation: bf-node-pulse 1800ms ease-out 3;
+    .bf-district-rule {
+        @apply h-px flex-1;
+        background: var(--color-rule);
     }
-    .bf-node.is-current:hover {
-        @apply border-flame;
+    .bf-trail {
+        @apply flex flex-col items-center;
     }
-    .bf-node.is-current:focus-visible {
-        @apply outline-2 outline-offset-2 outline-flame;
+    .bf-trail-line {
+        @apply h-5 w-0 border-l-2 border-dashed;
     }
-    .bf-node-connector {
-        @apply h-[3px] w-5 shrink-0 rounded-full bg-line sm:w-7;
+    .bf-trail-line.is-cleared {
+        @apply border-ember-deep;
     }
-    .bf-node-connector.is-lit {
-        animation: bf-fuse-burn 900ms ease-out both;
-        animation-delay: var(--delay, 0ms);
+    .bf-trail-line.is-ahead {
+        @apply border-rule-2;
     }
-    @keyframes bf-fuse-burn {
+    .bf-shield-wrap {
+        @apply relative;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+    }
+    .bf-shield {
+        clip-path: polygon(0 0, 100% 0, 100% 66%, 50% 100%, 0 66%);
+        @apply flex items-start justify-center pt-[9px];
+    }
+    .bf-shield-num {
+        @apply font-staatliches text-[22px] leading-none;
+    }
+    .bf-shield.is-cleared {
+        background: linear-gradient(#ff8a3d, var(--color-ember-deep));
+    }
+    .bf-shield.is-cleared .bf-shield-num {
+        color: var(--color-desk);
+    }
+    .bf-shield.is-sealed {
+        @apply bg-raised;
+    }
+    .bf-shield.is-sealed .bf-shield-num {
+        color: #6a5c48;
+    }
+    .bf-shield-badge {
+        @apply absolute -top-[3px] -right-[3px] flex size-[18px] items-center justify-center rounded-full bg-verify text-[10px] font-bold;
+        color: #0e130f;
+        border: 2px solid var(--color-desk);
+    }
+    .bf-shield-current-outer {
+        @apply flex items-center justify-center bg-ember;
+    }
+    .bf-shield-current-inner {
+        @apply flex items-start justify-center bg-[#1e1512] pt-[10px];
+    }
+    .bf-shield-current-inner .bf-shield-num {
+        color: var(--color-ember-hi);
+    }
+    .bf-shield-ping {
+        @apply absolute inset-0 bg-ember;
+        clip-path: polygon(0 0, 100% 0, 100% 66%, 50% 100%, 0 66%);
+        animation: bf-shield-ping 1800ms ease-out infinite;
+    }
+    @keyframes bf-shield-ping {
         0% {
-            background-color: var(--color-line);
-            box-shadow: none;
-        }
-        40% {
-            background-color: var(--color-ember);
-            box-shadow: 0 0 8px rgba(255, 138, 61, 0.5);
+            transform: scale(1);
+            opacity: 0.55;
         }
         100% {
-            background-color: var(--color-flame);
-            box-shadow: none;
+            transform: scale(1.55);
+            opacity: 0;
         }
     }
-    @keyframes bf-node-pulse {
-        0%,
-        100% {
-            box-shadow: 0 0 0 0 rgba(255, 138, 61, 0.55);
-        }
-        50% {
-            box-shadow: 0 0 0 8px rgba(255, 138, 61, 0);
-        }
+    .bf-shield-sealed-tag {
+        @apply absolute left-1/2 top-6 -translate-x-1/2 rotate-[-6deg] rounded-[2px] border-[1.5px] border-steel px-1 font-staatliches text-[9px] tracking-[.06em] text-steel;
     }
-    .bf-node-in-enter-from {
-        opacity: 0;
-        transform: translateY(6px) scale(0.9);
-    }
-    .bf-node-in-enter-active {
-        transition:
-            opacity 260ms ease-out,
-            transform 260ms ease-out;
-        transition-delay: var(--delay, 0ms);
-    }
+
     .bf-levelup {
         @apply inline-block text-flame;
         animation: bf-levelup-burst 700ms ease-out;
@@ -428,15 +584,9 @@
         }
     }
     @media (prefers-reduced-motion: reduce) {
-        .bf-node.is-current {
+        .bf-shield-ping {
             animation: none;
-        }
-        .bf-node-connector.is-lit {
-            animation: none;
-            background-color: var(--color-flame);
-        }
-        .bf-node-in-enter-active {
-            transition: none;
+            display: none;
         }
         .bf-levelup {
             animation: none;

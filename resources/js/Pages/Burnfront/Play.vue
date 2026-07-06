@@ -1,9 +1,15 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { buildAdj, cellName, COLS, fmtClock, validate } from '@/lib/burnfront-engine';
 import LoadingVeil from './LoadingVeil.vue';
 import SiteBar from '@/Components/SiteBar.vue';
+import FlameGlyph from '@/Components/FlameGlyph.vue';
+import RubberStamp from '@/Components/RubberStamp.vue';
+
+/* Three.js is a heavy dependency only ever needed once a board is actually
+   solved — loaded on demand rather than bundled into every page's chunk. */
+const RidgeModel = defineAsyncComponent(() => import('@/Components/RidgeModel.vue'));
 
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive' | 'campaign'
@@ -46,6 +52,13 @@ const statusMessage = ref('');
 const bannerVisible = ref(false);
 const finalTimeText = ref('0:00');
 const voided = ref(false); /* true once the board was revealed via the "Solve" cheat button */
+/* true only when this board was completed just now, in this session (a real
+   win() or a solvePuzzle() reveal) — false for a board opened already-solved
+   (an archive replay, or reopening today's already-scored daily). Gates
+   whether the board is swapped out for the "Contained" payoff screen: a
+   review of a past incident should keep showing the board, not hide it
+   behind a payoff for a solve that didn't just happen. */
+const justSolved = ref(false);
 
 const dailyDate = ref(null);
 const dailyScorePosted = ref(false);
@@ -76,6 +89,58 @@ const undoDisabled = computed(() => locked.value || undoStack.length === 0);
 const resetDisabled = computed(() => locked.value);
 const hintDisabled = computed(() => locked.value || hinting.value);
 const solveDisabled = computed(() => locked.value || !game.value || hinting.value);
+
+/* Mono subline under the incident name — "Hotshot · 7×7 · Endless" — read
+   straight off game/mode state, purely cosmetic. */
+const boardSubline = computed(() => {
+    const g = game.value;
+    if (!g) return '';
+    const dims = `${g.R}×${g.C}`;
+    if (isDaily.value) return `Daily · ${dims}`;
+    if (isArchive.value) return `Daily · ${dims} · Review`;
+    if (isCampaign.value) return `Campaign · ${props.levelConfig?.chapterLabel ?? ''}`.trim();
+    const label = props.difficulties[diff.value]?.label ?? '';
+    return `${label.replace(/\s*\d+×\d+$/, '')} · ${dims} · Endless`;
+});
+
+/* A dossier-flavor case number for the header/payoff — decorative only, no
+   backend record behind it. Deterministic from the board's own identifying
+   data so the same incident always reads the same case number. */
+function hashCode(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+    return Math.abs(h);
+}
+const caseNumber = computed(() => {
+    const g = game.value;
+    if (!g) return '';
+    if (isDaily.value || isArchive.value) {
+        const digits = (dailyDate.value ?? '').replace(/\D/g, '').slice(2);
+        return `BF-${digits || '0000'}`;
+    }
+    return `BF-${1000 + (hashCode(`${g.spark}:${g.R}x${g.C}:${g.clues.length}`) % 9000)}`;
+});
+
+/* Discrepancy stamp on the plot sheet: shown while the last hint check left
+   a placed firebreak flagged wrong, cleared the moment the player acts on
+   it (clearWrongCells() runs on every tap/undo/reset/hint). */
+const hasDiscrepancy = computed(() => !boardDone.value && wrongCells.value.some(Boolean));
+
+/* Just-earned XP segment (the flame dashed overlay) on the campaign payoff's
+   rank bar — approximated from xpAwarded since the server only reports the
+   run's *resulting* standing, not the bar's starting position. */
+const xpAfterPct = computed(() => {
+    const r = campaignResult.value;
+    if (!r || !r.xpToNextLevel) return 100;
+    return Math.min(100, Math.round((r.xpIntoLevel / r.xpToNextLevel) * 100));
+});
+const xpBeforePct = computed(() => {
+    const r = campaignResult.value;
+    if (!r || !r.xpToNextLevel) return xpAfterPct.value;
+    const before = r.xpIntoLevel - r.xpAwarded;
+    if (r.leveledUp || before < 0) return 0;
+    return Math.min(100, Math.round((before / r.xpToNextLevel) * 100));
+});
 
 function stopClock() {
     if (clockTimer) {
@@ -247,6 +312,7 @@ function restoreEndlessGame(saved) {
     personalBestNote.value = '';
     dailyScorePosted.value = false;
     voided.value = false;
+    justSolved.value = false;
     boardDone.value = false;
     bannerVisible.value = false;
     veilVisible.value = false;
@@ -285,7 +351,6 @@ function cellClasses(i) {
 
 function cellText(i) {
     const g = game.value;
-    if (i === g.spark) return '★';
     if (g.clueMap.has(i)) return g.clueMap.get(i);
     return revealedMinute.value[i] || '';
 }
@@ -470,6 +535,7 @@ function win(times) {
             if (cellStyle.value[i]) cellStyle.value[i] = { ...cellStyle.value[i], transitionDelay: '0ms' };
         }
         finalTimeText.value = fmtClock(Date.now() - startAt);
+        justSolved.value = true;
         bannerVisible.value = true;
     }, total);
 
@@ -688,6 +754,7 @@ async function newGame(fresh = true) {
     veilVisible.value = true;
     bannerVisible.value = false;
     voided.value = false;
+    justSolved.value = false;
     try {
         const resp = await fetch('/puzzle?' + new URLSearchParams(difficultyQuery(diff.value)));
         if (!resp.ok) throw new Error('puzzle request failed');
@@ -750,6 +817,7 @@ async function loadCampaign() {
     veilVisible.value = true;
     bannerVisible.value = false;
     voided.value = false;
+    justSolved.value = false;
     try {
         const resp = await fetch('/campaign/puzzle');
         if (!resp.ok) throw new Error('campaign puzzle request failed');
@@ -806,6 +874,7 @@ async function loadDaily() {
     veilVisible.value = true;
     bannerVisible.value = false;
     voided.value = false;
+    justSolved.value = false;
     try {
         const resp = await fetch('/daily');
         if (!resp.ok) throw new Error('daily request failed');
@@ -985,6 +1054,7 @@ async function solvePuzzle() {
         locked.value = true;
         boardDone.value = true;
         voided.value = true;
+        justSolved.value = true;
         revealSolution(data.solution);
         bannerVisible.value = true;
     } catch (e) {
@@ -1113,10 +1183,18 @@ if (isDaily.value) {
     <main class="mx-auto flex min-h-dvh max-w-[640px] flex-col gap-2.5 px-4 pt-3 pb-4">
         <SiteBar :back="{ href: '/', text: 'Menu' }" :crumb="crumbText" />
 
-        <section class="flex min-h-0 flex-1 flex-col" aria-label="Puzzle board">
-            <p v-if="game && game.name" class="text-sm text-ash">
-                <span class="font-medium text-paper">{{ game.name }}</span> — {{ game.blurb }}
-            </p>
+        <!-- ============ THE PLOT SHEET (in progress / review) ============ -->
+        <section v-if="!(bannerVisible && justSolved)" class="flex min-h-0 flex-1 flex-col" aria-label="Puzzle board">
+            <div v-if="game && game.name" class="mt-1 flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="truncate font-staatliches text-[28px] leading-none tracking-[.02em] text-stock">{{ game.name }}</h2>
+                    <p class="mt-1 font-mono text-[10px] tracking-[.1em] text-ash-dim uppercase">{{ boardSubline }}</p>
+                </div>
+                <div class="shrink-0 text-right font-mono text-[9.5px] leading-[1.5] text-ash-dim">
+                    CASE<br /><span class="text-ash">{{ caseNumber }}</span>
+                </div>
+            </div>
+            <p v-if="game && game.blurb" class="mt-1 text-sm text-ash">{{ game.blurb }}</p>
 
             <div v-if="!isArchive" class="mt-2.5 flex flex-wrap items-center gap-2">
                 <template v-if="mode === 'endless'">
@@ -1127,87 +1205,84 @@ if (isDaily.value) {
                     <Link href="/campaign" class="bf-btn">Case file</Link>
                     <button type="button" class="bf-btn bf-btn-primary" @click="loadCampaign">New fire</button>
                 </template>
-                <button type="button" class="bf-btn" title="Hint (H)" :disabled="hintDisabled" @click="requestHint">Hint</button>
-                <button type="button" class="bf-btn" title="Undo (U)" :disabled="undoDisabled" @click="undo">Undo</button>
-                <button type="button" class="bf-btn" title="Reset (R)" :disabled="resetDisabled" @click="reset">Reset</button>
-                <button type="button" class="bf-btn" title="Solve (S)" :disabled="solveDisabled" @click="solvePuzzle">Solve</button>
-                <div class="ml-auto flex gap-2">
-                    <div class="bf-chip" :class="{ 'is-over': overBudget }">
-                        <span class="bf-chip-key">Breaks</span>
-                        <span class="bf-chip-value">{{ breakCountText }}</span>
-                    </div>
-                    <div v-if="!game || game.timed" class="bf-chip">
-                        <span class="bf-chip-key">Time</span>
-                        <span class="bf-chip-value">{{ clockText }}</span>
-                    </div>
+            </div>
+
+            <div v-if="!isArchive && game" class="mt-2.5 flex gap-2">
+                <div class="bf-chip" :class="{ 'is-over': overBudget }">
+                    <span class="bf-chip-key">Breaks</span>
+                    <span class="bf-chip-value">{{ breakCountText }}</span>
+                </div>
+                <div v-if="game.timed" class="bf-chip">
+                    <span class="bf-chip-key">Time</span>
+                    <span class="bf-chip-value">{{ clockText }}</span>
+                </div>
+                <div class="bf-chip">
+                    <span class="bf-chip-key">Hints</span>
+                    <span class="bf-chip-value">{{ hintsUsedThisRun }}</span>
                 </div>
             </div>
 
             <div class="relative mt-2.5 flex min-h-0 flex-1 items-center justify-center">
-                <div
-                    v-if="game"
-                    class="bf-board-grid"
-                    :class="{ 'is-done': boardDone }"
-                    :style="{ '--cols': game.C, gridTemplateColumns: `repeat(${game.C},1fr)` }"
-                    aria-label="Burnfront grid"
-                >
-                    <button
-                        v-for="i in game.n"
-                        :key="i - 1"
-                        :ref="(el) => setCellEl(i - 1, el)"
-                        type="button"
-                        :class="cellClasses(i - 1)"
-                        :style="cellStyle[i - 1] || {}"
-                        :aria-label="cellLabel(i - 1)"
-                        :tabindex="i - 1 === focusedIndex ? 0 : -1"
-                        @click="tap(i - 1, 1)"
-                        @contextmenu.prevent="tap(i - 1, -1)"
-                        @keydown="onCellKeydown($event, i - 1)"
-                        @focus="focusedIndex = i - 1"
-                    >
-                        <span class="bf-cell-minute">{{ cellText(i - 1) }}</span>
-                    </button>
+                <div v-if="game" class="bf-plotsheet">
+                    <div class="bf-plotsheet-grid">
+                        <div></div>
+                        <div class="bf-rail-cols" :style="{ gridTemplateColumns: `repeat(${game.C},1fr)` }">
+                            <span v-for="c in game.C" :key="`col${c}`" class="bf-rail-label">{{ COLS[c - 1] }}</span>
+                        </div>
+                        <div class="bf-rail-rows" :style="{ gridTemplateRows: `repeat(${game.R},1fr)` }">
+                            <span v-for="r in game.R" :key="`row${r}`" class="bf-rail-label">{{ r }}</span>
+                        </div>
+                        <div
+                            class="bf-board-grid"
+                            :class="{ 'is-done': boardDone }"
+                            :style="{ '--cols': game.C, gridTemplateColumns: `repeat(${game.C},1fr)` }"
+                            aria-label="Burnfront grid"
+                        >
+                            <button
+                                v-for="i in game.n"
+                                :key="i - 1"
+                                :ref="(el) => setCellEl(i - 1, el)"
+                                type="button"
+                                :class="cellClasses(i - 1)"
+                                :style="cellStyle[i - 1] || {}"
+                                :aria-label="cellLabel(i - 1)"
+                                :tabindex="i - 1 === focusedIndex ? 0 : -1"
+                                @click="tap(i - 1, 1)"
+                                @contextmenu.prevent="tap(i - 1, -1)"
+                                @keydown="onCellKeydown($event, i - 1)"
+                                @focus="focusedIndex = i - 1"
+                            >
+                                <span class="bf-cell-minute">
+                                    <FlameGlyph v-if="i - 1 === game.spark" glow />
+                                    <template v-else>{{ cellText(i - 1) }}</template>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                    <RubberStamp v-if="hasDiscrepancy" tone="void" size="sm" :rotate="-8" class="bf-discrepancy">Discrepancy</RubberStamp>
                 </div>
                 <LoadingVeil :visible="veilVisible" />
             </div>
 
             <div class="mt-2.5 flex min-h-9 flex-col gap-1.5">
-                <div v-if="bannerVisible" class="flex flex-col gap-1.5">
-                    <span class="bf-banner-headline">{{ voided ? 'SOLVED' : 'FIRE MAPPED' }}</span>
-                    <p v-if="voided" class="text-sm text-ash">Answer revealed — time voided, this run wasn&rsquo;t saved.</p>
-                    <template v-else>
-                        <p v-if="game.timed" class="text-sm text-ash">
-                            Contained in <span class="tabular-nums text-paper">{{ finalTimeText }}</span> — every clue burns
-                            on time.
-                        </p>
-                        <p v-else class="text-sm text-ash">Every clue burns on time.</p>
-                        <p v-if="game.timed" class="text-[12.5px] text-ash-dim">
-                            {{
-                                hintsUsedThisRun === 0
-                                    ? 'Clean reconstruction — no hints borrowed.'
-                                    : `${hintsUsedThisRun} hint${hintsUsedThisRun === 1 ? '' : 's'} used.`
-                            }}
-                        </p>
-                        <p v-if="personalBestNote" class="text-[12.5px] text-flame">{{ personalBestNote }}</p>
-                        <template v-if="isCampaign && campaignResult">
-                            <p class="text-[12.5px] text-paper">
-                                +{{ campaignResult.xpAwarded }} XP
-                                <span v-if="campaignResult.xpAwarded === 0" class="text-ash-dim"> — no breaks left un-hinted</span>
-                            </p>
-                            <p v-if="campaignResult.leveledUp" class="bf-levelup text-[15px] font-semibold tracking-[.06em] uppercase">
-                                Level up &rarr; {{ campaignResult.level }} &middot; {{ campaignResult.chapterLabel }}
-                            </p>
-                            <p v-if="campaignResult.campaignComplete" class="text-[12.5px] text-ember">
-                                Every case file in the record is closed.
-                            </p>
-                        </template>
-                    </template>
+                <div v-if="bannerVisible && !justSolved" class="flex flex-col gap-1.5">
+                    <p class="text-sm text-ash">
+                        <span v-if="voided">Answer revealed — time voided, this run wasn&rsquo;t saved.</span>
+                        <span v-else-if="game.timed">
+                            Contained in <span class="tabular-nums text-stock">{{ finalTimeText }}</span> — every clue burns on
+                            time.
+                        </span>
+                        <span v-else>Every clue burns on time.</span>
+                    </p>
+                    <p v-if="!voided && game.timed" class="text-[12.5px] text-ash-dim">
+                        {{
+                            hintsUsedThisRun === 0
+                                ? 'Clean reconstruction — no hints borrowed.'
+                                : `${hintsUsedThisRun} hint${hintsUsedThisRun === 1 ? '' : 's'} used.`
+                        }}
+                    </p>
                     <div class="flex items-center gap-2">
-                        <template v-if="isCampaign">
-                            <Link href="/campaign" class="bf-btn">Case file</Link>
-                            <button type="button" class="bf-btn bf-btn-primary" @click="loadCampaign">Next fire</button>
-                        </template>
-                        <button type="button" class="bf-btn" @click="copyReport">Copy report</button>
+                        <button type="button" class="bf-btn" @click="copyReport">Share</button>
                         <span v-if="copyFeedback" class="text-[12px] text-ash-dim">{{ copyFeedback }}</span>
                     </div>
                 </div>
@@ -1222,24 +1297,108 @@ if (isDaily.value) {
                 </p>
             </div>
 
-            <div
-                v-if="isDaily && leaderboard.length"
-                class="mt-1 flex flex-col gap-1.5 rounded-md border border-line p-3.5"
-                aria-label="Today's fastest"
-            >
-                <h3 class="text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
-                <ol class="flex flex-col gap-1 text-sm text-ash">
-                    <li v-for="entry in leaderboard" :key="entry.rank" class="flex justify-between gap-3 tabular-nums">
-                        <span>
-                            {{ entry.rank }}. {{ entry.name }}
-                            <span v-if="entry.hints_used === 0" class="ml-1 text-[10px] tracking-[.08em] text-ember uppercase"
-                                >clean</span
-                            >
-                        </span>
-                        <span class="text-paper">{{ fmtClock(entry.time_ms) }}</span>
-                    </li>
-                </ol>
+            <div v-if="!isArchive" class="mt-1 flex gap-2">
+                <button type="button" class="bf-btn bf-btn-outline flex-1" title="Hint (H)" :disabled="hintDisabled" @click="requestHint">
+                    Hint
+                </button>
+                <button type="button" class="bf-btn flex-1" title="Undo (U)" :disabled="undoDisabled" @click="undo">Undo</button>
+                <button type="button" class="bf-btn flex-1" title="Reset (R)" :disabled="resetDisabled" @click="reset">Reset</button>
+                <button type="button" class="bf-btn flex-1" title="Solve (S)" :disabled="solveDisabled" @click="solvePuzzle">Solve</button>
             </div>
         </section>
+
+        <!-- ============ CONTAINED — solve payoff ============ -->
+        <section v-else class="flex flex-col gap-4" aria-label="Incident contained">
+            <p class="text-center font-mono text-[10px] tracking-[.2em] text-ash-dim uppercase">Reconstruction complete</p>
+
+            <div class="bf-payoff-hero h-[190px]">
+                <RidgeModel :burnt-ratio="1" />
+                <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <RubberStamp tone="ember" size="lg" :rotate="-7">{{ voided ? 'Solved' : 'Contained' }}</RubberStamp>
+                </div>
+            </div>
+
+            <p class="text-center text-[13px] text-ash">
+                <span v-if="voided">Answer revealed — time voided, this run wasn&rsquo;t saved.</span>
+                <span v-else-if="game.timed">Every timestamp reconciles. One reconstruction, no guessing</span>
+                <span v-else>Every clue burns on time</span>
+                <template v-if="!voided"> — filed to <span class="font-mono text-ash">{{ caseNumber }}</span>.</template>
+            </p>
+
+            <div v-if="!voided" class="flex gap-2">
+                <div class="bf-stat-tile">
+                    <span class="bf-stat-value">{{ game.timed ? finalTimeText : '—' }}</span>
+                    <span class="bf-stat-label">Time</span>
+                </div>
+                <div class="bf-stat-tile">
+                    <span class="bf-stat-value">{{ breakCountText }}</span>
+                    <span class="bf-stat-label">Breaks</span>
+                </div>
+                <div class="bf-stat-tile" :class="{ 'is-good': hintsUsedThisRun === 0 }">
+                    <span class="bf-stat-value" :class="{ 'is-good': hintsUsedThisRun === 0 }">{{ hintsUsedThisRun }}</span>
+                    <span class="bf-stat-label">Hints</span>
+                </div>
+            </div>
+
+            <p v-if="personalBestNote" class="text-center text-[12.5px] text-flame">{{ personalBestNote }}</p>
+
+            <div v-if="isCampaign && campaignResult" class="bf-xp-card">
+                <div class="flex items-baseline justify-between font-mono text-[9.5px] tracking-[.12em] text-ash-dim uppercase">
+                    <span>Rank &middot; {{ campaignResult.chapterLabel }}</span>
+                    <span class="font-bold text-ember-hi">+{{ campaignResult.xpAwarded }} XP</span>
+                </div>
+                <div class="bf-xp-track">
+                    <div class="bf-xp-fill" :style="{ width: xpAfterPct + '%' }"></div>
+                    <div
+                        v-if="xpAfterPct > xpBeforePct"
+                        class="bf-xp-fill-new"
+                        :style="{ left: xpBeforePct + '%', width: xpAfterPct - xpBeforePct + '%' }"
+                    ></div>
+                </div>
+                <div class="flex justify-between font-mono text-[9px] text-ash-dim">
+                    <span>{{ campaignResult.xpIntoLevel }}/{{ campaignResult.xpToNextLevel ?? campaignResult.xpIntoLevel }} XP</span>
+                    <span v-if="campaignResult.xpAwarded === 0">No breaks left un-hinted</span>
+                </div>
+                <p v-if="campaignResult.leveledUp" class="bf-levelup text-center text-[15px] font-semibold tracking-[.06em] uppercase">
+                    Level up &rarr; {{ campaignResult.level }} &middot; {{ campaignResult.chapterLabel }}
+                </p>
+                <p v-if="campaignResult.campaignComplete" class="text-center text-[12.5px] text-ember">
+                    Every case file in the record is closed.
+                </p>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <template v-if="isCampaign">
+                    <Link href="/campaign" class="bf-btn flex-1 text-center">Case file</Link>
+                    <button type="button" class="bf-btn bf-btn-primary flex-[2]" @click="loadCampaign">Next incident</button>
+                </template>
+                <button v-else-if="mode === 'endless'" type="button" class="bf-btn bf-btn-primary flex-[2]" @click="newGame(true)">
+                    Next incident
+                </button>
+                <button type="button" class="bf-btn" :class="isCampaign || mode === 'endless' ? 'flex-1' : 'flex-[2]'" @click="copyReport">
+                    Share
+                </button>
+            </div>
+            <p v-if="copyFeedback" class="text-center text-[12px] text-ash-dim">{{ copyFeedback }}</p>
+        </section>
+
+        <div
+            v-if="isDaily && leaderboard.length"
+            class="mt-1 flex flex-col gap-1.5 rounded-lg border border-rule-2 bg-folder p-3.5"
+            aria-label="Today's fastest"
+        >
+            <h3 class="font-mono text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
+            <ol class="flex flex-col gap-1 text-sm text-ash">
+                <li v-for="entry in leaderboard" :key="entry.rank" class="flex justify-between gap-3 tabular-nums">
+                    <span>
+                        {{ entry.rank }}. {{ entry.name }}
+                        <span v-if="entry.hints_used === 0" class="ml-1 font-mono text-[10px] tracking-[.08em] text-ember uppercase"
+                            >clean</span
+                        >
+                    </span>
+                    <span class="text-stock">{{ fmtClock(entry.time_ms) }}</span>
+                </li>
+            </ol>
+        </div>
     </main>
 </template>

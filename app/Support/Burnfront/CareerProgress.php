@@ -32,7 +32,7 @@ final class CareerProgress
     ];
 
     /**
-     * @return array{title: string, totalSolved: int, nextTitle: string|null, nextThreshold: int|null}
+     * @return array{title: string, totalSolved: int, currentThreshold: int, nextTitle: string|null, nextThreshold: int|null}
      */
     public static function rank(int $totalSolved): array
     {
@@ -51,6 +51,9 @@ final class CareerProgress
         return [
             'title' => $current['title'],
             'totalSolved' => $totalSolved,
+            // Lets the UI draw a progress bar toward nextTitle without
+            // duplicating the RANKS thresholds client-side.
+            'currentThreshold' => $current['threshold'],
             'nextTitle' => $next['title'] ?? null,
             'nextThreshold' => $next['threshold'] ?? null,
         ];

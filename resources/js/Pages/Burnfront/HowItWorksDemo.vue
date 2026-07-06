@@ -4,6 +4,7 @@
    looping are all trivially consistent. Static demo data — no engine
    dependency, so it isn't affected by how the real puzzle is generated. */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import FlameGlyph from '@/Components/FlameGlyph.vue';
 
 const R = 4;
 const C = 5;
@@ -95,7 +96,6 @@ function cellClasses(i) {
 }
 
 function cellText(i) {
-    if (i === SPARK) return '★';
     if (CLUES[i] !== undefined) return String(CLUES[i]);
     const s = cellState(i);
     return s.isBurnt ? String(TIMES[i]) : '';
@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="bf-demo">
-        <p class="min-h-[4.6em] max-w-[58ch] text-[14.5px] leading-normal text-paper" aria-live="polite" v-html="caption"></p>
+        <p class="min-h-[4.6em] max-w-[58ch] text-[14.5px] leading-normal text-stock" aria-live="polite" v-html="caption"></p>
         <div class="flex flex-wrap items-start gap-[18px]">
             <div ref="gridEl" class="bf-demo-grid" :class="{ 'is-focus': focused }" aria-hidden="true">
                 <div
@@ -166,7 +166,8 @@ onBeforeUnmount(() => {
                     :class="cellClasses(i - 1)"
                     :style="{ '--burn-bg': burnBg[i - 1] }"
                 >
-                    {{ cellText(i - 1) }}
+                    <FlameGlyph v-if="i - 1 === SPARK" glow />
+                    <template v-else>{{ cellText(i - 1) }}</template>
                 </div>
             </div>
             <div class="flex flex-col items-start gap-2.5">
