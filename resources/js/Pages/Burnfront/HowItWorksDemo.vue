@@ -17,9 +17,13 @@ const DIRECT = [11, 12];
 const XCELL = 12;
 const DETOUR = [15, 16, 17, 18, 13];
 
+// v-html'd below, so the flame glyph here is a raw inline SVG (matching
+// FlameGlyph.vue's markup) rather than the component itself.
+const FLAME = '<svg viewBox="0 0 24 24" style="display:inline-block;width:.75em;height:1em;vertical-align:-.14em;filter:drop-shadow(0 0 4px rgba(255,122,45,.5))" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="#ff7a2d"/><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="#ffd36b" transform="translate(5.4 8.2) scale(.55)"/></svg>';
+
 const CAPS = [
-    'Fire starts on the ★ at minute 0 and spreads one cell per minute — up, down, left, right. <span class="bf-stress">Firebreaks stop it dead.</span>',
-    'Now read the 5: it sits only <span class="bf-stress">3 steps</span> from the ★, yet it burned at minute 5. Every short route must be blocked.',
+    `Fire starts on the ${FLAME} at minute 0 and spreads one cell per minute — up, down, left, right. <span class="bf-stress">Firebreaks stop it dead.</span>`,
+    `Now read the 5: it sits only <span class="bf-stress">3 steps</span> from the ${FLAME}, yet it burned at minute 5. Every short route must be blocked.`,
     'The fire went around instead — a <span class="bf-stress">5-step route</span>, arriving at minute 5 exactly. The numbers record how the fire really traveled.',
     'In a real puzzle the firebreaks are <span class="bf-stress">hidden</span>. The numbers are your only evidence.',
     'You shade the breaks that make every number exact. Each board has <span class="bf-stress">exactly one answer</span> — and pure deduction finds it.',
