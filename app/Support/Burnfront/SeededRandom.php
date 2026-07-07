@@ -5,8 +5,8 @@ namespace App\Support\Burnfront;
 /**
  * A small deterministic PRNG (xorshift32) usable as Engine::generate()'s
  * `random` callable. Independent of PHP's global RNG state, so the same
- * seed always reproduces the same incident — the hook a future daily
- * puzzle would seed from the date.
+ * seed always reproduces the same incident — the hook PuzzleService::
+ * generateDaily() seeds from the date (and a secret; see its docblock).
  */
 final class SeededRandom
 {

@@ -6,10 +6,10 @@ use InvalidArgumentException;
 
 /**
  * The seam between HTTP and the Engine: difficulty tiers, puzzle
- * generation, and wire-format serialization. Deliberately thin — a future
- * daily-puzzle feature would seed generate() from the date and cache the
- * result here; a scoreboard would validate a claimed solve against the
- * same clue set this class hands out. Neither exists yet.
+ * generation, and wire-format serialization. generateDaily() seeds
+ * generate() from the date (plus a caller-supplied secret — see its
+ * docblock) and BurnfrontController caches the result; BurnfrontController
+ * also validates a claimed solve against that same clue set.
  */
 final class PuzzleService
 {
@@ -172,29 +172,38 @@ final class PuzzleService
      * board and the same name/blurb (naming's seed is a distinct hash so it
      * never depends on how many random draws terrain generation consumed).
      *
+     * $secret is folded into both seeds alongside the date. Without it, the
+     * seed would be `crc32(namespace|date)` — reproducible by anyone who has
+     * this (public) source tree, since a date isn't a secret. The caller
+     * (BurnfrontController) passes the deployment's APP_KEY, so precomputing
+     * a future date's incident requires that deployment's secret, not just
+     * the algorithm. Defaults to '' only so existing direct/unit callers of
+     * this method keep working without a Laravel app context to pull a key
+     * from; production always passes the real key.
+     *
      * @return array{difficulty: string, rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: string, blurb: string, date: string}
      */
-    public function generateDaily(string $date): array
+    public function generateDaily(string $date, string $secret = ''): array
     {
         $config = self::DAILY_TIER;
 
-        $terrainRand = new SeededRandom(self::seedFor('burnfront-daily-terrain-v1', $date));
+        $terrainRand = new SeededRandom(self::seedFor('burnfront-daily-terrain-v1', $date, $secret));
         $result = Engine::generate($config['rows'], $config['cols'], $config['breaks'], [
             'random' => $terrainRand,
             'budgetMs' => $config['budgetMs'],
             'minClues' => $config['minClues'],
         ]);
 
-        $namingRand = new SeededRandom(self::seedFor('burnfront-daily-name-v1', $date));
+        $namingRand = new SeededRandom(self::seedFor('burnfront-daily-name-v1', $date, $secret));
         $payload = $this->serialize('daily', $result['puzzle'], $namingRand);
         $payload['date'] = $date;
 
         return $payload;
     }
 
-    private static function seedFor(string $namespace, string $date): int
+    private static function seedFor(string $namespace, string $date, string $secret = ''): int
     {
-        return crc32("{$namespace}|{$date}");
+        return crc32("{$namespace}|{$date}|{$secret}");
     }
 
     /**
