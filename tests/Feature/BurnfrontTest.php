@@ -1378,6 +1378,122 @@ class BurnfrontTest extends TestCase
         $after->assertInertia(fn (Assert $page) => $page->where('career.badges.5.earned', true));
     }
 
+    public function test_game_replays_requires_authentication(): void
+    {
+        $this->get('/game/replays')->assertRedirect('/login');
+    }
+
+    public function test_game_replays_renders_empty_for_a_fresh_account(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/game/replays');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Replays')
+            ->where('plays', [])
+        );
+    }
+
+    public function test_game_replays_lists_recorded_games_most_recent_first(): void
+    {
+        $user = User::factory()->create();
+
+        Carbon::setTestNow(Carbon::parse('2026-07-01 10:00:00', 'UTC'));
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+        $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(200);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-02 10:00:00', 'UTC'));
+        $puzzle = $this->puzzles()->generate('lookout');
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $this->solveEndless($puzzle),
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+
+        Carbon::setTestNow();
+
+        $response = $this->actingAs($user)->get('/game/replays');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Replays')
+            ->where('plays.0.mode', 'endless')
+            ->where('plays.0.difficultyLabel', PuzzleService::DIFFICULTIES['lookout']['label'])
+            ->where('plays.0.moveCount', 0)
+            ->where('plays.1.mode', 'daily')
+            ->where('plays.1.difficultyLabel', null)
+            ->where('plays.1.date', '2026-07-01')
+        );
+    }
+
+    public function test_game_replay_returns_the_full_board_and_move_log_for_an_owned_game(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $shaded = $this->solveEndless($puzzle);
+        $moves = [['t' => 340, 'type' => 'mark', 'cell' => $shaded[0], 'prev' => 0, 'value' => 1, 'prevHintSafe' => false]];
+
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $shaded,
+            'moves' => $moves,
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+
+        $play = GamePlay::where('user_id', $user->id)->firstOrFail();
+
+        $response = $this->actingAs($user)->get("/game/replays/{$play->id}");
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Replay')
+            ->where('play.id', $play->id)
+            ->where('play.mode', 'endless')
+            ->where('play.difficultyLabel', PuzzleService::DIFFICULTIES['lookout']['label'])
+            ->where('play.spark', $puzzle['spark'])
+            ->where('play.moves', $moves)
+            ->has('play.shadedCells')
+            ->has('play.clues')
+        );
+    }
+
+    public function test_game_replay_requires_authentication(): void
+    {
+        $this->get('/game/replays/1')->assertRedirect('/login');
+    }
+
+    public function test_game_replay_404s_for_an_unknown_id(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/game/replays/999999')->assertStatus(404);
+    }
+
+    public function test_game_replay_rejects_a_game_owned_by_another_account(): void
+    {
+        $owner = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $this->actingAs($owner)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $this->solveEndless($puzzle),
+            'time_ms' => 5000,
+        ])->assertStatus(200);
+        $play = GamePlay::where('user_id', $owner->id)->firstOrFail();
+
+        $intruder = User::factory()->create();
+        $response = $this->actingAs($intruder)->get("/game/replays/{$play->id}");
+
+        $response->assertStatus(404);
+    }
+
     public function test_daily_incident_is_persisted_the_first_time_it_is_generated(): void
     {
         $user = User::factory()->create();

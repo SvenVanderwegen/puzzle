@@ -574,6 +574,76 @@ class BurnfrontController extends Controller
     }
 
     /**
+     * This account's raw play log, most recent first: every GamePlay row on
+     * record regardless of whether it improved a tier's best time — unlike
+     * GameHistory's per-tier running bests, this is every individual case
+     * filed, each one a candidate for a move-by-move replay(). Capped at the
+     * 100 most recent the same way dailyHistory() caps at 90 days: this is a
+     * recent case log, not a full archive browser.
+     */
+    public function replays(Request $request): Response
+    {
+        $plays = GamePlay::where('user_id', $request->user()->id)
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get()
+            ->map(fn (GamePlay $play) => $this->replaySummary($play))
+            ->values();
+
+        return Inertia::render('Burnfront/Replays', [
+            'plays' => $plays,
+        ]);
+    }
+
+    /**
+     * A move-by-move replay of one of this account's own recorded games: the
+     * exact board it was played on plus its full action log (see GamePlay's
+     * class doc — moves are unverified client telemetry, replayed purely for
+     * display on the frontend, never against the engine here). Route-model
+     * bound, but ownership is still checked explicitly — implicit binding
+     * alone would happily hand back another account's board and move log.
+     */
+    public function replay(Request $request, GamePlay $gamePlay): Response|JsonResponse
+    {
+        if ($gamePlay->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'No case on file.'], 404);
+        }
+
+        return Inertia::render('Burnfront/Replay', [
+            'play' => [
+                ...$this->replaySummary($gamePlay),
+                'spark' => $gamePlay->spark,
+                'clues' => $gamePlay->clues,
+                'shadedCells' => $gamePlay->shaded_cells,
+                'moves' => $gamePlay->moves,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array{id: int, mode: string, difficulty: ?string, difficultyLabel: ?string, date: ?string, rows: int, cols: int, breaks: int, timeMs: ?int, hintsUsed: int, moveCount: int, playedAt: string}
+     */
+    private function replaySummary(GamePlay $play): array
+    {
+        return [
+            'id' => $play->id,
+            'mode' => $play->mode,
+            'difficulty' => $play->difficulty,
+            'difficultyLabel' => $play->mode === 'endless'
+                ? (PuzzleService::DIFFICULTIES[$play->difficulty]['label'] ?? $play->difficulty)
+                : null,
+            'date' => $play->date?->toDateString(),
+            'rows' => $play->rows,
+            'cols' => $play->cols,
+            'breaks' => $play->breaks,
+            'timeMs' => $play->time_ms,
+            'hintsUsed' => $play->hints_used,
+            'moveCount' => count($play->moves),
+            'playedAt' => $play->created_at->toIso8601String(),
+        ];
+    }
+
+    /**
      * The career rank + badge row shown at the top of Game History: a thin
      * read of totals already recorded by DailyScore/EndlessScore (see
      * CareerProgress), not a new mechanic or a gate on any tier or mode.

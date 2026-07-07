@@ -32,6 +32,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/daily/history/play', [BurnfrontController::class, 'dailyHistoryPlay'])->name('burnfront.daily.history.play');
     Route::post('/endless/score', [BurnfrontController::class, 'submitEndlessScore'])->name('burnfront.endless.score');
     Route::get('/game/history', [BurnfrontController::class, 'gameHistory'])->name('burnfront.game.history');
+    Route::get('/game/replays', [BurnfrontController::class, 'replays'])->name('burnfront.game.replays');
+    Route::get('/game/replays/{gamePlay}', [BurnfrontController::class, 'replay'])->name('burnfront.game.replay');
 
     Route::get('/campaign', [CampaignController::class, 'map'])->name('burnfront.campaign');
     Route::get('/campaign/play', [CampaignController::class, 'play'])->name('burnfront.campaign.play');
