@@ -40,6 +40,37 @@ class PuzzleServiceTest extends TestCase
         $this->assertIsString($result['blurb']);
     }
 
+    /**
+     * Same secret, same date -> same board: BurnfrontController passes this
+     * deployment's APP_KEY on every call for a given date, so the board
+     * must stay reproducible across requests rather than drifting per call.
+     */
+    public function test_generate_daily_is_deterministic_for_the_same_date_and_secret(): void
+    {
+        $service = new PuzzleService;
+
+        $a = $service->generateDaily('2026-07-03', 'shared-secret');
+        $b = $service->generateDaily('2026-07-03', 'shared-secret');
+
+        $this->assertSame($a, $b);
+    }
+
+    /**
+     * The whole point of taking a secret: two deployments (or an outsider
+     * with only this source tree and no deployment secret) generating the
+     * same date must not land on the same board, otherwise the secret buys
+     * nothing over the bare date-seeded scheme it replaced.
+     */
+    public function test_generate_daily_differs_across_secrets_for_the_same_date(): void
+    {
+        $service = new PuzzleService;
+
+        $a = $service->generateDaily('2026-07-03', 'secret-one');
+        $b = $service->generateDaily('2026-07-03', 'secret-two');
+
+        $this->assertNotSame([$a['spark'], $a['clues']], [$b['spark'], $b['clues']]);
+    }
+
     public function test_tier_config_resolves_known_tiers_and_daily_but_not_unknown(): void
     {
         $this->assertSame(PuzzleService::DIFFICULTIES['lookout'], PuzzleService::tierConfig('lookout'));

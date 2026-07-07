@@ -178,6 +178,12 @@ class BurnfrontController extends Controller
      * anything the client reports: refetching /daily can never reset it,
      * so a player can't "restart the clock" right before submitting a
      * board they already knew the answer to.
+     *
+     * generateDaily() is passed this deployment's APP_KEY as its secret
+     * (see PuzzleService::generateDaily()'s docblock): without it, anyone
+     * with this source tree could compute any future date's board offline,
+     * arbitrarily far ahead of it going live, since a date string alone
+     * isn't a secret.
      */
     public function daily(Request $request): JsonResponse
     {
@@ -186,7 +192,7 @@ class BurnfrontController extends Controller
         $payload = Cache::remember(
             $this->dailyCacheKey($date),
             now('UTC')->endOfDay(),
-            fn () => $this->puzzles->generateDaily($date)
+            fn () => $this->puzzles->generateDaily($date, (string) config('app.key'))
         );
 
         $this->persistDailyIncident($date, $payload);
@@ -892,9 +898,25 @@ class BurnfrontController extends Controller
      * to a valid board) also reports which of the committed firebreaks are
      * individually to blame, so the client can flag them instead of just
      * saying "something's wrong" — see Engine::misplacedShaded().
+     *
+     * /hint and /solve sit outside the `auth` middleware group (see
+     * routes/web.php) so guests can use them for practice/custom/endless
+     * boards — but the daily incident is signed-in-only and shared by every
+     * player, so difficulty=daily must reject a guest caller here too.
+     * Without this, a signed-out request (or a second, cookie-less request
+     * from a signed-in player) could pull the day's real spark/clues — a
+     * player only needs a normal /daily response, no secret, since every
+     * account sees the same board — straight through this endpoint,
+     * bypassing incrementDailyHints()/voidDailyScore() entirely and leaving
+     * that account's real, signed-in /daily/score submission untouched.
      */
     public function hint(Request $request): JsonResponse
     {
+        $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+        if ($difficulty === 'daily' && $request->user() === null) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {
             return $parsed;
@@ -962,8 +984,10 @@ class BurnfrontController extends Controller
             // today's actual persisted incident before charging anything —
             // otherwise a stale, retried, or hand-crafted request tagged
             // difficulty=daily could inflate an honest player's count for a
-            // puzzle that was never their real board.
-            $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+            // puzzle that was never their real board. ($request->user() is
+            // already guaranteed non-null here for difficulty === 'daily' —
+            // see the guard at the top of this method — but the check stays
+            // for clarity and in case that guard ever moves.)
             if ($difficulty === 'daily' && $request->user() !== null && $this->matchesTodaysDailyIncident($spark, $clues)) {
                 $this->incrementDailyHints($request->user()->id, now('UTC')->toDateString());
             } elseif ($difficulty === 'campaign') {
@@ -993,11 +1017,22 @@ class BurnfrontController extends Controller
      * (voidDailyScore()) for whichever account is signed in — never trust
      * the client to not submit a score after asking for the answer, since
      * nothing stops a request straight to this endpoint followed by a POST
-     * to /daily/score with the returned cells.
+     * to /daily/score with the returned cells. That guarantee depends on
+     * this endpoint actually having a signed-in account to void: /solve
+     * sits outside the `auth` middleware group (see routes/web.php) so
+     * guests can use it for practice/custom/endless boards, so
+     * difficulty=daily is rejected here for any caller without a session —
+     * otherwise a signed-out (or second, cookie-less) request could fetch
+     * the day's real solution — every account is handed the same board, so
+     * no per-account secret guards it — with no account left to void, then
+     * a normal signed-in /daily/score submission would sail through clean.
      */
     public function solve(Request $request): JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+        if ($difficulty === 'daily' && $request->user() === null) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
 
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {

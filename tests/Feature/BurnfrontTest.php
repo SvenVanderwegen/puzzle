@@ -453,6 +453,27 @@ class BurnfrontTest extends TestCase
     }
 
     /**
+     * /hint sits outside the `auth` middleware group so guests can use it
+     * for practice/custom/endless boards, but the daily incident is
+     * signed-in-only and shared by every player: without this guard, a
+     * signed-out request (or a second, cookie-less request from a
+     * signed-in player) could pull a forced deduction from the day's real
+     * board — no per-account secret protects it, since every account is
+     * handed the same spark/clues — without ever counting against that
+     * account's hint tally.
+     */
+    public function test_hint_endpoint_rejects_the_daily_difficulty_for_a_guest(): void
+    {
+        $response = $this->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => 0,
+            'clues' => json_encode([]),
+        ]));
+
+        $response->assertStatus(401);
+    }
+
+    /**
      * Mirrors Engine's misplacedShaded coverage at the HTTP boundary: three
      * of the demo instance's four true breaks (8, 11, 17 — see EngineTest's
      * demoPuzzle/demoBreaks) are committed correctly, plus one wrong guess
@@ -494,6 +515,27 @@ class BurnfrontTest extends TestCase
             $this->assertNotSame($puzzle['spark'], $cell);
             $this->assertNotContains($cell, $clueCells);
         }
+    }
+
+    /**
+     * /solve sits outside the `auth` middleware group so guests can use it
+     * for practice/custom/endless boards, but the daily incident is
+     * signed-in-only and shared by every player. voidDailyScore() only
+     * fires for a signed-in account (see solve()'s docblock), so without
+     * this guard a guest — or a second, cookie-less request from a
+     * signed-in player who already knows the shared spark/clues — could
+     * pull today's real solution with no account left to void, then a
+     * normal signed-in /daily/score submission would sail through clean.
+     */
+    public function test_solve_endpoint_rejects_the_daily_difficulty_for_a_guest(): void
+    {
+        $response = $this->getJson('/solve?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => 0,
+            'clues' => json_encode([]),
+        ]));
+
+        $response->assertStatus(401);
     }
 
     public function test_solve_endpoint_rejects_unknown_difficulty(): void
