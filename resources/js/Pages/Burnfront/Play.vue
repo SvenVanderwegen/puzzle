@@ -42,6 +42,7 @@ const wrongCells = ref([]); /* per-cell: flagged as an incorrect firebreak by th
 const cellStyle = ref([]); /* per-cell burn animation style, set on win */
 const burnt = ref([]); /* per-cell "burn replay" flag, set on win */
 const revealedMinute = ref([]); /* per-cell revealed arrival time text, set on win */
+const burnTimes = ref([]); /* per-cell burn arrival minutes (validate()'s distance array) for the 3D payoff hero, set on win/reveal */
 
 const locked = ref(true);
 const hinting = ref(false);
@@ -510,6 +511,7 @@ function win(times) {
     clearWrongCells();
     stopClock();
     boardDone.value = true;
+    burnTimes.value = Array.from(times); /* hand the solved incident to the 3D payoff hero (RidgeModel) */
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     const step = reducedMotion ? 0 : Math.min(140, 1400 / Math.max(1, maxT));
@@ -572,6 +574,7 @@ function revealSolution(shaded) {
     for (let i = 0; i < marks.value.length; i++) breaks[i] = marks.value[i] === 1 ? 1 : 0;
     const times = validate(g.n, g.adj, g.spark, g.clueIdx, g.clueVal, g.N, breaks);
     if (!times) return;
+    burnTimes.value = Array.from(times); /* also feeds the 3D payoff hero on the voided "Solve" path */
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     for (let i = 0; i < times.length; i++) {
@@ -1312,7 +1315,7 @@ if (isDaily.value) {
             <p class="text-center font-mono text-[10px] tracking-[.2em] text-ash-dim uppercase">Reconstruction complete</p>
 
             <div class="bf-payoff-hero h-[190px]">
-                <RidgeModel :burnt-ratio="1" />
+                <RidgeModel :rows="game.R" :cols="game.C" :spark="game.spark" :times="burnTimes" />
                 <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
                     <RubberStamp tone="ember" size="lg" :rotate="-7">{{ voided ? 'Solved' : 'Contained' }}</RubberStamp>
                 </div>
