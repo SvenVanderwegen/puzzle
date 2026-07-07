@@ -5,7 +5,7 @@ import { fmtClock } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 import FlameGlyph from '@/Components/FlameGlyph.vue';
 import RubberStamp from '@/Components/RubberStamp.vue';
-import LookoutHero from '@/Components/LookoutHero.vue';
+import BurnReplayHero from '@/Components/BurnReplayHero.vue';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null }, // {alreadyScored, scoreTimeMs} | null, signed-in users only
@@ -49,17 +49,7 @@ const campaignXpPct = computed(() => {
 
         <header class="flex flex-col gap-3.5">
             <div class="relative overflow-hidden rounded-lg border border-rule">
-                <LookoutHero class="h-[210px] sm:h-[260px]" />
-                <div class="pointer-events-none absolute inset-0 flex flex-col justify-between p-3 font-mono text-[10px] tracking-[.12em] text-stock uppercase [text-shadow:0_1px_3px_#000]">
-                    <div class="flex items-start justify-between">
-                        <span>Ridgeline lookout</span>
-                        <span class="text-ember-hi">Sector 7</span>
-                    </div>
-                    <div class="flex items-end justify-between text-ash">
-                        <span>Watch active · Live</span>
-                        <span>Visibility 12 mi</span>
-                    </div>
-                </div>
+                <BurnReplayHero class="h-[210px] sm:h-[260px]" />
             </div>
 
             <h1 class="flex items-center gap-1 font-staatliches text-[clamp(44px,13vw,72px)] leading-[0.86] font-normal tracking-[.02em] text-stock text-balance">
