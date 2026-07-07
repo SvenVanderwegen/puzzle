@@ -86,7 +86,7 @@ const overBudget = computed(() => game.value !== null && placedCount.value > gam
 const undoDisabled = computed(() => locked.value || undoStack.length === 0);
 const resetDisabled = computed(() => locked.value);
 const hintDisabled = computed(() => locked.value || hinting.value);
-const solveDisabled = computed(() => locked.value || !game.value || hinting.value);
+const solveDisabled = computed(() => locked.value || !game.value || hinting.value || isDaily.value);
 
 /* Mono subline under the incident name — "Hotshot · 7×7 · Endless" — read
    straight off game/mode state, purely cosmetic. */
@@ -1023,9 +1023,16 @@ async function requestHint() {
    captured marksVersion would still match once its response finally
    arrived, so it would sail past requestHint()'s staleness check and
    re-place a cell — and since Solve already left the board fully correct,
-   that can trip maybeFinish() into calling win() a second time. */
+   that can trip maybeFinish() into calling win() a second time.
+
+   The daily incident has no Solve button at all (see the button row and
+   the "S solve" keyboard hint below, both gated on !isDaily) — the shared
+   board is meant to be raced, not peeked at, and the server already
+   voids/rejects a daily solve regardless (BurnfrontController::solve()).
+   This guard just keeps that true even if something still calls this
+   function directly. */
 async function solvePuzzle() {
-    if (locked.value || !game.value) return;
+    if (locked.value || !game.value || isDaily.value) return;
     if (!window.confirm("Reveal the full solution? Your time will be voided and this run won't be saved.")) return;
     const token = genToken;
     const n = game.value.n;
@@ -1291,9 +1298,12 @@ if (isDaily.value) {
                     Tap a cell to dig a firebreak &middot; tap again for a clear-ground dot &middot; a third tap erases.
                     New here? <Link href="/how-to" class="text-ember hover:text-flame">See how it works</Link>.
                 </p>
-                <p v-if="!isArchive" class="max-w-[60ch] text-[11.5px] text-ash-dim">
+                <p v-if="!isArchive && !isDaily" class="max-w-[60ch] text-[11.5px] text-ash-dim">
                     Keyboard: arrow keys move, Backspace reverses a cell, U undo &middot; R reset &middot; H hint &middot; S
                     solve.
+                </p>
+                <p v-else-if="!isArchive" class="max-w-[60ch] text-[11.5px] text-ash-dim">
+                    Keyboard: arrow keys move, Backspace reverses a cell, U undo &middot; R reset &middot; H hint.
                 </p>
             </div>
 
@@ -1303,7 +1313,9 @@ if (isDaily.value) {
                 </button>
                 <button type="button" class="bf-btn flex-1" title="Undo (U)" :disabled="undoDisabled" @click="undo">Undo</button>
                 <button type="button" class="bf-btn flex-1" title="Reset (R)" :disabled="resetDisabled" @click="reset">Reset</button>
-                <button type="button" class="bf-btn flex-1" title="Solve (S)" :disabled="solveDisabled" @click="solvePuzzle">Solve</button>
+                <button v-if="!isDaily" type="button" class="bf-btn flex-1" title="Solve (S)" :disabled="solveDisabled" @click="solvePuzzle">
+                    Solve
+                </button>
             </div>
         </section>
 
