@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { fmtClock } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 
@@ -36,6 +36,7 @@ const rankProgressPercent = computed(() => {
             <p class="bf-eyebrow">Line Verification Unit</p>
             <h1 class="font-staatliches text-[40px] leading-[0.95] font-normal tracking-[.035em] text-stock">Game History</h1>
             <p class="max-w-[52ch] text-ash">Every endless tier you&rsquo;ve closed at least once, and your fastest verified board for it.</p>
+            <Link href="/game/replays" class="text-[13px] text-ember hover:text-flame">Review past games &rarr;</Link>
         </header>
 
         <section aria-label="Career rank" class="flex flex-col gap-3 rounded-lg border border-rule-2 bg-folder px-5 py-4">

@@ -48,6 +48,14 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
                 <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
             </Link>
 
+            <Link href="/game/replays" class="bf-row">
+                <span class="flex flex-1 flex-col gap-0.5">
+                    <span class="font-staatliches text-[21px] leading-none text-stock">Game Replays</span>
+                    <span class="text-[13px] text-ash">Step back through a past incident, move by move.</span>
+                </span>
+                <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
+            </Link>
+
             <Link
                 href="/logout"
                 method="post"
