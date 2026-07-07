@@ -1,15 +1,12 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { buildAdj, cellName, COLS, fmtClock, validate } from '@/lib/burnfront-engine';
 import LoadingVeil from './LoadingVeil.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 import FlameGlyph from '@/Components/FlameGlyph.vue';
 import RubberStamp from '@/Components/RubberStamp.vue';
-
-/* Three.js is a heavy dependency only ever needed once a board is actually
-   solved — loaded on demand rather than bundled into every page's chunk. */
-const RidgeModel = defineAsyncComponent(() => import('@/Components/RidgeModel.vue'));
+import BurnReplayPayoff from '@/Components/BurnReplayPayoff.vue';
 
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive' | 'campaign'
@@ -42,7 +39,7 @@ const wrongCells = ref([]); /* per-cell: flagged as an incorrect firebreak by th
 const cellStyle = ref([]); /* per-cell burn animation style, set on win */
 const burnt = ref([]); /* per-cell "burn replay" flag, set on win */
 const revealedMinute = ref([]); /* per-cell revealed arrival time text, set on win */
-const burnTimes = ref([]); /* per-cell burn arrival minutes (validate()'s distance array) for the 3D payoff hero, set on win/reveal */
+const burnTimes = ref([]); /* per-cell burn arrival minutes (validate()'s distance array) for the payoff replay hero, set on win/reveal */
 
 const locked = ref(true);
 const hinting = ref(false);
@@ -511,7 +508,7 @@ function win(times) {
     clearWrongCells();
     stopClock();
     boardDone.value = true;
-    burnTimes.value = Array.from(times); /* hand the solved incident to the 3D payoff hero (RidgeModel) */
+    burnTimes.value = Array.from(times); /* hand the solved incident to the payoff replay hero (BurnReplayPayoff) */
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     const step = reducedMotion ? 0 : Math.min(140, 1400 / Math.max(1, maxT));
@@ -574,7 +571,7 @@ function revealSolution(shaded) {
     for (let i = 0; i < marks.value.length; i++) breaks[i] = marks.value[i] === 1 ? 1 : 0;
     const times = validate(g.n, g.adj, g.spark, g.clueIdx, g.clueVal, g.N, breaks);
     if (!times) return;
-    burnTimes.value = Array.from(times); /* also feeds the 3D payoff hero on the voided "Solve" path */
+    burnTimes.value = Array.from(times); /* also feeds the payoff replay hero on the voided "Solve" path */
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     for (let i = 0; i < times.length; i++) {
@@ -1314,11 +1311,15 @@ if (isDaily.value) {
         <section v-else class="flex flex-col gap-4" aria-label="Incident contained">
             <p class="text-center font-mono text-[10px] tracking-[.2em] text-ash-dim uppercase">Reconstruction complete</p>
 
-            <div class="bf-payoff-hero h-[190px]">
-                <RidgeModel :rows="game.R" :cols="game.C" :spark="game.spark" :times="burnTimes" />
-                <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <RubberStamp tone="ember" size="lg" :rotate="-7">{{ voided ? 'Solved' : 'Contained' }}</RubberStamp>
-                </div>
+            <div class="bf-payoff-hero h-[210px] sm:h-[260px]">
+                <BurnReplayPayoff
+                    :rows="game.R"
+                    :cols="game.C"
+                    :spark="game.spark"
+                    :times="burnTimes"
+                    :clues="game.clues"
+                    :label="voided ? 'Solved' : 'Contained'"
+                />
             </div>
 
             <p class="text-center text-[13px] text-ash">
