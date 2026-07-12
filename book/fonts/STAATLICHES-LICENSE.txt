@@ -1,0 +1,14 @@
+Staatliches-Regular.ttf
+
+Staatliches, by Brian LaRossa and Erica Carras.
+Copyright 2018 The Staatliches Project Authors
+(https://github.com/brianlarossa/staatliches)
+
+Licensed under the SIL Open Font License, Version 1.1
+(https://scripts.sil.org/OFL — full text in LICENSE.txt in this
+directory, which is the same license the Liberation fonts here use).
+
+Provenance in this repository: this TTF was produced by decoding the
+woff2 data URI embedded in resources/css/fonts.css (the same Staatliches
+asset the Burnfront web app ships) and converting it woff2 -> ttf with
+fontTools, no glyph modifications.

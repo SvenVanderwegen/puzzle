@@ -1,0 +1,8 @@
+# Runtime dependency for generate_book.py / generate_cover.py.
+reportlab>=4.0
+
+# Only needed to (re)convert the Staatliches woff2 asset in
+# resources/css/fonts.css into book/fonts/Staatliches-Regular.ttf --
+# the converted TTF is checked in, so normal builds don't need these.
+# fonttools
+# brotli
