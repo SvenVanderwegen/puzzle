@@ -29,7 +29,7 @@ const rankProgressPercent = computed(() => {
 <template>
     <Head title="Game History — Burnfront" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-6 pb-16">
+    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-3 pb-16 sm:pt-5">
         <SiteBar :back="{ href: '/account', text: 'Account' }" />
 
         <header class="flex flex-col gap-2">
@@ -73,7 +73,7 @@ const rankProgressPercent = computed(() => {
                 class="bf-row items-center justify-between"
                 :class="tier.solvedCount === 0 ? 'border-rule opacity-60' : ''"
             >
-                <span class="font-staatliches text-[19px] leading-none tracking-[.02em] text-stock">{{ tier.label }}</span>
+                <span class="text-[18px] leading-tight font-semibold text-stock">{{ tier.label }}</span>
                 <span v-if="tier.timed && tier.bestTimeMs != null" class="shrink-0 font-mono font-bold text-ember-hi">
                     {{ fmtClock(tier.bestTimeMs) }}
                 </span>

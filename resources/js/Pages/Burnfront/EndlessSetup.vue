@@ -13,18 +13,12 @@ const props = defineProps({
     bestTimes: { type: Object, default: () => ({}) }, // signed-in players only: difficulty => {solvedCount, bestTimeMs}
 });
 
-function meta(config, key) {
-    const size = `${config.rows}×${config.cols} grid · ${config.breaks} firebreaks`;
-    const base = config.timed ? size : `${size} · untimed`;
+const tierDescriptions = ['Recommended · beginner', 'Standard', 'Advanced', 'Expert', 'Untimed · sparse clues'];
+
+function meta(config, key, index) {
+    const base = `${tierDescriptions[index] ?? 'Field assignment'} · ${config.breaks} firebreaks`;
     const best = props.bestTimes[key];
     return best?.bestTimeMs != null ? `${base} · best ${fmtClock(best.bestTimeMs)}` : base;
-}
-
-// Trailing part of meta() after the "RxC grid · N firebreaks" prefix (e.g. " · untimed · best 01:23"),
-// kept in sync with meta() so the highlighted-number markup below never drifts from its text.
-function metaSuffix(config, key) {
-    const prefix = `${config.rows}×${config.cols} grid · ${config.breaks} firebreaks`;
-    return meta(config, key).slice(prefix.length);
 }
 
 const customOpen = ref(false);
@@ -65,20 +59,26 @@ function clampBreaks() {
 <template>
     <Head title="Endless · Burnfront" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-6 pb-12 sm:pt-10 sm:pb-16">
+    <main class="mx-auto flex max-w-[720px] flex-col gap-7 px-4 pt-3 pb-12 sm:pt-5 sm:pb-16">
         <SiteBar :back="{ href: '/', text: 'Menu' }" />
 
         <header class="flex flex-col gap-2">
             <h1 class="font-staatliches text-[clamp(40px,9vw,56px)] leading-[0.95] font-normal tracking-[.035em] text-stock">
-                CHOOSE A DIFFICULTY
+                CHOOSE CREW RANK
             </h1>
-            <p class="max-w-[52ch] text-ash">Pick a tier to generate a fresh incident. Come back here any time to switch tiers.</p>
+            <p class="max-w-[52ch] text-ash">Pick a tier to generate a fresh incident. Lookout is the recommended first assignment.</p>
         </header>
 
         <nav class="flex flex-col gap-3" aria-label="Difficulty tiers">
-            <Link v-for="(config, key) in difficulties" :key="key" :href="`/endless/play?difficulty=${key}`" class="bf-row">
+            <Link
+                v-for="(config, key, index) in difficulties"
+                :key="key"
+                :href="`/endless/play?difficulty=${key}`"
+                class="bf-row bf-difficulty-row"
+            >
+                <span class="bf-difficulty-index">{{ String(index + 1).padStart(2, '0') }}</span>
                 <span
-                    class="h-[38px] w-[38px] shrink-0 rounded-md border border-rule-2"
+                    class="bf-difficulty-grid"
                     :style="{
                         backgroundImage:
                             'linear-gradient(var(--color-rule-2) 1px,transparent 1px),linear-gradient(90deg,var(--color-rule-2) 1px,transparent 1px)',
@@ -87,27 +87,29 @@ function clampBreaks() {
                     aria-hidden="true"
                 ></span>
                 <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="font-staatliches text-[21px] leading-none tracking-[.02em] text-stock">{{ config.label }}</span>
-                    <span class="font-mono text-[11px] tracking-[.06em] text-ash-dim uppercase tabular-nums">
-                        <span class="text-steel">{{ config.rows }}×{{ config.cols }}</span> grid ·
-                        <span class="text-steel">{{ config.breaks }}</span> firebreaks{{ metaSuffix(config, key) }}
+                    <span class="text-[18px] leading-tight font-semibold text-stock sm:text-[19px]">{{ config.label }}</span>
+                    <span class="font-mono text-[12px] font-semibold tracking-[.07em] text-ash-dim uppercase tabular-nums">
+                        {{ meta(config, key, index) }}
                     </span>
                 </span>
-                <span class="font-staatliches text-lg text-ash-dim" aria-hidden="true">▸</span>
+                <span class="bf-difficulty-action"><em>Deploy</em> <b aria-hidden="true">&rarr;</b></span>
             </Link>
 
-            <div class="bf-row is-dashed flex-col items-stretch gap-3">
+            <div class="bf-row is-dashed flex-col items-stretch gap-3 p-4">
                 <button
                     type="button"
-                    class="flex cursor-pointer flex-col gap-1.5 text-left"
+                    class="flex min-h-11 cursor-pointer flex-col justify-center gap-1.5 text-left"
                     :aria-expanded="customOpen"
+                    aria-controls="custom-incident-fields"
                     @click="customOpen = !customOpen"
                 >
-                    <span class="font-staatliches text-[21px] leading-none tracking-[.02em] text-stock">Custom</span>
+                    <span class="flex items-center justify-between gap-3 text-[19px] leading-none font-semibold text-stock">
+                        Custom incident <b class="font-mono text-ember" aria-hidden="true">{{ customOpen ? '−' : '+' }}</b>
+                    </span>
                     <span class="text-[13px] text-ash">Set your own grid size and firebreak count.</span>
                 </button>
 
-                <div v-if="customOpen" class="flex flex-col gap-3">
+                <div v-if="customOpen" id="custom-incident-fields" class="flex flex-col gap-3">
                     <div class="grid grid-cols-3 gap-3">
                         <label class="flex flex-col gap-1 text-[11px] tracking-[.08em] text-ash-dim uppercase">
                             Rows
@@ -116,7 +118,7 @@ function clampBreaks() {
                                 type="number"
                                 :min="customBounds.minDim"
                                 :max="customBounds.maxDim"
-                                class="rounded-md border border-rule-2 bg-folder px-2.5 py-1.5 text-sm text-stock font-mono tabular-nums"
+                                class="bf-input bf-input-compact font-mono tabular-nums"
                             />
                         </label>
                         <label class="flex flex-col gap-1 text-[11px] tracking-[.08em] text-ash-dim uppercase">
@@ -126,7 +128,7 @@ function clampBreaks() {
                                 type="number"
                                 :min="customBounds.minDim"
                                 :max="customBounds.maxDim"
-                                class="rounded-md border border-rule-2 bg-folder px-2.5 py-1.5 text-sm text-stock font-mono tabular-nums"
+                                class="bf-input bf-input-compact font-mono tabular-nums"
                             />
                         </label>
                         <label class="flex flex-col gap-1 text-[11px] tracking-[.08em] text-ash-dim uppercase">
@@ -136,7 +138,7 @@ function clampBreaks() {
                                 type="number"
                                 :min="customBounds.minBreaks"
                                 :max="maxBreaks"
-                                class="rounded-md border border-rule-2 bg-folder px-2.5 py-1.5 text-sm text-stock font-mono tabular-nums"
+                                class="bf-input bf-input-compact font-mono tabular-nums"
                                 @change="clampBreaks"
                             />
                         </label>
@@ -145,14 +147,8 @@ function clampBreaks() {
                         {{ customBounds.minDim }}–{{ customBounds.maxDim }} per side · up to {{ maxBreaks }} firebreaks
                         for this grid.
                     </p>
-                    <Link
-                        :href="customValid ? customHref : '#'"
-                        class="bf-btn bf-btn-primary self-start"
-                        :class="{ 'pointer-events-none opacity-35': !customValid }"
-                        :aria-disabled="!customValid"
-                    >
-                        Start custom fire
-                    </Link>
+                    <Link v-if="customValid" :href="customHref" class="bf-btn bf-btn-primary self-start">Start custom incident</Link>
+                    <button v-else type="button" class="bf-btn bf-btn-primary self-start" disabled>Start custom incident</button>
                 </div>
             </div>
         </nav>

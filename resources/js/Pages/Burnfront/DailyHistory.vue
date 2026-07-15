@@ -28,11 +28,11 @@ const last14Days = computed(() => {
 <template>
     <Head title="Daily History — Burnfront" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-6 pb-16">
+    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-3 pb-16 sm:pt-5">
         <SiteBar :back="{ href: '/account', text: 'Account' }" />
 
         <header class="flex flex-col gap-2">
-            <p class="font-mono text-[11px] tracking-[.22em] text-ash-dim uppercase">Line Verification Unit</p>
+            <p class="bf-eyebrow">Line Verification Unit</p>
             <h1 class="font-staatliches text-[40px] leading-[0.95] font-normal tracking-[.035em] text-stock">Daily History</h1>
         </header>
 
@@ -79,7 +79,7 @@ const last14Days = computed(() => {
                         <span class="truncate text-sm text-stock">
                             {{ entry.name || 'Unnamed incident' }}<template v-if="entry.blurb"> — {{ entry.blurb }}</template>
                         </span>
-                        <span class="font-mono text-[10.5px] tracking-[.08em] text-ash-dim uppercase">
+                        <span class="font-mono text-[12px] font-semibold tracking-[.08em] text-ash-dim uppercase">
                             <template v-if="entry.hints_used === 0">clean</template>
                             <template v-else>{{ entry.hints_used }} hint{{ entry.hints_used === 1 ? '' : 's' }}</template>
                         </span>
@@ -97,7 +97,7 @@ const last14Days = computed(() => {
                     <div class="flex min-w-0 flex-1 flex-col gap-1">
                         <span class="font-mono text-ash">{{ entry.date }}</span>
                         <span class="text-sm text-ash-dim">Case filed before this record kept incident details — no replay available.</span>
-                        <span class="font-mono text-[10.5px] tracking-[.08em] text-ash-dim uppercase">
+                        <span class="font-mono text-[12px] font-semibold tracking-[.08em] text-ash-dim uppercase">
                             <template v-if="entry.hints_used === 0">clean</template>
                             <template v-else>{{ entry.hints_used }} hint{{ entry.hints_used === 1 ? '' : 's' }}</template>
                         </span>

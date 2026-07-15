@@ -10,7 +10,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 <template>
     <Head title="Account — Burnfront" />
 
-    <main class="mx-auto flex max-w-[420px] flex-col gap-7 px-4 pt-6 pb-16">
+    <main class="mx-auto flex max-w-[560px] flex-col gap-7 px-4 pt-3 pb-16 sm:pt-5">
         <SiteBar :back="{ href: '/', text: 'Menu' }" />
 
         <header class="flex flex-col gap-2">
@@ -26,7 +26,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
         <nav class="flex flex-col gap-3" aria-label="Account menu">
             <Link href="/account/settings" class="bf-row">
                 <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="font-staatliches text-[21px] leading-none text-stock">Account Settings</span>
+                    <span class="text-[18px] leading-tight font-semibold text-stock">Account Settings</span>
                     <span class="text-[13px] text-ash">Update your name, email, or password.</span>
                 </span>
                 <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
@@ -34,7 +34,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 
             <Link href="/game/history" class="bf-row">
                 <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="font-staatliches text-[21px] leading-none text-stock">Game History</span>
+                    <span class="text-[18px] leading-tight font-semibold text-stock">Game History</span>
                     <span class="text-[13px] text-ash">A record of every fire you've solved.</span>
                 </span>
                 <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
@@ -42,7 +42,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 
             <Link href="/daily/history" class="bf-row">
                 <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="font-staatliches text-[21px] leading-none text-stock">Daily History</span>
+                    <span class="text-[18px] leading-tight font-semibold text-stock">Daily History</span>
                     <span class="text-[13px] text-ash">Your streak and past daily results.</span>
                 </span>
                 <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
@@ -50,7 +50,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
 
             <Link href="/game/replays" class="bf-row">
                 <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="font-staatliches text-[21px] leading-none text-stock">Game Replays</span>
+                    <span class="text-[18px] leading-tight font-semibold text-stock">Game Replays</span>
                     <span class="text-[13px] text-ash">Step back through a past incident, move by move.</span>
                 </span>
                 <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
@@ -63,7 +63,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
                 class="bf-row cursor-pointer border-ember-deep/40 bg-ember/[.05] text-left"
             >
                 <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="font-staatliches text-[21px] leading-none text-ember">Log Out</span>
+                    <span class="text-[18px] leading-tight font-semibold text-ember">Log Out</span>
                     <span class="text-[13px] text-ash">Sign out of this device.</span>
                 </span>
                 <span class="shrink-0 font-staatliches text-ember" aria-hidden="true">&#9211;</span>
