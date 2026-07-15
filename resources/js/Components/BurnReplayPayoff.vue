@@ -1,17 +1,9 @@
 <script setup>
-/* The solve-payoff hero: the same burn-reconstruction replay the Start screen
-   runs (see BurnReplayHero.vue), but drawn from the incident the player just
-   solved rather than a scripted one. The reconstructed firebreak line is cut
-   in around the scar, the spark pulses, the burn replays from it one minute
-   per beat with the same flame→ember→char cooling ramp, and each clue's sensor
-   ping checks off exactly when the front's own arrival time reaches it — then
-   the record is stamped and the sheet wipes for the next loop.
-
-   Everything is driven by the engine's own burn-time array (validate()'s BFS
-   distances, passed as `times`): times[i] >= 0 is the minute the fire reached
-   cell i, times[i] < 0 marks a firebreak. So the replay can't disagree with the
-   board the player actually contained. Reduced-motion holds the stamped frame. */
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+/* Static solve-payoff artwork drawn from the incident the player just solved.
+   The engine's own burn-time array determines the reconstructed scar, clues,
+   firebreaks, and final timestamp, so this filed account always matches the
+   board the player actually contained. */
+import { onMounted, ref } from 'vue';
 import RubberStamp from '@/Components/RubberStamp.vue';
 
 const props = defineProps({
@@ -33,7 +25,6 @@ const VH = 424;
 const FLAME =
     'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z';
 
-const PERIOD = 12000;
 const P_PING0 = 0.02; // first ping fades in
 const P_PING_STEP = 0.02;
 const P_BRK0 = 0.07; // break line starts being cut in
@@ -167,7 +158,6 @@ let majorGrid = '';
     }
 }
 
-let rafId = null;
 let sparkQ = -1;
 let fadeQ = -1;
 
@@ -185,7 +175,7 @@ function paint(p) {
             pg.checkEl?.setAttribute('opacity', checked ? '1' : '0');
             pg.dotEl?.setAttribute('opacity', checked ? '0' : '1');
             pg.el?.setAttribute('stroke', checked ? '#7fb0b8' : '#8a7c66');
-            pg.labelEl?.setAttribute('fill', checked ? '#a9ccd2' : '#b6a890');
+            pg.labelEl?.setAttribute('fill', checked ? '#a9ccd2' : '#c3b49c');
         }
     }
 
@@ -235,27 +225,14 @@ function paint(p) {
     stampOn.value = p >= P_STAMP && p < P_FADE0;
 }
 
-function frame(ts, t0) {
-    paint(((ts - t0) % PERIOD) / PERIOD);
-    rafId = requestAnimationFrame((next) => frame(next, t0));
-}
-
 onMounted(() => {
     if (!model.ok) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-        paint(0.8); // the settled, stamped frame
-        return;
-    }
-    rafId = requestAnimationFrame((ts) => frame(ts, ts));
-});
-
-onBeforeUnmount(() => {
-    if (rafId) cancelAnimationFrame(rafId);
+    paint(0.8);
 });
 </script>
 
 <template>
-    <div class="relative h-full w-full bg-[#141010]">
+    <div class="relative h-full w-full bg-[#151210]">
         <svg viewBox="0 0 1000 424" preserveAspectRatio="xMidYMid slice" class="block h-full w-full" aria-hidden="true">
             <defs>
                 <pattern id="bp-hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
@@ -269,9 +246,9 @@ onBeforeUnmount(() => {
             </defs>
 
             <!-- the map sheet: survey grid and a few terrain contours -->
-            <path :d="minorGrid" stroke="#3a2f24" stroke-width="1" opacity="0.35" fill="none" />
-            <path :d="majorGrid" stroke="#3a2f24" stroke-width="1" opacity="0.7" fill="none" />
-            <g stroke="#4a3c2c" stroke-width="1.4" opacity="0.3" fill="none">
+            <path :d="minorGrid" stroke="#4a3c30" stroke-width="1" opacity="0.35" fill="none" />
+            <path :d="majorGrid" stroke="#4a3c30" stroke-width="1" opacity="0.7" fill="none" />
+            <g stroke="#62503e" stroke-width="1.4" opacity="0.3" fill="none">
                 <path d="M-20,118 C170,158 300,86 520,128 S810,168 1020,116" />
                 <path d="M-20,224 C130,200 260,252 430,226 S740,190 1020,232" />
                 <path d="M-20,330 C160,296 290,356 470,326 S800,282 1020,322" />
@@ -331,7 +308,7 @@ onBeforeUnmount(() => {
                     fill="none"
                 >
                     <circle r="4.5" stroke-width="1.3" />
-                    <circle :ref="(el) => (pg.dotEl = el)" r="1.3" fill="#b6a890" stroke="none" />
+                    <circle :ref="(el) => (pg.dotEl = el)" r="1.3" fill="#c3b49c" stroke="none" />
                     <path
                         :ref="(el) => (pg.checkEl = el)"
                         d="M-2.4,0.2 L-0.7,2 L2.8,-2.2"
@@ -344,7 +321,7 @@ onBeforeUnmount(() => {
                         :ref="(el) => (pg.labelEl = el)"
                         x="9"
                         y="-7"
-                        fill="#b6a890"
+                        fill="#c3b49c"
                         stroke="none"
                         class="font-mono"
                         font-size="12.5"
@@ -358,11 +335,11 @@ onBeforeUnmount(() => {
 
         <!-- captions live in HTML so slice-cropping never cuts them off -->
         <div
-            class="pointer-events-none absolute inset-0 flex flex-col justify-between p-3 font-mono text-[10px] tracking-[.12em] text-stock uppercase [text-shadow:0_1px_3px_#000]"
+            class="pointer-events-none absolute inset-0 flex flex-col justify-between p-3 font-mono text-[12px] font-semibold tracking-[.12em] text-stock uppercase [text-shadow:0_1px_3px_#000]"
         >
             <div class="flex items-start justify-between">
-                <span>Burn reconstruction · replay</span>
-                <span class="text-ember-hi">One valid account</span>
+                <span>Burn reconstruction · final</span>
+                <span class="text-ember-hi">Evidence reconciled</span>
             </div>
             <div class="flex items-end justify-end text-ash">
                 <span>T+{{ String(displayMinute).padStart(2, '0') }} min</span>

@@ -46,7 +46,7 @@ function lineClass(node) {
 <template>
     <Head title="Campaign · Burnfront" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-6 px-4 pt-6 pb-16 sm:pt-10">
+    <main class="mx-auto flex max-w-[720px] flex-col gap-6 px-4 pt-3 pb-16 sm:pt-5">
         <SiteBar :back="{ href: '/', text: 'Menu' }" />
 
         <header class="flex flex-col gap-2.5">
@@ -54,13 +54,13 @@ function lineClass(node) {
                 <h1 class="font-staatliches text-[clamp(38px,9vw,52px)] leading-[0.9] font-normal tracking-[.02em] text-stock">
                     Campaign
                 </h1>
-                <p class="shrink-0 text-right font-mono text-[10px] tracking-[.1em] text-ash-dim uppercase">
+                <p class="shrink-0 text-right font-mono text-[12px] font-semibold tracking-[.1em] text-ash-dim uppercase">
                     {{ chapters.length }} districts<br />{{ totalLevels }} incidents
                 </p>
             </div>
 
             <div class="bf-xp-card">
-                <div class="flex items-baseline justify-between font-mono text-[9.5px] tracking-[.1em] text-ash uppercase">
+                <div class="flex items-baseline justify-between font-mono text-[12px] font-semibold tracking-[.08em] text-ash uppercase">
                     <span>Rank &middot; {{ progress.chapterLabel }}</span>
                     <span v-if="!progress.maxed" class="font-bold text-ember-hi">{{ progress.xpIntoLevel }}/{{ progress.xpToNextLevel }} XP</span>
                 </div>
@@ -96,7 +96,7 @@ function lineClass(node) {
                         <ShieldMarker :state="markerState(node)" :label="String(node.level).padStart(2, '0')" />
                     </div>
 
-                    <p v-if="node.state === 'current'" class="mt-1 font-mono text-[9px] tracking-[.12em] text-ember-hi uppercase">
+                    <p v-if="node.state === 'current'" class="mt-1 font-mono text-[12px] font-semibold tracking-[.1em] text-ember-hi uppercase">
                         You are here &middot; {{ node.label }}
                     </p>
                 </template>

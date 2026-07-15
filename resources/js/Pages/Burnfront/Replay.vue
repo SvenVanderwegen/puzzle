@@ -284,13 +284,13 @@ const currentMoveTimeText = computed(() => {
 <template>
     <Head title="Case Replay — Burnfront" />
 
-    <main class="mx-auto flex min-h-dvh max-w-[640px] flex-col gap-2.5 px-4 pt-3 pb-4">
+    <main class="mx-auto flex min-h-dvh max-w-[640px] flex-col gap-2.5 px-4 pt-3 pb-4 sm:pt-5">
         <SiteBar :back="{ href: '/game/replays', text: 'Replays' }" crumb="Case replay" />
 
         <div class="mt-1 flex items-start justify-between gap-3">
             <div class="min-w-0">
                 <h2 class="truncate font-staatliches text-[28px] leading-none tracking-[.02em] text-stock">{{ title }}</h2>
-                <p class="mt-1 font-mono text-[10px] tracking-[.1em] text-ash-dim uppercase">{{ boardSubline }}</p>
+                <p class="mt-1 font-mono text-[12px] font-semibold tracking-[.1em] text-ash-dim uppercase">{{ boardSubline }}</p>
             </div>
         </div>
 
@@ -354,22 +354,62 @@ const currentMoveTimeText = computed(() => {
         <div v-if="hasMoves" class="mt-1 flex flex-col gap-2.5">
             <input
                 type="range"
-                class="w-full accent-ember"
+                class="bf-replay-range w-full"
                 min="0"
                 :max="moves.length"
                 :value="stepIndex"
                 @input="onScrub"
                 aria-label="Scrub through recorded moves"
             />
-            <div class="flex gap-2">
-                <button type="button" class="bf-btn" title="Restart (Home)" :disabled="atStart" @click="restart">&laquo;</button>
-                <button type="button" class="bf-btn" title="Step back (Left arrow)" :disabled="atStart" @click="stepBack">&lsaquo;</button>
-                <button type="button" class="bf-btn bf-btn-primary flex-1" title="Play/Pause (Space)" @click="togglePlay">
-                    {{ playing ? 'Pause' : atEnd ? 'Replay' : 'Play' }}
+            <div class="flex flex-col gap-2 sm:flex-row">
+                <div class="grid min-w-0 flex-1 grid-cols-[44px_44px_minmax(0,1fr)_44px_44px] gap-2">
+                    <button
+                        type="button"
+                        class="bf-btn px-0"
+                        title="Restart (Home)"
+                        aria-label="Restart replay"
+                        :disabled="atStart"
+                        @click="restart"
+                    >
+                        <span aria-hidden="true">&laquo;</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="bf-btn px-0"
+                        title="Step back (Left arrow)"
+                        aria-label="Step back one move"
+                        :disabled="atStart"
+                        @click="stepBack"
+                    >
+                        <span aria-hidden="true">&lsaquo;</span>
+                    </button>
+                    <button type="button" class="bf-btn bf-btn-primary min-w-0 px-2" title="Play/Pause (Space)" @click="togglePlay">
+                        {{ playing ? 'Pause' : atEnd ? 'Replay' : 'Play' }}
+                    </button>
+                    <button
+                        type="button"
+                        class="bf-btn px-0"
+                        title="Step forward (Right arrow)"
+                        aria-label="Step forward one move"
+                        :disabled="atEnd"
+                        @click="stepForward"
+                    >
+                        <span aria-hidden="true">&rsaquo;</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="bf-btn px-0"
+                        title="Jump to end (End)"
+                        aria-label="Jump to final move"
+                        :disabled="atEnd"
+                        @click="jumpToEnd"
+                    >
+                        <span aria-hidden="true">&raquo;</span>
+                    </button>
+                </div>
+                <button type="button" class="bf-btn shrink-0" :aria-label="`Playback speed ${SPEEDS[speedTier]} times`" @click="cycleSpeed">
+                    Speed {{ SPEEDS[speedTier] }}&times;
                 </button>
-                <button type="button" class="bf-btn" title="Step forward (Right arrow)" :disabled="atEnd" @click="stepForward">&rsaquo;</button>
-                <button type="button" class="bf-btn" title="Jump to end (End)" :disabled="atEnd" @click="jumpToEnd">&raquo;</button>
-                <button type="button" class="bf-btn" title="Playback speed" @click="cycleSpeed">{{ SPEEDS[speedTier] }}&times;</button>
             </div>
         </div>
     </main>

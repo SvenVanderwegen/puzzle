@@ -26,7 +26,7 @@ function subline(play) {
 <template>
     <Head title="Game Replays — Burnfront" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-6 pb-16">
+    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-3 pb-16 sm:pt-5">
         <SiteBar :back="{ href: '/account', text: 'Account' }" />
 
         <header class="flex flex-col gap-2">
@@ -45,8 +45,8 @@ function subline(play) {
             >
                 <div class="flex min-w-0 flex-1 flex-col gap-1">
                     <span class="truncate text-sm text-stock">{{ title(play) }}</span>
-                    <span class="font-mono text-[11px] text-ash-dim">{{ subline(play) }}</span>
-                    <span class="font-mono text-[10.5px] tracking-[.08em] text-ash-dim uppercase">
+                    <span class="font-mono text-[12px] font-semibold tracking-[.07em] text-ash-dim uppercase">{{ subline(play) }}</span>
+                    <span class="font-mono text-[12px] font-semibold tracking-[.08em] text-ash-dim uppercase">
                         {{ play.moveCount }} move{{ play.moveCount === 1 ? '' : 's' }} recorded
                         <template v-if="play.hintsUsed">&middot; {{ play.hintsUsed }} hint{{ play.hintsUsed === 1 ? '' : 's' }}</template>
                     </span>

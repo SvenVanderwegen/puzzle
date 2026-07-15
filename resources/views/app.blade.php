@@ -7,7 +7,7 @@
     <meta name="description" content="Burnfront — a wildfire incident-reconstruction deduction puzzle. Reconstruct the firebreaks that shaped the fire's path with pure logic.">
 
     <link rel="manifest" href="/manifest.webmanifest">
-    <meta name="theme-color" content="#141010">
+    <meta name="theme-color" content="#110e0c">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">

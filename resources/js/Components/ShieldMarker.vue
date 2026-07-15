@@ -9,8 +9,6 @@ defineProps({
 
 <template>
     <div class="bf-shield-wrap" :class="state === 'current' ? 'size-[66px]' : 'size-[58px] aspect-[58/64]'">
-        <span v-if="state === 'current'" class="bf-shield-ping" aria-hidden="true"></span>
-
         <div v-if="state === 'cleared'" class="bf-shield is-cleared size-full">
             <span class="bf-shield-num">{{ label }}</span>
         </div>
