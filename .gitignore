@@ -1,5 +1,9 @@
 *.log
 .DS_Store
+__pycache__/
+*.pyc
+/book/puzzle_cache.json
+/book/*.pdf
 /database/*.sqlite
 .env
 .env.backup
