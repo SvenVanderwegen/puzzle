@@ -1,0 +1,25 @@
+<script setup>
+defineProps({
+    knockout: { type: Boolean, default: false },
+});
+
+const FLAME =
+    'M16.7 4.5C16.8 8.4 14.1 10.6 14.2 14.3C12.9 13.4 11.8 12 11.6 10.4C9.4 13.1 8.7 16.3 9.5 19.5C10.6 24 14 27.2 18 27.2C21.9 27.2 24.2 23.7 23.9 19.8C23.6 16.5 21.8 13.6 19 10.8C17.7 9.4 17.2 6.8 16.7 4.5Z';
+
+const CORE =
+    'M17.8 15.1C18.1 18.1 20.2 19.3 20.1 21.5C20 23.7 18.5 25.2 16.6 25.2C14.4 25.2 12.9 23.5 13 21.4C13.1 19.7 14.1 18.4 15.3 17.1C15.3 18.6 16 19.4 16.8 19.7C16.6 17.8 17.1 16.3 17.8 15.1Z';
+</script>
+
+<template>
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path
+            d="M3 10V3h7M22 3h7v7M29 22v7h-7M10 29H3v-7"
+            :stroke="knockout ? '#151210' : '#f1e7d5'"
+            stroke-width="2.5"
+            stroke-linecap="square"
+            stroke-linejoin="miter"
+        />
+        <path :d="FLAME" :fill="knockout ? '#151210' : '#ff7a2d'" />
+        <path v-if="!knockout" :d="CORE" fill="#ffd06b" />
+    </svg>
+</template>

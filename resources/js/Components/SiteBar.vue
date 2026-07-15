@@ -4,7 +4,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import Avatar from '@/Components/Avatar.vue';
-import FlameGlyph from '@/Components/FlameGlyph.vue';
+import BrandMark from '@/Components/BrandMark.vue';
 
 defineProps({
     back: { type: Object, default: null },
@@ -20,7 +20,7 @@ const currentUser = computed(() => page.props.auth?.user ?? null);
     <div class="bf-sitebar">
         <div class="flex min-w-0 items-center gap-2.5">
             <Link href="/" class="bf-sitebar-mark" aria-label="Burnfront case index">
-                <FlameGlyph knockout class="size-[18px]" />
+                <BrandMark knockout class="size-6" />
             </Link>
 
             <p class="flex min-w-0 items-center truncate font-mono text-[12px] font-semibold tracking-[.12em] text-ash-dim uppercase">

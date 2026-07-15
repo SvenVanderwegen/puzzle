@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import FlameGlyph from '@/Components/FlameGlyph.vue';
+import BrandMark from '@/Components/BrandMark.vue';
 
 const form = useForm({
     email: '',
@@ -20,7 +20,7 @@ function submit() {
 
     <main class="bf-auth-shell">
         <Link href="/" class="bf-auth-brand" aria-label="Back to Burnfront menu">
-            <span class="bf-auth-brand-mark"><FlameGlyph knockout /></span>
+            <span class="bf-auth-brand-mark"><BrandMark knockout /></span>
             <span><strong>Burnfront</strong><small>Incident desk</small></span>
         </Link>
 
