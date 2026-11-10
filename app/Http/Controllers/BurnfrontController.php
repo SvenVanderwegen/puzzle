@@ -144,6 +144,16 @@ class BurnfrontController extends Controller
         return Inertia::render('Burnfront/HowTo');
     }
 
+    /**
+     * The first-time lesson: a fixed 4x4 board walked through in three
+     * steps. Everything runs in the browser (resources/js/lib/burnfront-lesson.js),
+     * so no account and no puzzle request are needed.
+     */
+    public function lesson(): Response
+    {
+        return Inertia::render('Burnfront/Lesson');
+    }
+
     public function puzzle(Request $request): JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();

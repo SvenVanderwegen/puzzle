@@ -137,6 +137,14 @@ class BurnfrontTest extends TestCase
         $response->assertInertia(fn (Assert $page) => $page->component('Burnfront/HowTo'));
     }
 
+    public function test_the_lesson_page_renders_without_an_account(): void
+    {
+        $response = $this->get('/learn');
+
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page->component('Burnfront/Lesson'));
+    }
+
     public function test_the_daily_play_screen_requires_authentication(): void
     {
         $response = $this->get('/daily/play');
