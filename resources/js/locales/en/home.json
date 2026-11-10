@@ -1,0 +1,68 @@
+{
+    "pageTitle": "Burnfront, the daily fire puzzle",
+    "intro": {
+        "title": "The fire is out. Where were the firebreaks?",
+        "lede": "You know the minute the fire reached a few squares. Work out where the firebreaks stood. There is one answer, and you never have to guess.",
+        "howItWorks": "How it works"
+    },
+    "today": {
+        "eyebrow": "Today",
+        "eyebrowNumber": "Today · No. {number}",
+        "fallbackName": "Today's fire",
+        "meta": "{rows} by {cols} · {breaks} firebreaks",
+        "resetIn": "A new fire in {hours}h {minutes}m",
+        "play": "Play today's fire",
+        "continue": "Continue today's fire"
+    },
+    "done": {
+        "title": "Today's fire is contained",
+        "time": "{time}",
+        "noHints": "no hints",
+        "oneHint": "1 hint",
+        "hints": "{count} hints",
+        "share": "See and share your result"
+    },
+    "next": {
+        "eyebrow": "Up next · Campaign",
+        "name": "Fire {level}",
+        "meta": "{rows} by {cols} · fire {level} of {total}",
+        "progress": "{done} of {total} done",
+        "play": "Play fire {level}",
+        "allDone": "You finished all {total} fires",
+        "replay": "Play the campaign again"
+    },
+    "campaign": {
+        "eyebrow": "Campaign · {done} of {total} done",
+        "title": "Next: fire {level}",
+        "titleDone": "All {total} fires done",
+        "guest": "20 fires that slowly get harder. Sign in to keep your place.",
+        "open": "Open the campaign",
+        "eyebrowGuest": "Campaign"
+    },
+    "quick": {
+        "title": "Quick fire",
+        "help": "A fresh fire every time. Pick a size.",
+        "size": "{rows} by {cols}"
+    },
+    "more": {
+        "practice": "Practice",
+        "practiceHelp": "Pick how hard, or set your own size.",
+        "learn": "How to play",
+        "learnHelp": "A short guided lesson. No clock.",
+        "history": "Past days",
+        "historyHelp": "Every daily fire you solved.",
+        "games": "Your games",
+        "gamesHelp": "Times, hints and replays."
+    },
+    "rules": {
+        "title": "Four rules. That is the whole game.",
+        "one": "The fire starts at the star and spreads one square a minute. Up, down, left, right. Never diagonally.",
+        "two": "It cannot cross a firebreak. It has to go around, and that costs minutes.",
+        "three": "Every number is the exact minute the fire arrived. Not earlier, not later.",
+        "four": "Place exactly the number of firebreaks you are given. Every other square must burn."
+    },
+    "foot": {
+        "promise": "Every fire has exactly one answer and can be solved without guessing.",
+        "site": "burnfront.com"
+    }
+}

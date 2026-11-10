@@ -1,13 +1,13 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { buildAdj, cellName, COLS, fmtClock, validate } from '@/lib/burnfront-engine';
+import { bfs, buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
 import LoadingVeil from './LoadingVeil.vue';
-import SiteBar from '@/Components/SiteBar.vue';
 import FlameGlyph from '@/Components/FlameGlyph.vue';
-import RubberStamp from '@/Components/RubberStamp.vue';
-import BurnReplayPayoff from '@/Components/BurnReplayPayoff.vue';
-import { hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
+import ThemeToggle from '@/Components/ThemeToggle.vue';
+import { burnCurve, heatCell, heatColor } from '@/lib/heat';
+import { t } from '@/lib/i18n';
+import { isDark } from '@/lib/theme';
 
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive' | 'campaign'
@@ -16,6 +16,7 @@ const props = defineProps({
     authenticated: { type: Boolean, default: false },
     archivePuzzle: { type: Object, default: null }, // set for mode 'archive': a past daily incident this account already solved
     levelConfig: { type: Object, default: null }, // set for mode 'campaign': this account's current level, from CampaignService::levelConfig()
+    nextFire: { type: Object, default: null }, // optional {href, label, detail} for the solved screen's main button
 });
 
 const isDaily = computed(() => props.mode === 'daily');
@@ -26,12 +27,20 @@ const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefe
 
 const diff = ref(props.difficulty);
 
-const crumbText = computed(() => {
-    if (isDaily.value) return 'Daily incident';
-    if (isArchive.value) return 'Case history · review';
-    if (isCampaign.value) return props.levelConfig ? `Campaign · ${props.levelConfig.label}` : 'Campaign';
-    const label = props.difficulties[diff.value]?.label;
-    return label ? `Endless · ${label}` : 'Endless';
+/* Campaign level number (1..20) from the level config the server sends. */
+const campaignLevel = computed(() => {
+    const c = props.levelConfig;
+    if (!c) return null;
+    return c.level ?? (c.chapterKey - 1) * 4 + c.levelInChapter;
+});
+
+/* Small label at the top of the board: which kind of fire this is. */
+const modeLabel = computed(() => {
+    if (isDaily.value) return t('play.mode.daily');
+    if (isArchive.value) return t('play.mode.archive');
+    if (isCampaign.value) return campaignLevel.value ? t('play.mode.campaignLevel', { level: campaignLevel.value }) : t('play.mode.campaign');
+    const word = t(`common.difficulty.${diff.value}`);
+    return t('play.mode.practice', { word });
 });
 const game = ref(null); /* {n, adj, spark, R, C, N, clueMap, clueIdx, clueVal, clues, difficulty, name, blurb, timed, token} */
 const marks = ref([]); /* 0 none, 1 break, 2 dot */
@@ -65,8 +74,6 @@ const leaderboard = ref([]);
 const hintsUsedThisRun = ref(0);
 const personalBestNote = ref('');
 const campaignResult = ref(null); /* {xpAwarded, level, leveledUp, xpIntoLevel, xpToNextLevel, chapterLabel, campaignComplete}, set on a campaign win */
-const quickRulesOpen = ref(false);
-const compactObjective = ref(hasCompletedOnboarding());
 
 const undoStack = reactive([]);
 /* Chronological, append-only log of every mark/undo/reset/hint action this
@@ -84,43 +91,12 @@ let statusTimer = null;
 let winTimer = null;
 
 const placedCount = computed(() => marks.value.reduce((n, m) => n + (m === 1 ? 1 : 0), 0));
-const breakCountText = computed(() => (game.value ? `${placedCount.value}/${game.value.N}` : '0/0'));
+const breakCountText = computed(() => (game.value ? t('play.supplyCount', { count: placedCount.value, total: game.value.N }) : ''));
 const overBudget = computed(() => game.value !== null && placedCount.value > game.value.N);
 const undoDisabled = computed(() => locked.value || undoStack.length === 0);
 const resetDisabled = computed(() => locked.value);
 const hintDisabled = computed(() => locked.value || hinting.value);
 const solveDisabled = computed(() => locked.value || !game.value || hinting.value || isDaily.value);
-
-/* Mono subline under the incident name — "Hotshot · 7×7 · Endless" — read
-   straight off game/mode state, purely cosmetic. */
-const boardSubline = computed(() => {
-    const g = game.value;
-    if (!g) return '';
-    const dims = `${g.R}×${g.C}`;
-    if (isDaily.value) return `Daily · ${dims}`;
-    if (isArchive.value) return `Daily · ${dims} · Review`;
-    if (isCampaign.value) return `Campaign · ${props.levelConfig?.chapterLabel ?? ''}`.trim();
-    const label = props.difficulties[diff.value]?.label ?? '';
-    return `${label.replace(/\s*\d+×\d+$/, '')} · ${dims} · Endless`;
-});
-
-/* A dossier-flavor case number for the header/payoff — decorative only, no
-   backend record behind it. Deterministic from the board's own identifying
-   data so the same incident always reads the same case number. */
-function hashCode(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-    return Math.abs(h);
-}
-const caseNumber = computed(() => {
-    const g = game.value;
-    if (!g) return '';
-    if (isDaily.value || isArchive.value) {
-        const digits = (dailyDate.value ?? '').replace(/\D/g, '').slice(2);
-        return `BF-${digits || '0000'}`;
-    }
-    return `BF-${1000 + (hashCode(`${g.spark}:${g.R}x${g.C}:${g.clues.length}`) % 9000)}`;
-});
 
 /* Discrepancy stamp on the plot sheet: shown while the last hint check left
    a placed firebreak flagged wrong, cleared the moment the player acts on
@@ -155,7 +131,7 @@ function hasStartedCurrentIncident() {
 }
 
 function confirmIncidentReplacement() {
-    return !hasStartedCurrentIncident() || window.confirm('Abandon this reconstruction and generate another incident?');
+    return !hasStartedCurrentIncident() || window.confirm(t('play.confirmNew'));
 }
 
 function replaceEndlessIncident() {
@@ -339,15 +315,20 @@ function restoreEndlessGame(saved) {
 
 function cellLabel(i) {
     const g = game.value;
-    if (i === g.spark) return cellName(i, g.C) + ', the spark';
-    if (g.clueMap.has(i)) return cellName(i, g.C) + ', clue: burns at minute ' + g.clueMap.get(i);
+    const where = cellName(i, g.C);
+    if (i === g.spark) return t('play.cell.spark', { where });
+    if (g.clueMap.has(i)) {
+        const minute = g.clueMap.get(i);
+        return isLate(i) ? t('play.cell.clueLate', { where, minute }) : t('play.cell.clue', { where, minute });
+    }
     const m = marks.value[i];
     if (m === 1) {
-        if (wrongCells.value[i]) return cellName(i, g.C) + ', firebreak, flagged wrong by hint';
-        if (hintSafe.value[i]) return cellName(i, g.C) + ', firebreak, placed by hint';
-        return cellName(i, g.C) + ', firebreak';
+        if (wrongCells.value[i]) return t('play.cell.breakWrong', { where });
+        if (hintSafe.value[i]) return t('play.cell.breakHint', { where });
+        return t('play.cell.break', { where });
     }
-    return cellName(i, g.C) + (m === 2 ? ', marked clear' : ', empty');
+    if (burnt.value[i] && revealedMinute.value[i]) return t('play.cell.burnt', { where, minute: revealedMinute.value[i] });
+    return m === 2 ? t('play.cell.dot', { where }) : t('play.cell.empty', { where });
 }
 
 function cellClasses(i) {
@@ -359,12 +340,128 @@ function cellClasses(i) {
         'is-spark': i === g.spark,
         'is-clue': g.clueMap.has(i),
         'is-break': isBreak,
-        'is-dot': marks.value[i] === 2,
+        'is-dot': marks.value[i] === 2 && !burnt.value[i],
         'is-hint-wrong': isBreak && !!wrongCells.value[i],
         'is-hint-safe': isBreak && !!hintSafe.value[i] && !wrongCells.value[i],
         'is-burnt': burnt.value[i],
+        'is-revealed': !!revealedMinute.value[i],
+        'is-late': isLate(i),
     };
 }
+
+/* ---------- live reading of the board (display only, the rules stay in the engine) ---------- */
+
+/* Where the fire would reach with the firebreaks placed right now. A
+   firebreak can only ever delay the fire, so a number the fire already
+   reaches too late (or not at all) is certainly wrong: it gets a ring and
+   a "!" badge. Once every firebreak is down, any mismatch counts. */
+const liveDist = computed(() => {
+    const g = game.value;
+    if (!g || marks.value.length !== g.n) return null;
+    const m = marks.value;
+    return bfs(g.n, g.adj, g.spark, (i) => m[i] !== 1);
+});
+function isLate(i) {
+    const g = game.value;
+    if (!g || boardDone.value || !g.clueMap.has(i) || !liveDist.value) return false;
+    const d = liveDist.value[i];
+    const want = g.clueMap.get(i);
+    return d < 0 || d > want || (placedCount.value >= g.N && d !== want);
+}
+const anyLate = computed(() => {
+    const g = game.value;
+    if (!g) return false;
+    return g.clueIdx.some((i) => isLate(i));
+});
+
+/* Colour scale: minute / last minute. Before the solve the biggest number
+   stands in for the last minute; once solved the real last minute is used. */
+const lastMinute = computed(() => {
+    const g = game.value;
+    if (!g) return 1;
+    let m = Math.max(1, ...g.clueVal);
+    for (const v of burnTimes.value) if (v > m) m = v;
+    return m;
+});
+function cellVars(i) {
+    const g = game.value;
+    let minute = null;
+    if (i === g.spark) minute = 0;
+    else if (g.clueMap.has(i)) minute = g.clueMap.get(i);
+    else if (burnt.value[i] && burnTimes.value[i] >= 0) minute = burnTimes.value[i];
+    const base = cellStyle.value[i] || {};
+    if (minute === null) return base;
+    const c = heatCell(minute, lastMinute.value, isDark.value);
+    return { ...base, '--heat-bg': c.bg, '--heat-fg': c.fg };
+}
+
+/* Minute legend under the board: one swatch per minute, a number every few. */
+const legend = computed(() => {
+    const last = lastMinute.value;
+    const step = Math.max(1, Math.ceil(last / 4));
+    return Array.from({ length: last + 1 }, (_, k) => ({
+        k,
+        bg: heatColor(k / last, isDark.value),
+        label: k % step === 0 || k === last ? String(k) : '',
+    }));
+});
+
+const pips = computed(() => {
+    const g = game.value;
+    if (!g) return [];
+    return Array.from({ length: g.N }, (_, k) => k < placedCount.value);
+});
+
+/* The one message line under the board. It always has the same height, so
+   nothing on screen moves when it changes. */
+const message = computed(() => {
+    const g = game.value;
+    if (!g) return '';
+    if (statusMessage.value) return statusMessage.value;
+    if (isArchive.value) return t('play.msg.archive');
+    if (hasDiscrepancy.value) return t('play.msg.hintWrong');
+    const count = placedCount.value;
+    if (count > g.N) return t('play.msg.tooMany', { count: g.N });
+    if (count === g.N) return t('play.msg.fullWrong', { count: g.N });
+    if (anyLate.value) return t('play.msg.late');
+    if (count === 0) return t('play.msg.start');
+    const left = g.N - count;
+    return left === 1 ? t('play.msg.oneLeft') : t('play.msg.left', { count: left });
+});
+
+/* ---------- solved screen ---------- */
+const curve = computed(() => {
+    const counts = burnCurve(burnTimes.value);
+    const max = Math.max(1, ...counts);
+    const last = Math.max(1, counts.length - 1);
+    return counts.map((c, k) => ({ k, h: Math.max(3, Math.round((c / max) * 44)), bg: heatColor(k / last, isDark.value) }));
+});
+const curveBlocksText = computed(() => {
+    const blocks = '▁▂▃▄▅▆▇█';
+    const counts = burnCurve(burnTimes.value);
+    const max = Math.max(1, ...counts);
+    return counts.map((c) => blocks[Math.min(7, Math.round((c / max) * 7))]).join('');
+});
+const hintsText = computed(() => {
+    const n = hintsUsedThisRun.value;
+    return n === 0 ? t('play.solved.noHints') : n === 1 ? t('play.solved.oneHint') : t('play.solved.hints', { count: n });
+});
+
+/* The main button after a solve: the next fire. The server can name it
+   (nextFire prop); otherwise each mode falls back to its own next step. */
+const nextAction = computed(() => {
+    if (props.nextFire) return { href: props.nextFire.href, label: props.nextFire.label || t('play.solved.next'), detail: props.nextFire.detail || '' };
+    if (isCampaign.value) {
+        const level = campaignResult.value?.level ?? campaignLevel.value;
+        return { run: loadCampaign, label: t('play.solved.next'), detail: level ? t('play.solved.nextCampaign', { level }) : '' };
+    }
+    if (props.mode === 'endless') {
+        const g = game.value;
+        return { run: () => newGame(true), label: t('play.solved.next'), detail: g ? t('common.by', { rows: g.R, cols: g.C }) : '' };
+    }
+    if (isArchive.value) return { href: '/daily/history', label: t('play.solved.backToHistory'), detail: '' };
+    return { href: props.authenticated ? '/campaign/play' : '/', label: t('play.solved.next'), detail: props.authenticated ? t('play.solved.campaign') : '' };
+});
 
 function cellText(i) {
     const g = game.value;
@@ -515,7 +612,7 @@ function maybeFinish(justCompleted) {
     if (d) {
         win(d);
     } else if (justCompleted) {
-        showStatus(`All ${g.N} breaks are down, but the fire disagrees with the report. Something’s off.`);
+        showStatus(t('play.msg.fullWrong', { count: g.N }));
     }
 }
 
@@ -531,17 +628,13 @@ function win(times) {
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     const step = reducedMotion ? 0 : Math.min(55, 720 / Math.max(1, maxT));
+    /* colours come from the heat ramp at render time (cellVars); here only the
+       order: each square lights up at its own minute */
     for (let i = 0; i < times.length; i++) {
-        if (times[i] < 0) continue; /* firebreaks stay dark */
-        const t = times[i];
-        const warm = maxT ? t / maxT : 0; /* flame core early, deep ember late */
-        const mix = (a, c, f) => Math.round(a + (c - a) * f);
-        const f = 0.25 + 0.6 * warm; /* 0 -> mostly flame, 1 -> mostly ember */
-        cellStyle.value[i] = {
-            '--burn-bg': `rgb(${mix(255, 255, f)},${mix(216, 138, f)},${mix(107, 61, f)})`,
-            transitionDelay: t * step + 'ms',
-        };
-        if (!g.clueMap.has(i) && i !== g.spark) revealedMinute.value[i] = String(t);
+        if (times[i] < 0) continue; /* firebreaks stay as they are */
+        const minute = times[i];
+        cellStyle.value[i] = { transitionDelay: minute * step + 'ms' };
+        if (!g.clueMap.has(i) && i !== g.spark) revealedMinute.value[i] = String(minute);
         burnt.value[i] = true;
     }
     const total = maxT * step + (reducedMotion ? 0 : 220);
@@ -591,19 +684,10 @@ function revealSolution(shaded) {
     const times = validate(g.n, g.adj, g.spark, g.clueIdx, g.clueVal, g.N, breaks);
     if (!times) return;
     burnTimes.value = Array.from(times); /* also feeds the payoff replay hero on the voided "Solve" path */
-    let maxT = 0;
-    for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     for (let i = 0; i < times.length; i++) {
-        if (times[i] < 0) continue; /* firebreaks stay dark */
-        const t = times[i];
-        const warm = maxT ? t / maxT : 0;
-        const mix = (a, c, f) => Math.round(a + (c - a) * f);
-        const f = 0.25 + 0.6 * warm;
-        cellStyle.value[i] = {
-            '--burn-bg': `rgb(${mix(255, 255, f)},${mix(216, 138, f)},${mix(107, 61, f)})`,
-            transitionDelay: '0ms',
-        };
-        if (!g.clueMap.has(i) && i !== g.spark) revealedMinute.value[i] = String(t);
+        if (times[i] < 0) continue; /* firebreaks stay as they are */
+        cellStyle.value[i] = { transitionDelay: '0ms' };
+        if (!g.clueMap.has(i) && i !== g.spark) revealedMinute.value[i] = String(times[i]);
         burnt.value[i] = true;
     }
 }
@@ -815,7 +899,7 @@ async function newGame(fresh = true) {
                locked forever: tap/undo/reset all bail out while locked. */
             locked.value = false;
         }
-        showStatus("Couldn't reach the incident desk. Try again.");
+        showStatus(t('common.networkError'));
     } finally {
         if (token === genToken) veilVisible.value = false;
     }
@@ -872,7 +956,7 @@ async function loadCampaign() {
         startClock();
     } catch (e) {
         if (token === genToken) locked.value = false;
-        showStatus("Couldn't reach the incident desk. Try again.");
+        showStatus(t('common.networkError'));
     } finally {
         if (token === genToken) veilVisible.value = false;
     }
@@ -958,7 +1042,7 @@ async function loadDaily() {
         }
     } catch (e) {
         if (token === genToken) locked.value = false;
-        showStatus("Couldn't reach the incident desk. Try again.");
+        showStatus(t('common.networkError'));
     } finally {
         if (token === genToken) veilVisible.value = false;
     }
@@ -1019,7 +1103,7 @@ async function requestHint() {
             for (const cell of data.wrong ?? []) wrongCells.value[cell] = true;
         }
     } catch (e) {
-        if (token === genToken && version === marksVersion) showStatus("Couldn't reach the incident desk. Try again.");
+        if (token === genToken && version === marksVersion) showStatus(t('common.networkError'));
     } finally {
         hinting.value = false;
     }
@@ -1052,7 +1136,7 @@ async function requestHint() {
    function directly. */
 async function solvePuzzle() {
     if (locked.value || !game.value || isDaily.value) return;
-    if (!window.confirm("Reveal the full solution? Your time will be voided and this run won't be saved.")) return;
+    if (!window.confirm(t('play.confirmReveal'))) return;
     const token = genToken;
     const n = game.value.n;
     try {
@@ -1084,7 +1168,7 @@ async function solvePuzzle() {
         revealSolution(data.solution);
         bannerVisible.value = true;
     } catch (e) {
-        showStatus("Couldn't reach the incident desk. Try again.");
+        showStatus(t('common.networkError'));
     }
 }
 
@@ -1138,31 +1222,17 @@ function loadArchive() {
 const shareText = computed(() => {
     const g = game.value;
     if (!g) return '';
-    const tierLabel = isDaily.value || isArchive.value
-        ? 'Daily incident'
-        : isCampaign.value
-          ? `Campaign · ${props.levelConfig?.label ?? ''}`.trim()
-          : (props.difficulties[diff.value]?.label ?? 'Endless');
-    const lines = [`Burnfront — ${g.name || 'Unnamed incident'}`, tierLabel];
-
+    const lines = [`Burnfront · ${g.name || modeLabel.value}`];
     if (voided.value) {
-        lines.push('Solved (answer revealed, not scored)');
-    } else if (g.timed) {
-        lines.push(`Contained in ${finalTimeText.value}`);
-        lines.push(
-            hintsUsedThisRun.value === 0
-                ? 'Clean reconstruction — no hints'
-                : `${hintsUsedThisRun.value} hint${hintsUsedThisRun.value === 1 ? '' : 's'} used`
-        );
+        lines.push(t('play.share.revealed'));
     } else {
-        lines.push('Every clue burns on time');
+        const parts = [];
+        if (g.timed) parts.push(finalTimeText.value);
+        parts.push(hintsText.value);
+        lines.push(parts.join(' · '));
     }
-
-    if (isCampaign.value && campaignResult.value) {
-        lines.push(`+${campaignResult.value.xpAwarded} XP`);
-        if (campaignResult.value.leveledUp) lines.push(`Leveled up to ${campaignResult.value.level} · ${campaignResult.value.chapterLabel}`);
-    }
-
+    if (burnTimes.value.length) lines.push(curveBlocksText.value);
+    lines.push('burnfront.com');
     return lines.join('\n');
 });
 
@@ -1172,9 +1242,9 @@ let copyFeedbackTimer = null;
 async function copyReport() {
     try {
         await navigator.clipboard.writeText(shareText.value);
-        copyFeedback.value = 'Copied.';
+        copyFeedback.value = t('play.share.copied');
     } catch (e) {
-        copyFeedback.value = "Couldn't copy.";
+        copyFeedback.value = t('play.share.copyFailed');
     }
     clearTimeout(copyFeedbackTimer);
     copyFeedbackTimer = setTimeout(() => {
@@ -1204,293 +1274,198 @@ if (isDaily.value) {
 </script>
 
 <template>
-    <Head title="Burnfront" />
+    <Head :title="game?.name ? `${game.name} · Burnfront` : 'Burnfront'" />
 
-    <main class="mx-auto flex min-h-dvh max-w-[720px] flex-col gap-2.5 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <SiteBar :back="{ href: '/', text: 'Menu' }" :crumb="crumbText" />
+    <div class="bf-page is-narrow min-h-dvh">
+        <main class="bf-play" :aria-label="t('play.boardLabel')">
+            <!-- ============ header: back, what this is, the clock ============ -->
+            <header class="bf-play-head">
+                <Link :href="isArchive ? '/daily/history' : '/'" class="bf-icon-btn" :aria-label="t('play.back')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M15 5l-7 7 7 7" />
+                    </svg>
+                </Link>
+                <span class="bf-play-mode bf-mono-label">{{ modeLabel }}</span>
+                <span class="flex items-center gap-1">
+                    <span v-if="game && game.timed" class="bf-play-clock" role="timer" :aria-label="t('play.clockLabel')">{{
+                        boardDone ? finalTimeText : clockText
+                    }}</span>
+                    <ThemeToggle />
+                </span>
+            </header>
 
-        <!-- ============ THE PLOT SHEET (in progress / review) ============ -->
-        <section v-if="!(bannerVisible && justSolved)" class="flex min-h-0 flex-1 flex-col" aria-label="Puzzle board">
-            <div v-if="game && game.name" class="mt-1 flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                    <h2 class="truncate font-staatliches text-[28px] leading-none tracking-[.02em] text-stock">{{ game.name }}</h2>
-                    <p class="mt-1 font-mono text-[12px] font-semibold tracking-[.08em] text-ash-dim uppercase">{{ boardSubline }}</p>
+            <!-- ============ title: the fire's name, or the result ============ -->
+            <section v-if="game" class="bf-play-title">
+                <template v-if="!bannerVisible">
+                    <h1>{{ game.name }}</h1>
+                    <p v-if="game.blurb">{{ game.blurb }}</p>
+                </template>
+                <div v-else class="bf-solved-head">
+                    <div class="flex min-w-0 flex-col gap-0.5">
+                        <span class="bf-help">{{ game.name }}</span>
+                        <h1>{{ voided ? t('play.solved.revealedTitle') : t('play.solved.title') }}</h1>
+                    </div>
+                    <div v-if="burnTimes.length" class="bf-curve" role="img" :aria-label="t('play.solved.curveLabel')">
+                        <i v-for="b in curve" :key="b.k" :style="{ height: b.h + 'px', background: b.bg, animationDelay: b.k * 40 + 'ms' }"></i>
+                    </div>
                 </div>
-                <div class="shrink-0 text-right font-mono text-[12px] font-semibold leading-[1.45] tracking-[.06em] text-ash-dim uppercase">
-                    CASE<br /><span class="text-ash">{{ caseNumber }}</span>
-                </div>
-            </div>
-            <p v-if="game && game.blurb" class="mt-1 text-sm text-ash">{{ game.blurb }}</p>
+            </section>
 
-            <div v-if="!isArchive" class="mt-2.5 flex flex-wrap items-center gap-2">
+            <div v-if="game && !isArchive && !boardDone && mode !== 'daily'" class="bf-play-tools">
                 <template v-if="mode === 'endless'">
-                    <Link href="/endless" class="bf-btn">Change difficulty</Link>
-                    <button type="button" class="bf-btn" @click="replaceEndlessIncident">New incident</button>
+                    <Link href="/endless" class="bf-btn bf-btn-soft">{{ t('play.tools.otherSize') }}</Link>
+                    <button type="button" class="bf-btn bf-btn-soft" @click="replaceEndlessIncident">{{ t('play.tools.newFire') }}</button>
                 </template>
                 <template v-else-if="mode === 'campaign'">
-                    <Link href="/campaign" class="bf-btn">Case file</Link>
-                    <button type="button" class="bf-btn" @click="replaceCampaignIncident">New incident</button>
+                    <Link href="/campaign" class="bf-btn bf-btn-soft">{{ t('play.tools.campaignMap') }}</Link>
+                    <button type="button" class="bf-btn bf-btn-soft" @click="replaceCampaignIncident">{{ t('play.tools.newFire') }}</button>
                 </template>
             </div>
 
-            <div v-if="!isArchive && game" class="bf-objective-strip">
-                <div class="bf-objective-copy">
-                    <span>Objective</span>
-                    <p v-if="compactObjective">
-                        Place <strong>{{ game.N }} breaks</strong> &middot; every number is an exact burn minute.
-                    </p>
-                    <p v-else>
-                        Place exactly <strong>{{ game.N }} firebreaks</strong> so every numbered cell burns at its recorded minute.
-                        The board checks automatically at {{ game.N }}/{{ game.N }}.
-                    </p>
+            <!-- ============ firebreak supply ============ -->
+            <div v-if="game && !boardDone" class="bf-supply" :class="{ 'is-over': overBudget }">
+                <span>{{ t('play.supply') }}</span>
+                <span class="flex items-center gap-2.5">
+                    <span class="bf-supply-pips" aria-hidden="true">
+                        <i v-for="(used, k) in pips" :key="k" :class="{ 'is-used': used }"></i>
+                    </span>
+                    <span class="bf-supply-count" aria-live="polite">{{ breakCountText }}</span>
+                </span>
+            </div>
+
+            <!-- ============ the board ============ -->
+            <div class="bf-board-wrap">
+                <div
+                    v-if="game"
+                    class="bf-board-grid"
+                    :class="{ 'is-done': boardDone }"
+                    :style="{ '--cols': game.C, gridTemplateColumns: `repeat(${game.C}, minmax(0, 1fr))` }"
+                    role="group"
+                    :aria-label="t('play.gridLabel', { rows: game.R, cols: game.C })"
+                >
                     <button
+                        v-for="i in game.n"
+                        :key="i - 1"
+                        :ref="(el) => setCellEl(i - 1, el)"
                         type="button"
-                        class="bf-objective-rules"
-                        aria-controls="quick-rules"
-                        :aria-expanded="quickRulesOpen"
-                        @click="quickRulesOpen = !quickRulesOpen"
+                        :class="cellClasses(i - 1)"
+                        :style="cellVars(i - 1)"
+                        :aria-label="cellLabel(i - 1)"
+                        :tabindex="i - 1 === focusedIndex ? 0 : -1"
+                        @click="tap(i - 1, 1)"
+                        @contextmenu.prevent="tap(i - 1, -1)"
+                        @keydown="onCellKeydown($event, i - 1)"
+                        @focus="focusedIndex = i - 1"
                     >
-                        {{ quickRulesOpen ? 'Hide rules' : 'Rules' }} <span aria-hidden="true">{{ quickRulesOpen ? '−' : '+' }}</span>
+                        <span class="bf-cell-minute">
+                            <FlameGlyph v-if="i - 1 === game.spark" />
+                            <template v-else>{{ cellText(i - 1) }}</template>
+                        </span>
+                        <span v-if="isLate(i - 1)" class="bf-cell-badge" aria-hidden="true">!</span>
                     </button>
-                </div>
-                <div v-if="!compactObjective || quickRulesOpen" class="bf-board-legend" aria-label="Board symbol legend">
-                    <span><i class="is-flame"><FlameGlyph /></i> Flame: starts at 0</span>
-                    <span><i class="is-number">5</i> Exact minute</span>
-                    <span><i class="is-break"></i> Firebreak</span>
-                    <span><i class="is-dot">&bull;</i> Proven open</span>
-                </div>
-                <div v-if="quickRulesOpen" id="quick-rules" class="bf-quick-rules">
-                    <ol>
-                        <li><strong>Place exactly {{ game.N }} firebreaks.</strong> Flame and numbered cells stay open.</li>
-                        <li><strong>Fire moves one square per minute</strong> up, down, left, or right—never diagonally.</li>
-                        <li><strong>Every number is exact.</strong> All recorded minutes must match at the same time.</li>
-                    </ol>
-                    <p>
-                        Tap a cell to cycle break, proven-open dot, then empty.
-                        <Link href="/how-to">Open the full field manual</Link><span v-if="game.timed">—your timer keeps running.</span>
-                    </p>
-                </div>
-            </div>
-
-            <div v-if="!isArchive && game" class="mt-2.5 flex gap-2">
-                <div class="bf-chip" :class="{ 'is-over': overBudget }">
-                    <span class="bf-chip-key">Breaks</span>
-                    <span class="bf-chip-value">{{ breakCountText }}</span>
-                </div>
-                <div v-if="game.timed" class="bf-chip">
-                    <span class="bf-chip-key">Time</span>
-                    <span class="bf-chip-value">{{ clockText }}</span>
-                </div>
-                <div class="bf-chip">
-                    <span class="bf-chip-key">Hints</span>
-                    <span class="bf-chip-value">{{ hintsUsedThisRun }}</span>
-                </div>
-            </div>
-
-            <div class="relative mt-2.5 flex min-h-0 flex-1 items-center justify-center">
-                <div v-if="game" class="bf-plotsheet">
-                    <div class="bf-plotsheet-grid">
-                        <div></div>
-                        <div class="bf-rail-cols" :style="{ gridTemplateColumns: `repeat(${game.C},1fr)` }">
-                            <span v-for="c in game.C" :key="`col${c}`" class="bf-rail-label">{{ COLS[c - 1] }}</span>
-                        </div>
-                        <div class="bf-rail-rows" :style="{ gridTemplateRows: `repeat(${game.R},1fr)` }">
-                            <span v-for="r in game.R" :key="`row${r}`" class="bf-rail-label">{{ r }}</span>
-                        </div>
-                        <div
-                            class="bf-board-grid"
-                            :class="{ 'is-done': boardDone }"
-                            :style="{ '--cols': game.C, gridTemplateColumns: `repeat(${game.C},1fr)` }"
-                            aria-label="Burnfront grid"
-                        >
-                            <button
-                                v-for="i in game.n"
-                                :key="i - 1"
-                                :ref="(el) => setCellEl(i - 1, el)"
-                                type="button"
-                                :class="cellClasses(i - 1)"
-                                :style="cellStyle[i - 1] || {}"
-                                :aria-label="cellLabel(i - 1)"
-                                :tabindex="i - 1 === focusedIndex ? 0 : -1"
-                                @click="tap(i - 1, 1)"
-                                @contextmenu.prevent="tap(i - 1, -1)"
-                                @keydown="onCellKeydown($event, i - 1)"
-                                @focus="focusedIndex = i - 1"
-                            >
-                                <span class="bf-cell-minute">
-                                    <FlameGlyph v-if="i - 1 === game.spark" glow />
-                                    <template v-else>{{ cellText(i - 1) }}</template>
-                                </span>
-                            </button>
-                        </div>
-                    </div>
-                    <RubberStamp v-if="hasDiscrepancy" tone="void" size="sm" :rotate="-8" class="bf-discrepancy">Discrepancy</RubberStamp>
                 </div>
                 <LoadingVeil :visible="veilVisible" />
             </div>
 
-            <div class="mt-2.5 flex min-h-9 flex-col gap-1.5">
-                <div v-if="bannerVisible && !justSolved" class="flex flex-col gap-1.5">
-                    <p class="text-sm text-ash">
-                        <span v-if="voided">Answer revealed — time voided, this run wasn&rsquo;t saved.</span>
-                        <span v-else-if="game.timed">
-                            Contained in <span class="tabular-nums text-stock">{{ finalTimeText }}</span> — every clue burns on
-                            time.
-                        </span>
-                        <span v-else>Every clue burns on time.</span>
-                    </p>
-                    <p v-if="!voided && game.timed" class="text-[12.5px] text-ash-dim">
-                        {{
-                            hintsUsedThisRun === 0
-                                ? 'Clean reconstruction — no hints borrowed.'
-                                : `${hintsUsedThisRun} hint${hintsUsedThisRun === 1 ? '' : 's'} used.`
-                        }}
-                    </p>
-                    <div class="flex items-center gap-2">
-                        <button type="button" class="bf-btn" @click="copyReport">Share</button>
-                        <span v-if="copyFeedback" class="text-[12px] text-ash-dim" role="status" aria-live="polite">{{ copyFeedback }}</span>
+            <!-- ============ while playing: legend, message, controls ============ -->
+            <template v-if="game && !bannerVisible">
+                <div class="bf-legend" aria-hidden="true">
+                    <span>{{ t('common.minutes') }}</span>
+                    <ol :style="{ gridTemplateColumns: `repeat(${legend.length}, minmax(0, 1fr))` }">
+                        <li v-for="l in legend" :key="l.k"><i :style="{ background: l.bg }"></i><b>{{ l.label }}</b></li>
+                    </ol>
+                </div>
+
+                <p class="bf-message" role="status" aria-live="polite">{{ message }}</p>
+
+                <div v-if="!isArchive" class="mt-auto flex flex-col">
+                    <div class="bf-controls">
+                        <button type="button" class="bf-btn" :title="t('play.controls.undoKey')" :disabled="undoDisabled" @click="undo">
+                            {{ t('play.controls.undo') }}
+                        </button>
+                        <button type="button" class="bf-btn" :title="t('play.controls.hintKey')" :disabled="hintDisabled" @click="requestHint">
+                            {{ t('play.controls.hint') }}
+                        </button>
+                        <button type="button" class="bf-btn" :title="t('play.controls.resetKey')" :disabled="resetDisabled" @click="reset">
+                            {{ t('play.controls.reset') }}
+                        </button>
                     </div>
-                </div>
-                <p v-else-if="statusMessage" class="bf-status" role="status">{{ statusMessage }}</p>
-                <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
-                    Tap to cycle: firebreak &rarr; proven-open dot &rarr; empty.
-                </p>
-                <p v-if="!isArchive && !isDaily" class="bf-keyboard-help max-w-[60ch] text-[11.5px] text-ash-dim">
-                    Keyboard: arrow keys move, Backspace reverses a cell, U undo &middot; R reset &middot; H hint &middot; S reveal.
-                </p>
-                <p v-else-if="!isArchive" class="bf-keyboard-help max-w-[60ch] text-[11.5px] text-ash-dim">
-                    Keyboard: arrow keys move, Backspace reverses a cell, U undo &middot; R reset &middot; H hint.
-                </p>
-            </div>
-
-            <div v-if="!isArchive" class="mt-1 flex flex-col gap-2">
-                <div class="flex gap-2">
-                    <button type="button" class="bf-btn bf-btn-outline flex-1" title="Hint (H)" :disabled="hintDisabled" @click="requestHint">
-                        Hint
+                    <button v-if="!isDaily" type="button" class="bf-reveal-action mt-1" :disabled="solveDisabled" @click="solvePuzzle">
+                        {{ t('play.controls.reveal') }}
                     </button>
-                    <button type="button" class="bf-btn flex-1" title="Undo (U)" :disabled="undoDisabled" @click="undo">Undo</button>
-                    <button type="button" class="bf-btn flex-1" title="Reset (R)" :disabled="resetDisabled" @click="reset">Reset</button>
+                    <p class="bf-keyboard-help">{{ isDaily ? t('play.keyboardDaily') : t('play.keyboard') }}</p>
                 </div>
-                <button
-                    v-if="!isDaily"
-                    type="button"
-                    class="bf-reveal-action"
-                    title="Reveal answer (S)"
-                    aria-label="Reveal answer and void this run"
-                    :disabled="solveDisabled"
-                    @click="solvePuzzle"
-                >
-                    Reveal answer <span aria-hidden="true">&middot;</span> void this run
-                </button>
-            </div>
-        </section>
+            </template>
 
-        <!-- ============ CONTAINED — solve payoff ============ -->
-        <section v-else class="flex flex-col gap-4" aria-label="Incident contained">
-            <div class="text-center">
-                <p class="font-mono text-[12px] font-semibold tracking-[.16em] text-ash-dim uppercase">Reconstruction complete</p>
-                <p class="mt-1 text-[15px] font-semibold text-stock">{{ game.name }} <span class="font-mono text-[12px] text-ash-dim">&middot; {{ caseNumber }}</span></p>
-            </div>
+            <!-- ============ solved ============ -->
+            <section v-else-if="game" class="bf-solved" :aria-label="t('play.solved.title')">
+                <dl v-if="!voided" class="bf-stats">
+                    <div class="bf-stat-tile">
+                        <dt class="bf-stat-label">{{ t('play.solved.time') }}</dt>
+                        <dd class="bf-stat-value">{{ game.timed ? finalTimeText : t('play.solved.noClock') }}</dd>
+                    </div>
+                    <div class="bf-stat-tile">
+                        <dt class="bf-stat-label">{{ t('play.solved.hintsLabel') }}</dt>
+                        <dd class="bf-stat-value">{{ hintsUsedThisRun === 0 ? t('play.solved.none') : hintsUsedThisRun }}</dd>
+                    </div>
+                    <div class="bf-stat-tile">
+                        <dt class="bf-stat-label">{{ t('play.solved.breaks') }}</dt>
+                        <dd class="bf-stat-value">{{ game.N }}</dd>
+                    </div>
+                </dl>
+                <p v-else class="bf-help mt-4">{{ t('play.solved.revealedNote') }}</p>
 
-            <div class="bf-payoff-hero h-[210px] sm:h-[260px]">
-                <BurnReplayPayoff
-                    :rows="game.R"
-                    :cols="game.C"
-                    :spark="game.spark"
-                    :times="burnTimes"
-                    :clues="game.clues"
-                    :label="voided ? 'Solved' : 'Contained'"
-                />
-            </div>
+                <p v-if="personalBestNote" class="bf-help mt-2 font-semibold text-good" role="status">{{ t('play.solved.personalBest') }}</p>
 
-            <p class="text-center text-[13px] text-ash">
-                <span v-if="voided">Answer revealed — time voided, this run wasn&rsquo;t saved.</span>
-                <span v-else-if="game.timed">Every timestamp reconciles. Containment line verified</span>
-                <span v-else>Every clue burns on time</span>
-                <template v-if="!voided"> — filed to <span class="font-mono text-ash">{{ caseNumber }}</span>.</template>
-            </p>
-
-            <div v-if="!voided" class="flex gap-2">
-                <div class="bf-stat-tile">
-                    <span class="bf-stat-value">{{ game.timed ? finalTimeText : '—' }}</span>
-                    <span class="bf-stat-label">Time</span>
+                <div v-if="isCampaign && campaignResult" class="bf-xp-card mt-3">
+                    <div class="flex items-baseline justify-between gap-3">
+                        <span class="font-semibold">{{ t('play.campaign.level', { level: campaignResult.level }) }}</span>
+                        <span class="font-semibold">{{ t('play.campaign.points', { points: campaignResult.xpAwarded }) }}</span>
+                    </div>
+                    <div class="bf-xp-track">
+                        <div class="bf-xp-fill" :style="{ width: xpAfterPct + '%' }"></div>
+                        <div
+                            v-if="xpAfterPct > xpBeforePct"
+                            class="bf-xp-fill-new"
+                            :style="{ left: xpBeforePct + '%', width: xpAfterPct - xpBeforePct + '%' }"
+                        ></div>
+                    </div>
+                    <span v-if="campaignResult.xpAwarded === 0" class="bf-help">{{ t('play.campaign.noPoints') }}</span>
+                    <p v-if="campaignResult.leveledUp" class="bf-levelup m-0">{{ t('play.campaign.levelUp', { level: campaignResult.level }) }}</p>
+                    <p v-if="campaignResult.campaignComplete" class="m-0 font-semibold">{{ t('play.campaign.complete') }}</p>
                 </div>
-                <div class="bf-stat-tile">
-                    <span class="bf-stat-value">{{ breakCountText }}</span>
-                    <span class="bf-stat-label">Breaks</span>
-                </div>
-                <div class="bf-stat-tile" :class="{ 'is-good': hintsUsedThisRun === 0 }">
-                    <span class="bf-stat-value" :class="{ 'is-good': hintsUsedThisRun === 0 }">{{ hintsUsedThisRun }}</span>
-                    <span class="bf-stat-label">Hints</span>
-                </div>
-            </div>
 
-            <p v-if="personalBestNote" class="text-center text-[12.5px] text-verify" role="status" aria-live="polite">
-                <span aria-hidden="true">&#10003;</span> {{ personalBestNote }}
-            </p>
-
-            <div v-if="isCampaign && campaignResult" class="bf-xp-card">
-                <div class="flex items-baseline justify-between font-mono text-[12px] font-semibold tracking-[.1em] text-ash-dim uppercase">
-                    <span>Rank &middot; {{ campaignResult.chapterLabel }}</span>
-                    <span class="font-bold text-ember-hi">+{{ campaignResult.xpAwarded }} XP</span>
+                <div class="mt-4 flex flex-col">
+                    <span class="bf-help">{{ t('play.share.what') }}</span>
+                    <pre class="bf-share-preview">{{ shareText }}</pre>
                 </div>
-                <div class="bf-xp-track">
-                    <div class="bf-xp-fill" :style="{ width: xpAfterPct + '%' }"></div>
-                    <div
-                        v-if="xpAfterPct > xpBeforePct"
-                        class="bf-xp-fill-new"
-                        :style="{ left: xpBeforePct + '%', width: xpAfterPct - xpBeforePct + '%' }"
-                    ></div>
-                </div>
-                <div class="flex justify-between font-mono text-[11px] font-medium text-ash-dim">
-                    <span>{{ campaignResult.xpIntoLevel }}/{{ campaignResult.xpToNextLevel ?? campaignResult.xpIntoLevel }} XP</span>
-                    <span v-if="campaignResult.xpAwarded === 0">No breaks left un-hinted</span>
-                </div>
-                <p v-if="campaignResult.leveledUp" class="bf-levelup text-center text-[15px] font-semibold tracking-[.06em] uppercase">
-                    Level up &rarr; {{ campaignResult.level }} &middot; {{ campaignResult.chapterLabel }}
-                </p>
-                <p v-if="campaignResult.campaignComplete" class="text-center text-[12.5px] text-ember">
-                    Every case file in the record is closed.
-                </p>
-            </div>
 
-            <div class="flex items-center gap-2">
-                <template v-if="isCampaign">
-                    <Link href="/campaign" class="bf-btn flex-1 text-center">Case file</Link>
-                    <button type="button" class="bf-btn bf-btn-primary flex-[2]" @click="loadCampaign">Next incident</button>
-                </template>
-                <button v-else-if="mode === 'endless'" type="button" class="bf-btn bf-btn-primary flex-[2]" @click="newGame(true)">
-                    Next incident
-                </button>
-                <template v-else-if="isDaily">
-                    <Link href="/" class="bf-btn bf-btn-primary flex-[2] text-center">Incident desk</Link>
-                    <a v-if="leaderboard.length" href="#daily-leaderboard" class="bf-btn flex-1 text-center">Leaderboard</a>
-                </template>
-                <button type="button" class="bf-btn" :class="isCampaign || mode === 'endless' ? 'flex-1' : 'flex-[2]'" @click="copyReport">
-                    Share
-                </button>
-            </div>
-            <p v-if="copyFeedback" class="text-center text-[12px] text-ash-dim" role="status" aria-live="polite">{{ copyFeedback }}</p>
-        </section>
+                <div class="bf-solved-actions">
+                    <Link v-if="nextAction.href" :href="nextAction.href" class="bf-btn bf-btn-primary bf-btn-stack">
+                        <span>{{ nextAction.label }}</span>
+                        <small v-if="nextAction.detail">{{ nextAction.detail }}</small>
+                    </Link>
+                    <button v-else type="button" class="bf-btn bf-btn-primary bf-btn-stack" @click="nextAction.run">
+                        <span>{{ nextAction.label }}</span>
+                        <small v-if="nextAction.detail">{{ nextAction.detail }}</small>
+                    </button>
+                    <button type="button" class="bf-btn" @click="copyReport">{{ copyFeedback || t('play.share.button') }}</button>
+                    <Link href="/" class="bf-btn bf-btn-soft is-wide">{{ t('play.solved.home') }}</Link>
+                </div>
+            </section>
 
-        <div
-            v-if="isDaily && leaderboard.length"
-            id="daily-leaderboard"
-            class="mt-1 flex flex-col gap-1.5 rounded-lg border border-rule-2 bg-folder p-3.5"
-            aria-label="Today's fastest"
-        >
-            <h3 class="font-mono text-[11px] tracking-[.14em] text-ash-dim uppercase">Today&rsquo;s fastest</h3>
-            <ol class="flex flex-col gap-1 text-sm text-ash">
-                <li v-for="entry in leaderboard" :key="entry.rank" class="flex justify-between gap-3 tabular-nums">
-                    <span>
-                        {{ entry.rank }}. {{ entry.name }}
-                        <span v-if="entry.hints_used === 0" class="ml-1 font-mono text-[10px] tracking-[.08em] text-ember uppercase"
-                            >clean</span
-                        >
-                    </span>
-                    <span class="text-stock">{{ fmtClock(entry.time_ms) }}</span>
-                </li>
-            </ol>
-        </div>
-    </main>
+            <section v-if="isDaily && leaderboard.length" id="daily-leaderboard" class="bf-leaderboard" aria-labelledby="leaderboard-title">
+                <h3 id="leaderboard-title">{{ t('play.leaderboard.title') }}</h3>
+                <ol>
+                    <li v-for="entry in leaderboard" :key="entry.rank">
+                        <span>
+                            {{ entry.rank }}. {{ entry.name }}
+                            <span v-if="entry.hints_used === 0" class="bf-help ml-1">{{ t('play.leaderboard.noHints') }}</span>
+                        </span>
+                        <span class="font-semibold">{{ fmtClock(entry.time_ms) }}</span>
+                    </li>
+                </ol>
+            </section>
+        </main>
+    </div>
 </template>
