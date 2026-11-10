@@ -624,7 +624,7 @@ function win(times) {
     clearWrongCells();
     stopClock();
     boardDone.value = true;
-    burnTimes.value = Array.from(times); /* hand the solved incident to the payoff replay hero (BurnReplayPayoff) */
+    burnTimes.value = Array.from(times); /* the solved fire, for the burn curve and the minute numbers */
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
     const step = reducedMotion ? 0 : Math.min(55, 720 / Math.max(1, maxT));

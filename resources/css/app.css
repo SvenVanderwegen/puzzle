@@ -508,6 +508,41 @@
         background: transparent;
         box-shadow: inset 0 0 0 1.5px var(--bf-line-strong);
     }
+    .bf-row-text {
+        display: flex;
+        flex: 1 1 auto;
+        min-width: 0;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .bf-row-title {
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--bf-ink);
+    }
+    .bf-row-sub {
+        font-size: 15px;
+        line-height: 1.4;
+        color: var(--bf-muted);
+    }
+    .bf-row-arrow {
+        flex-shrink: 0;
+        width: 20px;
+        height: 20px;
+        color: var(--bf-muted);
+    }
+    .bf-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .bf-page-head {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 0 20px;
+    }
     .bf-chevron {
         display: flex;
         align-items: center;
@@ -762,13 +797,47 @@
         text-decoration: underline;
         text-underline-offset: 3px;
     }
+    .bf-auth-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
     .bf-auth-note {
+        margin: 0;
         text-align: center;
-        font-size: 14px;
+        font-size: 16px;
+        line-height: 1.5;
         color: var(--bf-muted);
     }
-    .bf-auth-note span {
-        display: none;
+    .bf-auth-note a {
+        display: inline-block;
+        min-height: 44px;
+        line-height: 44px;
+        font-weight: 600;
+        color: var(--bf-ink);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+    .bf-check {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 44px;
+        font-size: 16px;
+        color: var(--bf-ink);
+        cursor: pointer;
+    }
+    .bf-check input {
+        width: 22px;
+        height: 22px;
+        margin: 0;
+        accent-color: var(--bf-ink);
+        cursor: pointer;
+    }
+    .bf-field-error {
+        font-size: 15px;
+        color: var(--bf-bad);
     }
     .bf-settings-panel {
         display: flex;
@@ -812,6 +881,166 @@
     .bf-segmented button[aria-pressed='true'] {
         background: var(--bf-surface);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    }
+
+    /* =====================================================================
+       Campaign map and practice
+       ===================================================================== */
+    .bf-camp-part {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px;
+        border-radius: var(--bf-radius-card);
+        background: var(--bf-surface);
+    }
+    .bf-camp-part.is-later {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px var(--bf-line);
+    }
+    .bf-camp-part-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .bf-camp-part-status {
+        flex-shrink: 0;
+        font-size: 15px;
+        color: var(--bf-muted);
+    }
+    .bf-camp-part.is-now .bf-camp-part-status {
+        font-weight: 600;
+        color: var(--bf-ink);
+    }
+    .bf-camp-tiles {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .bf-camp-tile {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 72px;
+        padding: 8px 10px;
+        border-radius: var(--bf-radius-btn);
+        background: var(--bf-soft);
+        color: var(--bf-muted);
+        text-decoration: none;
+    }
+    .bf-camp-tile.is-current {
+        background: var(--bf-primary);
+        color: var(--bf-on-primary);
+    }
+    .bf-camp-tile.is-current:focus-visible {
+        outline: 3px solid var(--bf-focus);
+        outline-offset: 2px;
+    }
+    .bf-camp-num {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        font-variant-numeric: tabular-nums;
+    }
+    .bf-camp-icon {
+        width: 20px;
+        height: 20px;
+        align-self: flex-end;
+    }
+    .bf-camp-tag {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 15px;
+        font-weight: 600;
+    }
+    .bf-camp-tag .bf-row-arrow {
+        color: inherit;
+        width: 18px;
+        height: 18px;
+    }
+    .bf-history-time {
+        flex-shrink: 0;
+        font-family: var(--font-mono);
+        font-size: 17px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--bf-ink);
+    }
+    .bf-day-strip {
+        display: grid;
+        grid-template-columns: repeat(14, minmax(0, 1fr));
+        gap: 4px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .bf-day-strip li {
+        height: 24px;
+        border-radius: 4px;
+        background: var(--bf-soft);
+        box-shadow: inset 0 0 0 1px var(--bf-line);
+    }
+    .bf-day-strip li.is-filled {
+        background: var(--bf-accent);
+        box-shadow: none;
+    }
+    .bf-badges {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .bf-badges li {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 10px 12px;
+        border-radius: var(--bf-radius-btn);
+        box-shadow: inset 0 0 0 1.5px var(--bf-line);
+        opacity: 0.7;
+    }
+    .bf-badges li.is-earned {
+        background: var(--bf-soft);
+        box-shadow: none;
+        opacity: 1;
+    }
+    .bf-replay-range {
+        height: 44px;
+        margin: 0;
+        accent-color: var(--bf-ink);
+        cursor: pointer;
+    }
+    .bf-size-thumb {
+        display: grid;
+        flex-shrink: 0;
+        gap: 1px;
+        width: 44px;
+        height: 44px;
+        padding: 2px;
+        border-radius: 6px;
+        background: var(--bf-line);
+    }
+    .bf-size-thumb i {
+        border-radius: 1px;
+        background: var(--bf-surface);
+    }
+    .bf-number-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--bf-ink);
     }
 
     /* =====================================================================
