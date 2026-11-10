@@ -1,21 +1,38 @@
 <script setup>
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { fmtClock } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 import LookoutHero from '@/Components/LookoutHero.vue';
 import ModeGlyph from '@/Components/ModeGlyph.vue';
 import FirstRunBriefing from '@/Components/FirstRunBriefing.vue';
 import { hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
+import UpNext from '@/Components/Progress/UpNext.vue';
+import QuickFires from '@/Components/Progress/QuickFires.vue';
+import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
+import { guestDailyFor } from '@/lib/progress';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null },
     campaignStatus: { type: Object, default: null },
+    upNext: { type: Object, default: null }, // NextFire::for(): what to play after the daily
+    quickFires: { type: Array, default: () => [] }, // NextFire::quickFires()
+    progress: { type: Object, default: null }, // PlayerProgress::forUser(), null for a guest
+    progressRules: { type: Object, default: null }, // PlayerProgress::rules()
 });
 
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user ?? null);
 const firstRunVisible = ref(!hasCompletedOnboarding());
+
+/* A guest's daily result lives in their session, which ends after a couple
+   of hours; the device remembers it for the rest of the day. */
+const guestDaily = ref(null);
+onMounted(() => {
+    if (!currentUser.value && props.dailyStatus?.date) guestDaily.value = guestDailyFor(props.dailyStatus.date);
+});
+const dailyDone = computed(() => Boolean(props.dailyStatus?.alreadyScored || guestDaily.value));
+const dailyTimeMs = computed(() => props.dailyStatus?.scoreTimeMs ?? guestDaily.value?.timeMs ?? null);
 
 const streakSuffix = computed(() => {
     const current = props.dailyStatus?.streak?.current ?? 0;
@@ -23,8 +40,7 @@ const streakSuffix = computed(() => {
 });
 
 const dailyMeta = computed(() => {
-    if (!currentUser.value) return 'Account required';
-    if (props.dailyStatus?.alreadyScored) return `Filed in ${fmtClock(props.dailyStatus.scoreTimeMs)}${streakSuffix.value}`;
+    if (dailyDone.value && dailyTimeMs.value !== null) return `Filed in ${fmtClock(dailyTimeMs.value)}${streakSuffix.value}`;
     return `New incident available${streakSuffix.value}`;
 });
 
@@ -51,10 +67,10 @@ const modes = computed(() => {
             title: 'Daily Incident',
             description: 'Solve today\'s shared timed incident and compare your result.',
             meta: dailyMeta.value,
-            href: signedIn ? '/daily/play' : '/login',
-            locked: !signedIn,
-            featured: signedIn && !props.dailyStatus?.alreadyScored,
-            action: signedIn ? 'Open incident' : 'Sign in',
+            href: '/daily/play',
+            locked: false,
+            featured: !dailyDone.value,
+            action: 'Open incident',
         },
         {
             key: 'campaign',
@@ -64,7 +80,7 @@ const modes = computed(() => {
             meta: campaignMeta.value,
             href: signedIn ? '/campaign' : '/login',
             locked: !signedIn,
-            featured: signedIn && Boolean(props.dailyStatus?.alreadyScored),
+            featured: signedIn && dailyDone.value,
             action: signedIn ? 'Continue case' : 'Sign in',
         },
         {
@@ -75,7 +91,7 @@ const modes = computed(() => {
             meta: '5 ranks · custom grids',
             href: '/endless',
             locked: false,
-            featured: !signedIn,
+            featured: false,
             action: 'Choose rank',
         },
         {
@@ -108,13 +124,24 @@ const visibleModes = computed(() =>
 
         <FirstRunBriefing @visibility="firstRunVisible = $event" />
 
+        <!-- Push past the daily: once today's fire is solved the next fire
+             leads, quick fires are one tap away, and the weekly goal and
+             level count every solve. Components carry only minimal styling
+             (bf-upnext / bf-quick / bf-progress hooks) for the redesign. -->
+        <section class="bf-push flex flex-col gap-4">
+            <UpNext v-if="dailyDone" :next="upNext" />
+            <QuickFires :fires="quickFires" />
+            <!-- progression: weekly goal -->
+            <WeeklyProgress :progress="progress" :rules="progressRules" />
+        </section>
+
         <section class="bf-desk-heading" aria-labelledby="assignments-title">
             <div>
                 <p class="bf-eyebrow">Incident desk</p>
                 <h2 id="assignments-title">Select assignment</h2>
             </div>
             <div class="flex flex-col items-start gap-1 sm:items-end">
-                <p>{{ currentUser ? 'Your active files and field records.' : 'Endless and training files are open without an account.' }}</p>
+                <p>{{ currentUser ? 'Your active files and field records.' : 'Daily, endless and training files are open without an account.' }}</p>
                 <Link v-if="firstRunVisible" href="/how-to" class="bf-desk-help">Open field manual &rarr;</Link>
             </div>
         </section>
@@ -133,7 +160,7 @@ const visibleModes = computed(() =>
                     <span class="bf-mode-file">{{ mode.eyebrow }} <template v-if="mode.featured">&middot; Recommended</template></span>
                     <span class="bf-mode-title">{{ mode.title }}</span>
                     <span class="bf-mode-desc">{{ mode.description }}</span>
-                    <span class="bf-mode-meta" :class="{ 'is-solved': mode.key === 'daily' && dailyStatus?.alreadyScored }">
+                    <span class="bf-mode-meta" :class="{ 'is-solved': mode.key === 'daily' && dailyDone }">
                         {{ mode.meta }}
                     </span>
                     <span v-if="mode.key === 'campaign' && currentUser" class="bf-xp-track mt-1">

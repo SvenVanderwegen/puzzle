@@ -14,6 +14,11 @@ Route::get('/how-to', [BurnfrontController::class, 'howTo'])->name('burnfront.ho
 Route::get('/puzzle', [BurnfrontController::class, 'puzzle'])->name('burnfront.puzzle');
 Route::get('/hint', [BurnfrontController::class, 'hint'])->name('burnfront.hint');
 Route::get('/solve', [BurnfrontController::class, 'solve'])->name('burnfront.solve');
+// The daily is open to guests: an account only adds the leaderboard and the
+// streak. A guest run is tracked in the session (see DailyRunStore).
+Route::get('/daily', [BurnfrontController::class, 'daily'])->name('burnfront.daily');
+Route::get('/daily/play', [BurnfrontController::class, 'dailyPlay'])->name('burnfront.daily.play');
+Route::post('/daily/score', [BurnfrontController::class, 'submitDailyScore'])->name('burnfront.daily.score');
 Route::get('/daily/leaderboard', [BurnfrontController::class, 'dailyLeaderboard'])->name('burnfront.daily.leaderboard');
 
 Route::middleware('guest')->group(function () {
@@ -24,10 +29,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
-    Route::get('/daily', [BurnfrontController::class, 'daily'])->name('burnfront.daily');
-    Route::get('/daily/play', [BurnfrontController::class, 'dailyPlay'])->name('burnfront.daily.play');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
-    Route::post('/daily/score', [BurnfrontController::class, 'submitDailyScore'])->name('burnfront.daily.score');
     Route::get('/daily/history', [BurnfrontController::class, 'dailyHistory'])->name('burnfront.daily.history');
     Route::get('/daily/history/play', [BurnfrontController::class, 'dailyHistoryPlay'])->name('burnfront.daily.history.play');
     Route::post('/endless/score', [BurnfrontController::class, 'submitEndlessScore'])->name('burnfront.endless.score');

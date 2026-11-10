@@ -1,0 +1,15 @@
+{
+    "headDaily": "Burnfront {number}",
+    "headCampaign": "Burnfront campaign {level}",
+    "headQuick": "Burnfront {rows}×{cols}",
+    "noHints": "no hints",
+    "hintOne": "1 hint",
+    "hintMany": "{count} hints",
+    "revealed": "answer shown",
+    "site": "burnfront.com",
+    "button": "Share result",
+    "shared": "Shared.",
+    "copied": "Copied. Paste it anywhere.",
+    "failed": "Couldn't share. Try again.",
+    "note": "What you share: the burn curve, not the map. No spoilers."
+}

@@ -28,7 +28,12 @@ class BurnfrontTest extends TestCase
         $response->assertSee('Burnfront', false);
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Burnfront/Start')
-            ->where('dailyStatus', null)
+            ->where('dailyStatus.alreadyScored', false)
+            ->where('dailyStatus.streak', null)
+            ->where('progress', null)
+            ->where('upNext.kind', 'quick')
+            ->has('quickFires', 3)
+            ->has('progressRules.weekGoal')
         );
     }
 
@@ -137,11 +142,17 @@ class BurnfrontTest extends TestCase
         $response->assertInertia(fn (Assert $page) => $page->component('Burnfront/HowTo'));
     }
 
-    public function test_the_daily_play_screen_requires_authentication(): void
+    public function test_the_daily_play_screen_is_open_to_guests(): void
     {
         $response = $this->get('/daily/play');
 
-        $response->assertRedirect('/login');
+        $response->assertStatus(200);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Burnfront/Play')
+            ->where('mode', 'daily')
+            ->where('authenticated', false)
+            ->where('nextFire.kind', 'quick')
+        );
     }
 
     public function test_the_daily_play_screen_renders_for_a_signed_in_user(): void
@@ -387,16 +398,16 @@ class BurnfrontTest extends TestCase
     }
 
     /**
-     * The daily puzzle's board, clues and token are signed-in-only content
-     * (see routes/web.php) — a guest must never see them, or they could
-     * solve the shared board offline and race the clock right after signing
-     * in, defeating the timing gate entirely.
+     * The daily is open to guests now (an account only adds the leaderboard
+     * and the streak); their clock is bound in the session instead.
      */
-    public function test_daily_endpoint_requires_authentication(): void
+    public function test_daily_endpoint_serves_a_guest(): void
     {
         $response = $this->getJson('/daily');
 
-        $response->assertStatus(401);
+        $response->assertStatus(200);
+        $response->assertJson(['guest' => true, 'alreadyScored' => false]);
+        $response->assertJsonStructure(['spark', 'clues', 'token', 'number']);
     }
 
     public function test_daily_endpoint_returns_todays_incident(): void
@@ -453,24 +464,28 @@ class BurnfrontTest extends TestCase
     }
 
     /**
-     * /hint sits outside the `auth` middleware group so guests can use it
-     * for practice/custom/endless boards, but the daily incident is
-     * signed-in-only and shared by every player: without this guard, a
-     * signed-out request (or a second, cookie-less request from a
-     * signed-in player) could pull a forced deduction from the day's real
-     * board — no per-account secret protects it, since every account is
-     * handed the same spark/clues — without ever counting against that
-     * account's hint tally.
+     * A guest can take hints on the daily (they can play it now); the hint
+     * is charged to their session and shows up on their result.
      */
-    public function test_hint_endpoint_rejects_the_daily_difficulty_for_a_guest(): void
+    public function test_hint_endpoint_charges_a_guest_daily_hint_to_the_session(): void
     {
-        $response = $this->getJson('/hint?'.http_build_query([
-            'difficulty' => 'daily',
-            'spark' => 0,
-            'clues' => json_encode([]),
-        ]));
+        $daily = $this->getJson('/daily')->json();
 
-        $response->assertStatus(401);
+        $hint = $this->getJson('/hint?'.http_build_query([
+            'difficulty' => 'daily',
+            'spark' => $daily['spark'],
+            'clues' => json_encode($daily['clues']),
+        ]));
+        $hint->assertStatus(200);
+        $this->assertSame('forced', $hint->json('status'));
+
+        $response = $this->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['guest' => true, 'hints_used' => 1]);
     }
 
     /**
@@ -571,14 +586,174 @@ class BurnfrontTest extends TestCase
         $this->assertCount(10, $response->json('solution'));
     }
 
-    public function test_submit_daily_score_requires_authentication(): void
+    public function test_submit_daily_score_rejects_a_bad_token_from_a_guest(): void
     {
         $response = $this->postJson('/daily/score', [
             'token' => 'not-a-real-token',
-            'shaded' => [],
+            'shaded' => [1],
         ]);
 
-        $response->assertStatus(401);
+        $response->assertStatus(422);
+    }
+
+    public function test_a_guest_can_solve_the_daily_without_an_account(): void
+    {
+        $daily = $this->getJson('/daily')->json();
+
+        $response = $this->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['guest' => true, 'rank' => null, 'hints_used' => 0]);
+        $this->assertDatabaseCount('burnfront_daily_scores', 0);
+
+        // Solved once: a second post is refused, and the home and /daily
+        // both report it as done.
+        $this->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(409);
+        $this->getJson('/daily')->assertJson(['alreadyScored' => true]);
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('dailyStatus.alreadyScored', true)
+            ->where('dailyStatus.ranked', false)
+            ->has('dailyStatus.solved.shaded')
+        );
+    }
+
+    public function test_a_guest_daily_without_a_board_fetch_is_refused(): void
+    {
+        $token = Crypt::encryptString(json_encode(['date' => now('UTC')->toDateString()]));
+
+        $this->postJson('/daily/score', ['token' => $token, 'shaded' => [1]])->assertStatus(422);
+    }
+
+    /**
+     * A guest's solve moves onto the account they then create: it counts
+     * for the streak, but stays off the leaderboard since the clock never
+     * ran on an account.
+     */
+    public function test_a_guest_daily_is_saved_unranked_to_the_account_created_afterwards(): void
+    {
+        $daily = $this->getJson('/daily')->json();
+        $this->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ])->assertStatus(200);
+
+        $this->post('/register', [
+            'name' => 'Guest Player',
+            'email' => 'guest@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertRedirect('/');
+
+        $user = User::where('email', 'guest@example.com')->firstOrFail();
+        $score = DailyScore::where('user_id', $user->id)->first();
+        $this->assertNotNull($score);
+        $this->assertFalse($score->ranked);
+        $this->assertSame(1, GamePlay::where('user_id', $user->id)->where('mode', 'daily')->count());
+
+        $this->getJson('/daily/leaderboard')->assertJsonCount(0, 'entries');
+        $this->actingAs($user)->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('dailyStatus.alreadyScored', true)
+            ->where('dailyStatus.streak.current', 1)
+        );
+    }
+
+    /**
+     * Seeing the board as a guest and then signing in must not buy a fresh
+     * clock: the earlier guest start carries over to the account.
+     */
+    public function test_signing_in_keeps_the_earlier_guest_start_time(): void
+    {
+        $user = User::factory()->create(['password' => 'password123']);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-04 10:00:00', 'UTC'));
+        $this->getJson('/daily'); // guest: binds 10:00:00 in the session
+
+        Carbon::setTestNow(Carbon::parse('2026-07-04 10:04:00', 'UTC'));
+        $this->post('/login', ['email' => $user->email, 'password' => 'password123'])->assertRedirect('/');
+        $daily = $this->getJson('/daily')->json(); // signed in now: must not rebind to 10:04
+
+        Carbon::setTestNow(Carbon::parse('2026-07-04 10:06:00', 'UTC'));
+        $response = $this->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        Carbon::setTestNow();
+
+        $response->assertStatus(200);
+        $this->assertEqualsWithDelta(6 * 60 * 1000, $response->json('time_ms'), 1000);
+    }
+
+    public function test_the_leaderboard_leaves_out_unranked_scores(): void
+    {
+        $ranked = User::factory()->create(['name' => 'Ranked']);
+        $unranked = User::factory()->create(['name' => 'Unranked']);
+        $date = now('UTC')->toDateString();
+        DailyScore::create(['user_id' => $ranked->id, 'date' => $date, 'time_ms' => 90000, 'hints_used' => 0]);
+        DailyScore::create(['user_id' => $unranked->id, 'date' => $date, 'time_ms' => 1000, 'hints_used' => 0, 'ranked' => false]);
+
+        $entries = $this->getJson('/daily/leaderboard')->json('entries');
+
+        $this->assertCount(1, $entries);
+        $this->assertSame('Ranked', $entries[0]['name']);
+    }
+
+    public function test_the_start_screen_reports_weekly_progress_for_a_signed_in_user(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('lookout');
+        $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'lookout',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $this->solveEndless($puzzle),
+            'relaxed' => true,
+        ])->assertStatus(200)->assertJsonPath('progress.weekSolved', 1);
+
+        $this->actingAs($user)->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('progress.weekSolved', 1)
+            ->where('progress.totalSolved', 1)
+            ->where('progress.level', 1)
+            ->where('progress.toGo', 2)
+            ->where('upNext.kind', 'campaign')
+            ->where('upNext.level', 1)
+        );
+    }
+
+    /**
+     * Quick fire from the home runs without a clock, so it posts no time:
+     * the solve still counts, just not as a personal best.
+     */
+    public function test_a_relaxed_quick_fire_is_recorded_without_a_time(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('crew');
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'crew',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $this->solveEndless($puzzle),
+            'relaxed' => true,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['solved_count' => 1, 'best_time_ms' => null, 'improved' => false]);
+    }
+
+    public function test_the_relaxed_flag_reaches_the_play_screen(): void
+    {
+        $this->get('/endless/play?difficulty=crew&relaxed=1')->assertInertia(fn (Assert $page) => $page
+            ->where('relaxed', true)
+            ->where('nextFire.kind', 'quick')
+            ->where('nextFire.difficulty', 'crew')
+        );
     }
 
     /**

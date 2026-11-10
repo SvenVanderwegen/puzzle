@@ -8,6 +8,11 @@ import FlameGlyph from '@/Components/FlameGlyph.vue';
 import RubberStamp from '@/Components/RubberStamp.vue';
 import BurnReplayPayoff from '@/Components/BurnReplayPayoff.vue';
 import { hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
+import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
+import { recordLocalSolve, rememberGuestDaily } from '@/lib/progress';
+import { buildShareText, shareResult } from '@/lib/share';
+import { nextFireDetail } from '@/lib/next-fire';
+import { t } from '@/lib/i18n';
 
 const props = defineProps({
     mode: { type: String, required: true }, // 'endless' | 'daily' | 'archive' | 'campaign'
@@ -16,6 +21,9 @@ const props = defineProps({
     authenticated: { type: Boolean, default: false },
     archivePuzzle: { type: Object, default: null }, // set for mode 'archive': a past daily incident this account already solved
     levelConfig: { type: Object, default: null }, // set for mode 'campaign': this account's current level, from CampaignService::levelConfig()
+    relaxed: { type: Boolean, default: false }, // quick fire from the home: no visible clock
+    nextFire: { type: Object, default: null }, // NextFire::for(): where the result screen's "Next fire" goes
+    progressRules: { type: Object, default: null }, // PlayerProgress::rules(), for a guest's local progress
 });
 
 const isDaily = computed(() => props.mode === 'daily');
@@ -64,7 +72,17 @@ const dailyScorePosted = ref(false);
 const leaderboard = ref([]);
 const hintsUsedThisRun = ref(0);
 const personalBestNote = ref('');
-const campaignResult = ref(null); /* {xpAwarded, level, leveledUp, xpIntoLevel, xpToNextLevel, chapterLabel, campaignComplete}, set on a campaign win */
+const campaignResult = ref(null); /* {xpAwarded, level, leveledUp, xpIntoLevel, xpToNextLevel, chapterLabel, campaignComplete, nextFire, progress}, set on a campaign win */
+/* Weekly goal / level after this solve, as the server reports it for a
+   signed-in player (null for a guest: WeeklyProgress then reads the local
+   log that win() just added to). */
+const serverProgress = ref(null);
+const dailyNumber = ref(null);
+const guestDailySolved = ref(false); /* a guest just filed today's daily: offer to save it to an account */
+/* Where "Next fire" goes: the campaign's answer after a campaign solve
+   (the level may have just changed), else what the page was rendered with. */
+const nextFireTarget = computed(() => campaignResult.value?.nextFire ?? props.nextFire);
+const nextFireSub = computed(() => nextFireDetail(nextFireTarget.value));
 const quickRulesOpen = ref(false);
 const compactObjective = ref(hasCompletedOnboarding());
 
@@ -282,6 +300,10 @@ function persistProgress() {
    double-checked too rather than trusted blindly off a key string. */
 function endlessSaveMatches(saved) {
     if (!saved || saved.difficulty !== diff.value) return false;
+    /* A quick fire (relaxed, no clock) never resumes a timed board, or the
+       other way round. */
+    const timedNow = !props.relaxed && props.difficulties[diff.value]?.timed !== false;
+    if (Boolean(saved.timed) !== timedNow) return false;
     if (diff.value !== 'custom') return true;
     const c = props.difficulties.custom;
     return !!c && saved.rows === c.rows && saved.cols === c.cols && saved.breaks === c.breaks;
@@ -560,8 +582,13 @@ function win(times) {
     const shaded = [];
     for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
 
-    // The /daily/play route requires an authenticated session (see
-    // routes/web.php), so a signed-in user is always present here.
+    // A guest has no server record: every solve feeds this device's weekly
+    // goal and level instead (lib/progress.js). A signed-in player's solve
+    // is counted by the server when the score below is posted.
+    if (!props.authenticated) recordLocalSolve();
+
+    // Guests can play the daily too: the server verifies their board the
+    // same way and keeps the result in their session (DailyRunStore).
     if (isDaily.value && dailyDate.value) {
         submitDailyScore(shaded);
     } else if (props.mode === 'endless' && props.authenticated && diff.value !== 'custom') {
@@ -666,6 +693,11 @@ async function submitDailyScore(shaded) {
         if (resp.ok) {
             const data = await resp.json();
             if (typeof data.hints_used === 'number') hintsUsedThisRun.value = data.hints_used;
+            if (data.progress) serverProgress.value = data.progress;
+            if (data.guest) {
+                guestDailySolved.value = true;
+                rememberGuestDaily(dailyDate.value, { timeMs: data.time_ms, hintsUsed: data.hints_used });
+            }
             fetchLeaderboard();
         } else if (resp.status === 409) {
             fetchLeaderboard();
@@ -698,6 +730,7 @@ async function submitEndlessScore(shaded, timeMs) {
             moves: moveLog,
         };
         if (timeMs !== null) body.time_ms = Math.round(timeMs);
+        if (props.relaxed) body.relaxed = true;
         const resp = await fetch('/endless/score', {
             method: 'POST',
             headers: {
@@ -710,6 +743,7 @@ async function submitEndlessScore(shaded, timeMs) {
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.improved) personalBestNote.value = 'New personal best for this tier.';
+        if (data.progress) serverProgress.value = data.progress;
     } catch (e) {
         /* personal bests are a nice-to-have; a failed post just skips the record */
     }
@@ -736,10 +770,12 @@ async function submitCampaignScore(shaded) {
             body: JSON.stringify({
                 token: game.value.token,
                 shaded,
+                moves: moveLog,
             }),
         });
         if (!resp.ok) return;
         campaignResult.value = await resp.json();
+        if (campaignResult.value?.progress) serverProgress.value = campaignResult.value.progress;
     } catch (e) {
         /* XP is a nice-to-have; a failed post just skips this run's banner */
     }
@@ -768,6 +804,7 @@ async function newGame(fresh = true) {
     dailyScorePosted.value = false;
     hintsUsedThisRun.value = 0;
     personalBestNote.value = '';
+    serverProgress.value = null;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -780,7 +817,7 @@ async function newGame(fresh = true) {
         const p = await resp.json();
         if (token !== genToken) return; /* superseded by a newer request */
         const n = p.rows * p.cols;
-        const timed = props.difficulties[diff.value]?.timed !== false;
+        const timed = !props.relaxed && props.difficulties[diff.value]?.timed !== false;
         game.value = reactive({
             n,
             adj: buildAdj(p.rows, p.cols),
@@ -831,6 +868,7 @@ async function loadCampaign() {
     locked.value = true;
     hintsUsedThisRun.value = 0;
     campaignResult.value = null;
+    serverProgress.value = null;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -879,15 +917,16 @@ async function loadCampaign() {
 }
 
 /* Loads the shared daily incident, seeded from today's date so every player
-   sees the same board (see PuzzleService::generateDaily). This route is
-   only reachable while signed in (see routes/web.php), so the server's own
-   "already scored" verdict is always authoritative here. */
+   sees the same board (see PuzzleService::generateDaily). Open to guests:
+   the server tracks a guest's run in their session, so its "already
+   scored" verdict is authoritative here either way. */
 async function loadDaily() {
     const token = ++genToken;
     locked.value = true;
     dailyScorePosted.value = false;
     hintsUsedThisRun.value = 0;
     personalBestNote.value = '';
+    serverProgress.value = null;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -927,6 +966,7 @@ async function loadDaily() {
         moveLog.length = 0;
         focusedIndex.value = 0;
         dailyDate.value = p.date;
+        dailyNumber.value = p.number ?? null;
         fetchLeaderboard();
 
         if (p.alreadyScored) {
@@ -936,6 +976,7 @@ async function loadDaily() {
             if (p.solution) revealSolution(p.solution);
             finalTimeText.value = fmtClock(p.scoreTimeMs);
             hintsUsedThisRun.value = p.hintsUsed ?? 0;
+            guestDailySolved.value = Boolean(p.guest);
             bannerVisible.value = true;
         } else {
             // A save only ever resumes today's own board — dailySaveMatches()
@@ -1131,51 +1172,30 @@ function loadArchive() {
     bannerVisible.value = true;
 }
 
-/* A short, Wordle-style recap of this run for the player to paste
-   elsewhere — never anything the server hasn't already told the client
-   (name/blurb, difficulty label, time, hint count), so there's nothing new
-   to validate here. */
+/* The spoiler-free share text (lib/share.js): fire, time, hints and the
+   burn curve, never the map, so posting the daily doesn't give it away. */
 const shareText = computed(() => {
     const g = game.value;
     if (!g) return '';
-    const tierLabel = isDaily.value || isArchive.value
-        ? 'Daily incident'
-        : isCampaign.value
-          ? `Campaign · ${props.levelConfig?.label ?? ''}`.trim()
-          : (props.difficulties[diff.value]?.label ?? 'Endless');
-    const lines = [`Burnfront — ${g.name || 'Unnamed incident'}`, tierLabel];
-
-    if (voided.value) {
-        lines.push('Solved (answer revealed, not scored)');
-    } else if (g.timed) {
-        lines.push(`Contained in ${finalTimeText.value}`);
-        lines.push(
-            hintsUsedThisRun.value === 0
-                ? 'Clean reconstruction — no hints'
-                : `${hintsUsedThisRun.value} hint${hintsUsedThisRun.value === 1 ? '' : 's'} used`
-        );
-    } else {
-        lines.push('Every clue burns on time');
-    }
-
-    if (isCampaign.value && campaignResult.value) {
-        lines.push(`+${campaignResult.value.xpAwarded} XP`);
-        if (campaignResult.value.leveledUp) lines.push(`Leveled up to ${campaignResult.value.level} · ${campaignResult.value.chapterLabel}`);
-    }
-
-    return lines.join('\n');
+    return buildShareText({
+        mode: props.mode,
+        dailyNumber: dailyNumber.value,
+        level: isCampaign.value ? (props.nextFire?.kind === 'campaign' ? props.nextFire.level : null) : null,
+        rows: g.R,
+        cols: g.C,
+        timeText: g.timed ? finalTimeText.value : null,
+        hintsUsed: hintsUsedThisRun.value,
+        revealed: voided.value,
+        times: burnTimes.value,
+    });
 });
 
 const copyFeedback = ref('');
 let copyFeedbackTimer = null;
 
 async function copyReport() {
-    try {
-        await navigator.clipboard.writeText(shareText.value);
-        copyFeedback.value = 'Copied.';
-    } catch (e) {
-        copyFeedback.value = "Couldn't copy.";
-    }
+    const outcome = await shareResult(shareText.value);
+    copyFeedback.value = outcome === 'copied' ? t('share.copied') : outcome === 'shared' ? t('share.shared') : outcome === 'failed' ? t('share.failed') : '';
     clearTimeout(copyFeedbackTimer);
     copyFeedbackTimer = setTimeout(() => {
         copyFeedback.value = '';
@@ -1454,20 +1474,42 @@ if (isDaily.value) {
                 </p>
             </div>
 
+            <!-- Progression: every solve feeds the weekly goal and level. -->
+            <WeeklyProgress v-if="!voided" :progress="serverProgress" :rules="progressRules" />
+
+            <p v-if="guestDailySolved" class="text-center text-[13px] text-ash">
+                {{ t('progress.guestSave') }}
+                <Link href="/register" class="underline">{{ t('progress.guestSaveAction') }}</Link>
+                &middot;
+                <Link href="/login" class="underline">{{ t('progress.guestSignIn') }}</Link>
+            </p>
+
+            <!-- "Next fire" leads every result screen: the push past one solve. -->
             <div class="flex items-center gap-2">
                 <template v-if="isCampaign">
                     <Link href="/campaign" class="bf-btn flex-1 text-center">Case file</Link>
-                    <button type="button" class="bf-btn bf-btn-primary flex-[2]" @click="loadCampaign">Next incident</button>
+                    <button type="button" class="bf-btn bf-btn-primary flex-[2] flex-col" @click="loadCampaign">
+                        <span>{{ t('progress.nextFire') }}</span>
+                        <span v-if="nextFireSub" class="text-[12px] font-normal opacity-75">{{ nextFireSub }}</span>
+                    </button>
                 </template>
                 <button v-else-if="mode === 'endless'" type="button" class="bf-btn bf-btn-primary flex-[2]" @click="newGame(true)">
-                    Next incident
+                    {{ t('progress.nextFire') }}
                 </button>
                 <template v-else-if="isDaily">
-                    <Link href="/" class="bf-btn bf-btn-primary flex-[2] text-center">Incident desk</Link>
+                    <Link
+                        v-if="nextFireTarget"
+                        :href="nextFireTarget.href"
+                        class="bf-btn bf-btn-primary flex-[2] flex-col text-center"
+                    >
+                        <span>{{ t('progress.nextFire') }}</span>
+                        <span v-if="nextFireSub" class="text-[12px] font-normal opacity-75">{{ nextFireSub }}</span>
+                    </Link>
+                    <Link v-else href="/" class="bf-btn bf-btn-primary flex-[2] text-center">Incident desk</Link>
                     <a v-if="leaderboard.length" href="#daily-leaderboard" class="bf-btn flex-1 text-center">Leaderboard</a>
                 </template>
                 <button type="button" class="bf-btn" :class="isCampaign || mode === 'endless' ? 'flex-1' : 'flex-[2]'" @click="copyReport">
-                    Share
+                    {{ t('share.button') }}
                 </button>
             </div>
             <p v-if="copyFeedback" class="text-center text-[12px] text-ash-dim" role="status" aria-live="polite">{{ copyFeedback }}</p>
