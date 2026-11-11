@@ -2,7 +2,9 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { fmtClock } from '@/lib/burnfront-engine';
+import RowArrow from '@/Components/RowArrow.vue';
 import SiteBar from '@/Components/SiteBar.vue';
+import { t } from '@/lib/i18n';
 
 const props = defineProps({
     difficulties: { type: Object, default: () => ({}) },
@@ -13,12 +15,19 @@ const props = defineProps({
     bestTimes: { type: Object, default: () => ({}) }, // signed-in players only: difficulty => {solvedCount, bestTimeMs}
 });
 
-const tierDescriptions = ['Recommended · beginner', 'Standard', 'Advanced', 'Expert', 'Untimed · sparse clues'];
+function name(config, key) {
+    const k = `common.difficulty.${key}`;
+    const v = t(k);
+    return v === k ? config.label : v;
+}
 
-function meta(config, key, index) {
-    const base = `${tierDescriptions[index] ?? 'Field assignment'} · ${config.breaks} firebreaks`;
-    const best = props.bestTimes[key];
-    return best?.bestTimeMs != null ? `${base} · best ${fmtClock(best.bestTimeMs)}` : base;
+function meta(config) {
+    return t(config.timed === false ? 'practice.metaNoClock' : 'practice.meta', { rows: config.rows, cols: config.cols, breaks: config.breaks });
+}
+
+function best(key) {
+    const b = props.bestTimes[key];
+    return b?.bestTimeMs != null ? t('practice.best', { time: fmtClock(b.bestTimeMs) }) : '';
 }
 
 const customOpen = ref(false);
@@ -57,100 +66,87 @@ function clampBreaks() {
 </script>
 
 <template>
-    <Head title="Endless · Burnfront" />
+    <Head :title="t('practice.pageTitle')" />
 
-    <main class="mx-auto flex max-w-[720px] flex-col gap-7 px-4 pt-3 pb-12 sm:pt-5 sm:pb-16">
-        <SiteBar :back="{ href: '/', text: 'Menu' }" />
+    <div class="bf-page is-narrow">
+        <SiteBar :back="{ href: '/', text: t('common.home') }" />
 
-        <header class="flex flex-col gap-2">
-            <h1 class="font-staatliches text-[clamp(40px,9vw,56px)] leading-[0.95] font-normal tracking-[.035em] text-stock">
-                CHOOSE CREW RANK
-            </h1>
-            <p class="max-w-[52ch] text-ash">Pick a tier to generate a fresh incident. Lookout is the recommended first assignment.</p>
-        </header>
+        <main class="flex flex-col gap-4">
+            <header class="bf-page-head pb-1">
+                <p class="bf-eyebrow">{{ t('practice.eyebrow') }}</p>
+                <h1 class="bf-page-title">{{ t('practice.title') }}</h1>
+                <p class="bf-lede">{{ t('practice.lead') }}</p>
+            </header>
 
-        <nav class="flex flex-col gap-3" aria-label="Difficulty tiers">
-            <Link
-                v-for="(config, key, index) in difficulties"
-                :key="key"
-                :href="`/endless/play?difficulty=${key}`"
-                class="bf-row bf-difficulty-row"
-            >
-                <span class="bf-difficulty-index">{{ String(index + 1).padStart(2, '0') }}</span>
-                <span
-                    class="bf-difficulty-grid"
-                    :style="{
-                        backgroundImage:
-                            'linear-gradient(var(--color-rule-2) 1px,transparent 1px),linear-gradient(90deg,var(--color-rule-2) 1px,transparent 1px)',
-                        backgroundSize: `${Math.max(6, Math.floor(36 / config.cols))}px ${Math.max(6, Math.floor(36 / config.rows))}px`,
-                    }"
-                    aria-hidden="true"
-                ></span>
-                <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="text-[18px] leading-tight font-semibold text-stock sm:text-[19px]">{{ config.label }}</span>
-                    <span class="font-mono text-[12px] font-semibold tracking-[.07em] text-ash-dim uppercase tabular-nums">
-                        {{ meta(config, key, index) }}
-                    </span>
-                </span>
-                <span class="bf-difficulty-action"><em>Deploy</em> <b aria-hidden="true">&rarr;</b></span>
-            </Link>
-
-            <div class="bf-row is-dashed flex-col items-stretch gap-3 p-4">
-                <button
-                    type="button"
-                    class="flex min-h-11 cursor-pointer flex-col justify-center gap-1.5 text-left"
-                    :aria-expanded="customOpen"
-                    aria-controls="custom-incident-fields"
-                    @click="customOpen = !customOpen"
+            <nav class="bf-list" :aria-label="t('practice.eyebrow')">
+                <Link
+                    v-for="(config, key) in difficulties"
+                    :key="key"
+                    :href="`/endless/play?difficulty=${key}`"
+                    class="bf-row"
+                    :aria-label="t('practice.start', { name: name(config, key) })"
                 >
-                    <span class="flex items-center justify-between gap-3 text-[19px] leading-none font-semibold text-stock">
-                        Custom incident <b class="font-mono text-ember" aria-hidden="true">{{ customOpen ? '−' : '+' }}</b>
+                    <span
+                        class="bf-size-thumb"
+                        :style="{ gridTemplateColumns: `repeat(${config.cols}, 1fr)`, gridTemplateRows: `repeat(${config.rows}, 1fr)` }"
+                        aria-hidden="true"
+                    >
+                        <i v-for="n in config.rows * config.cols" :key="n"></i>
                     </span>
-                    <span class="text-[13px] text-ash">Set your own grid size and firebreak count.</span>
-                </button>
+                    <span class="bf-row-text">
+                        <span class="bf-row-title">{{ name(config, key) }}</span>
+                        <span class="bf-row-sub tabular-nums">{{ meta(config) }}</span>
+                        <span v-if="best(key)" class="bf-row-sub tabular-nums">{{ best(key) }}</span>
+                    </span>
+                    <RowArrow />
+                </Link>
 
-                <div v-if="customOpen" id="custom-incident-fields" class="flex flex-col gap-3">
-                    <div class="grid grid-cols-3 gap-3">
-                        <label class="flex flex-col gap-1 text-[11px] tracking-[.08em] text-ash-dim uppercase">
-                            Rows
-                            <input
-                                v-model.number="rows"
-                                type="number"
-                                :min="customBounds.minDim"
-                                :max="customBounds.maxDim"
-                                class="bf-input bf-input-compact font-mono tabular-nums"
-                            />
-                        </label>
-                        <label class="flex flex-col gap-1 text-[11px] tracking-[.08em] text-ash-dim uppercase">
-                            Cols
-                            <input
-                                v-model.number="cols"
-                                type="number"
-                                :min="customBounds.minDim"
-                                :max="customBounds.maxDim"
-                                class="bf-input bf-input-compact font-mono tabular-nums"
-                            />
-                        </label>
-                        <label class="flex flex-col gap-1 text-[11px] tracking-[.08em] text-ash-dim uppercase">
-                            Breaks
-                            <input
-                                v-model.number="breaks"
-                                type="number"
-                                :min="customBounds.minBreaks"
-                                :max="maxBreaks"
-                                class="bf-input bf-input-compact font-mono tabular-nums"
-                                @change="clampBreaks"
-                            />
-                        </label>
+                <div class="bf-row is-dashed flex-col items-stretch gap-3">
+                    <button
+                        type="button"
+                        class="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-0 bg-transparent p-0 text-left text-ink"
+                        :aria-expanded="customOpen"
+                        aria-controls="custom-size-fields"
+                        @click="customOpen = !customOpen"
+                    >
+                        <span class="bf-row-text">
+                            <span class="bf-row-title">{{ t('practice.custom.title') }}</span>
+                            <span class="bf-row-sub">{{ t('practice.custom.help') }}</span>
+                        </span>
+                        <span class="bf-mono-label text-[20px]" aria-hidden="true">{{ customOpen ? '−' : '+' }}</span>
+                    </button>
+
+                    <div v-if="customOpen" id="custom-size-fields" class="flex flex-col gap-3">
+                        <div class="grid grid-cols-3 gap-3">
+                            <label class="bf-number-field">
+                                {{ t('practice.custom.rows') }}
+                                <input v-model.number="rows" type="number" inputmode="numeric" :min="customBounds.minDim" :max="customBounds.maxDim" class="bf-input tabular-nums" />
+                            </label>
+                            <label class="bf-number-field">
+                                {{ t('practice.custom.cols') }}
+                                <input v-model.number="cols" type="number" inputmode="numeric" :min="customBounds.minDim" :max="customBounds.maxDim" class="bf-input tabular-nums" />
+                            </label>
+                            <label class="bf-number-field">
+                                {{ t('practice.custom.breaks') }}
+                                <input
+                                    v-model.number="breaks"
+                                    type="number"
+                                    inputmode="numeric"
+                                    :min="customBounds.minBreaks"
+                                    :max="maxBreaks"
+                                    class="bf-input tabular-nums"
+                                    @change="clampBreaks"
+                                />
+                            </label>
+                        </div>
+                        <p class="bf-row-sub m-0">
+                            {{ t('practice.custom.limits', { min: customBounds.minDim, max: customBounds.maxDim, maxBreaks }) }}
+                        </p>
+                        <Link v-if="customValid" :href="customHref" class="bf-btn bf-btn-primary w-full sm:w-auto sm:self-start">{{ t('practice.custom.start') }}</Link>
+                        <button v-else type="button" class="bf-btn bf-btn-primary w-full sm:w-auto sm:self-start" disabled>{{ t('practice.custom.start') }}</button>
                     </div>
-                    <p class="text-[11px] text-ash-dim">
-                        {{ customBounds.minDim }}–{{ customBounds.maxDim }} per side · up to {{ maxBreaks }} firebreaks
-                        for this grid.
-                    </p>
-                    <Link v-if="customValid" :href="customHref" class="bf-btn bf-btn-primary self-start">Start custom incident</Link>
-                    <button v-else type="button" class="bf-btn bf-btn-primary self-start" disabled>Start custom incident</button>
                 </div>
-            </div>
-        </nav>
-    </main>
+            </nav>
+        </main>
+    </div>
 </template>

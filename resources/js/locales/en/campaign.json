@@ -1,0 +1,19 @@
+{
+    "pageTitle": "Campaign · Burnfront",
+    "eyebrow": "Campaign",
+    "title": "20 fires, a little harder each time",
+    "lead": "Play them in order. Each fire you put out opens the next one.",
+    "progress": "{done} of {total} fires done",
+    "allDone": "You have done every fire in the campaign. Well done.",
+    "level": "Level {level} · {xp} of {next} points to level {nextLevel}",
+    "levelMax": "Level {level}, the top level",
+    "partDone": "Done",
+    "partNow": "Playing now",
+    "partLater": "Not open yet",
+    "fire": "Fire {n}",
+    "fireDone": "Fire {n}, done",
+    "fireNow": "Fire {n}, play it now",
+    "fireLocked": "Fire {n}, not open yet",
+    "play": "Play",
+    "playNext": "Play fire {n}"
+}

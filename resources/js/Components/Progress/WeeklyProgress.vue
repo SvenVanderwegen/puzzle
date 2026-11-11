@@ -1,7 +1,7 @@
 <script setup>
 /* Weekly goal (N squares) and level bar. Every solved fire feeds both,
-   whatever the mode. Styling is deliberately minimal (bf-progress-* hooks)
-   so the visual redesign can restyle it without touching the logic. */
+   whatever the mode. Uses the Progressiekaart tokens: the level bar is the
+   shared .bf-progress bar, filled squares take the start of the heat ramp. */
 import { computed, onMounted, ref } from 'vue';
 import { t } from '@/lib/i18n';
 import { resolveProgress } from '@/lib/progress';
@@ -30,8 +30,8 @@ const levelPct = computed(() => {
 </script>
 
 <template>
-    <section v-if="p" class="bf-progress grid grid-cols-2 gap-4">
-        <div class="bf-progress-week flex flex-col gap-1.5" :aria-label="t('progress.weekAria', { done, goal })">
+    <section v-if="p" class="bf-card bf-weekly grid grid-cols-2 gap-4">
+        <div class="bf-weekly-goal flex flex-col gap-1.5" :aria-label="t('progress.weekAria', { done, goal })">
             <span class="text-sm">
                 <b class="font-semibold">{{ t('progress.weekTitle') }}</b>
                 &middot;
@@ -41,21 +41,19 @@ const levelPct = computed(() => {
                 <span
                     v-for="(filled, i) in squares"
                     :key="i"
-                    class="bf-progress-square h-[22px] w-[22px] rounded-[3px]"
+                    class="bf-weekly-square h-[22px] w-[22px] rounded-[3px]"
                     :class="{ 'is-filled': filled }"
-                    :style="filled ? { background: 'var(--bf-progress-fill, #ff9a1f)' } : { boxShadow: 'inset 0 0 0 1.5px var(--bf-progress-empty, #b9b9b2)' }"
+                    :style="filled ? { background: '#ff9a1f' } : { boxShadow: 'inset 0 0 0 1.5px var(--bf-line-strong)' }"
                 ></span>
             </span>
         </div>
-        <div class="bf-progress-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { level: p.level, toGo: p.toGo })">
+        <div class="bf-weekly-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { level: p.level, toGo: p.toGo })">
             <span class="text-sm">
                 <b class="font-semibold">{{ t('progress.levelTitle', { level: p.level }) }}</b>
                 &middot;
                 {{ t('progress.levelToGo', { toGo: p.toGo }) }}
             </span>
-            <span class="bf-progress-bar block h-[22px] overflow-hidden rounded-[3px]" style="background: var(--bf-progress-track, #e4e4df)" aria-hidden="true">
-                <span class="block h-full" :style="{ width: levelPct + '%', background: 'var(--bf-progress-fill, #ff9a1f)' }"></span>
-            </span>
+            <span class="bf-progress mt-2" aria-hidden="true"><span :style="{ width: levelPct + '%' }"></span></span>
         </div>
     </section>
 </template>
