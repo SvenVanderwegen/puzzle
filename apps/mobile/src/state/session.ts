@@ -68,9 +68,11 @@ function apply(cell: number, mark: Mark, isHint: boolean): MoveOutcome {
     runningSince: s.runningSince || now,
   };
   if (solvedTimes(s.fire.puzzle, marks)) {
+    // Measure while the session still counts as unsolved: elapsed() returns
+    // finalMs for a solved one.
+    next.finalMs = elapsed(next, now);
     next.solved = true;
     next.solvedAt = now;
-    next.finalMs = elapsed(next, now);
     next.runningSince = 0;
     sessionStore.set(next);
     recordWin(s.fire, { ms: next.finalMs, hints: next.hints });

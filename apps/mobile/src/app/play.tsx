@@ -67,6 +67,8 @@ export default function Play() {
     resolveFire({ kind: params.kind, n: params.n, size: params.size }).then((fire) => {
       if (!live) return;
       startFire(fire);
+      // Reopening an unfinished fire: leaving the screen paused its clock.
+      resumeClock();
       // A daily fire already contained today opens on its result, without the sheet popping up.
       shownResult.current = sessionStore.get().solved;
       setReadyFor(route);
