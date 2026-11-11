@@ -1,69 +1,94 @@
 <script setup>
+/* How to play (/how-to): the rules on one calm page, for a player who wants
+   to read them back. Learning by doing is the lesson's job (/learn), so this
+   page points there first and keeps the same words. The picture is the
+   lesson's own board, solved. */
 import { Head, Link } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import HowItWorksDemo from './HowItWorksDemo.vue';
+import { computed } from 'vue';
 import SiteBar from '@/Components/SiteBar.vue';
-import FlameGlyph from '@/Components/FlameGlyph.vue';
-import { completeOnboarding, hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
 import { t } from '@/lib/i18n';
+import { heatCell } from '@/lib/heat';
+import { isDark } from '@/lib/theme';
+import { LESSON, burn, emptyMarks } from '@/lib/burnfront-lesson';
 
-const trainingComplete = ref(hasCompletedOnboarding());
+const FIRST_FIRE_HREF = '/endless/play?difficulty=lookout';
 
-function finishTraining() {
-    completeOnboarding();
-    trainingComplete.value = true;
-}
+const picture = computed(() => {
+    const marks = emptyMarks();
+    marks[9] = 1;
+    marks[13] = 1;
+    return burn(marks).map((d, i) => {
+        if (d < 0) return { i, kind: 'break', label: '' };
+        const colours = heatCell(d, LESSON.maxMinute, isDark.value);
+        if (d === 0) return { i, kind: 'spark', label: '', ...colours };
+        return { i, kind: LESSON.clues[i] != null ? 'clue' : 'burnt', label: String(d), ...colours };
+    });
+});
+
+const rules = ['spark', 'spread', 'number', 'breaks', 'burn'];
+const taps = ['once', 'twice', 'thrice', 'check', 'help'];
+const tips = ['count', 'neighbours', 'closedIn', 'colours', 'noHurry'];
 </script>
 
 <template>
-    <Head title="How Burnfront works" />
+    <Head :title="t('howto.pageTitle')" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-3 pb-12 sm:pt-5 sm:pb-16">
-        <SiteBar :back="{ href: '/', text: 'Menu' }" />
+    <div class="bf-page is-narrow">
+        <SiteBar :back="{ href: '/', text: t('common.home') }" />
 
-        <section class="flex flex-col gap-4" aria-label="How Burnfront works">
-            <div class="flex flex-col gap-1.5">
-                <p class="bf-eyebrow">First deployment · Guided training</p>
-                <h1 class="font-staatliches text-[clamp(40px,9vw,56px)] leading-[0.95] font-normal tracking-[.035em] text-stock">
-                    FIELD BRIEFING
-                </h1>
-                <p class="max-w-[56ch] text-[14px] leading-[1.5] text-ash">
-                    Work through five short steps at your own pace, then reinforce them on the easiest live board.
-                </p>
-                <Link href="/learn" class="bf-btn bf-btn-primary self-start">{{ t('lesson.howtoLink') }}</Link>
-            </div>
-            <div>
-                <HowItWorksDemo @complete="finishTraining" />
-            </div>
-            <details class="bf-reference-manual">
-                <summary>Open reference manual <span>Detailed rules</span></summary>
-                <div class="bf-rulecols">
-                    <div class="flex flex-col gap-2.5 bf-rulecol">
-                        <h3>The rules</h3>
-                        <ol>
-                            <li><strong>Shade exactly N firebreaks.</strong> The counter above the board sets N. The <FlameGlyph class="inline h-[1em] w-[.75em]" /><span class="sr-only">flame</span> and the numbered cells are never breaks.</li>
-                            <li><strong>Fire spreads one cell per minute.</strong> It starts on the <FlameGlyph class="inline h-[1em] w-[.75em]" /><span class="sr-only">flame</span> at minute 0 and moves up, down, left and right — never diagonally, never through a break.</li>
-                            <li><strong>Everything else burns.</strong> Every cell that isn&rsquo;t a firebreak must be reached by the fire eventually. No safe pockets.</li>
-                            <li><strong>Numbers are exact arrival times.</strong> A cell marked 5 caught fire at minute 5 — not before, not after.</li>
-                        </ol>
-                    </div>
-                    <div class="flex flex-col gap-2.5 bf-rulecol">
-                        <h3>Reading the numbers</h3>
-                        <ul>
-                            <li>A cell&rsquo;s minute is the length of the fire&rsquo;s <strong>shortest open route</strong> from the <FlameGlyph class="inline h-[1em] w-[.75em]" /><span class="sr-only">flame</span> — never less than the straight-line distance.</li>
-                            <li><strong>Bigger than the distance? Something is in the way.</strong> A 5 sitting 3 steps from the <FlameGlyph class="inline h-[1em] w-[.75em]" /><span class="sr-only">flame</span> proves every shorter route is blocked. That is how numbers reveal breaks.</li>
-                            <li>Neighboring burnt cells differ by at most 1, and a cell burning at minute t caught it from a neighbor that burned at t&minus;1 — wavefronts, not teleports.</li>
-                            <li><strong>Every break earns its place:</strong> open it, and the fire would reach some number too early. None hides in a corner justified by counting alone.</li>
-                            <li>Tap cycles firebreak &rarr; dot &rarr; empty. The dot is your own note for &ldquo;proven open&rdquo; — it isn&rsquo;t checked. The moment your Nth break lands, the board checks itself.</li>
-                        </ul>
-                    </div>
+        <main class="bf-howto">
+            <header class="bf-page-head pb-1">
+                <p class="bf-eyebrow">{{ t('howto.eyebrow') }}</p>
+                <h1 class="bf-page-title">{{ t('howto.title') }}</h1>
+                <p class="bf-lede">{{ t('howto.lead') }}</p>
+            </header>
+
+            <section class="bf-card bf-howto-lesson" aria-labelledby="bf-howto-lesson">
+                <div class="bf-howto-picture" role="img" :aria-label="t('howto.pictureLabel')">
+                    <span
+                        v-for="cell in picture"
+                        :key="cell.i"
+                        :class="`is-${cell.kind}`"
+                        :style="cell.bg ? { background: cell.bg, color: cell.fg } : null"
+                    >
+                        <svg v-if="cell.kind === 'spark'" aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="M12 1.5 14.6 9.4 22.5 12 14.6 14.6 12 22.5 9.4 14.6 1.5 12 9.4 9.4Z" />
+                        </svg>
+                        <template v-else>{{ cell.label }}</template>
+                    </span>
                 </div>
-            </details>
-        </section>
+                <div class="bf-howto-lesson-copy">
+                    <h2 id="bf-howto-lesson">{{ t('howto.lesson.title') }}</h2>
+                    <p>{{ t('howto.lesson.body') }}</p>
+                    <Link href="/learn" class="bf-btn bf-btn-primary">{{ t('howto.lesson.start') }}</Link>
+                </div>
+            </section>
 
-        <footer class="flex flex-wrap gap-2.5">
-            <Link href="/endless/play?difficulty=lookout" class="bf-btn bf-btn-primary">{{ trainingComplete ? 'Start practice case' : 'Skip to practice' }}</Link>
-            <Link href="/" class="bf-btn">Back to menu</Link>
-        </footer>
-    </main>
+            <section class="bf-howto-block" aria-labelledby="bf-howto-rules">
+                <h2 id="bf-howto-rules">{{ t('howto.rules.title') }}</h2>
+                <ol class="bf-howto-steps">
+                    <li v-for="key in rules" :key="key">{{ t(`howto.rules.${key}`) }}</li>
+                </ol>
+            </section>
+
+            <section class="bf-howto-block" aria-labelledby="bf-howto-tap">
+                <h2 id="bf-howto-tap">{{ t('howto.tap.title') }}</h2>
+                <ul class="bf-howto-list">
+                    <li v-for="key in taps" :key="key">{{ t(`howto.tap.${key}`) }}</li>
+                </ul>
+            </section>
+
+            <section class="bf-howto-block" aria-labelledby="bf-howto-tips">
+                <h2 id="bf-howto-tips">{{ t('howto.tips.title') }}</h2>
+                <ul class="bf-howto-list">
+                    <li v-for="key in tips" :key="key">{{ t(`howto.tips.${key}`) }}</li>
+                </ul>
+            </section>
+
+            <footer class="bf-howto-actions">
+                <Link :href="FIRST_FIRE_HREF" class="bf-btn bf-btn-primary">{{ t('howto.play') }}</Link>
+                <Link href="/endless" class="bf-btn">{{ t('howto.practice') }}</Link>
+            </footer>
+        </main>
+    </div>
 </template>
