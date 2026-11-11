@@ -275,7 +275,7 @@ function puzzlePage(p) {
     <div class="pboard">${board(p, { cell, gap: 4 })}</div>
     <div class="pfoot">
       <span class="shade">Shade ${p.breaks} firebreaks</span>
-      ${boxes(p.breaks, p.breaks > 11 ? 14 : 20)}
+      ${boxes(p.breaks, Math.min(20, Math.floor((CONTENT - 180) / p.breaks) - 5))}
     </div>`,
     { footer: `Answer on page ${answerPageOf(p.n)}` },
   );
@@ -343,6 +343,7 @@ footer .where { color: #55585E; min-width: 120px; text-align: right; }
 .c.key.worked { font-size: 17px; }
 .c.key u { width: 8px; height: 8px; border-radius: 4px; background: #16181B; }
 .boxes { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+.pfoot .boxes { flex-wrap: nowrap; }
 .boxes b { box-shadow: inset 0 0 0 1.5px #16181B; border-radius: 2px; }
 .shade { display: flex; align-items: center; gap: 10px; flex-shrink: 0; white-space: nowrap; font-size: 16px; font-weight: 600; }
 
