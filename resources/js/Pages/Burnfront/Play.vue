@@ -4,11 +4,13 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { bfs, buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
 import LoadingVeil from './LoadingVeil.vue';
 import FlameGlyph from '@/Components/FlameGlyph.vue';
+import SoundToggle from '@/Components/SoundToggle.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
 import { burnCurve, heatCell, heatColor } from '@/lib/heat';
 import { t } from '@/lib/i18n';
 import { isDark } from '@/lib/theme';
+import { play } from '@/lib/sound';
 import { recordLocalSolve, rememberGuestDaily } from '@/lib/progress';
 import { buildShareText, shareResult } from '@/lib/share';
 import { nextFireDetail } from '@/lib/next-fire';
@@ -505,7 +507,13 @@ function tap(i, dir) {
     undoStack.push([[i, prev, prevHintSafe]]);
     moveLog.push({ t: Date.now() - startAt, type: 'mark', cell: i, prev, value: marks.value[i], prevHintSafe });
     persistProgress();
-    maybeFinish(prev !== 1 && marks.value[i] === 1);
+    const outcome = maybeFinish(prev !== 1 && marks.value[i] === 1);
+    /* one sound per tap: the move itself, or "not right yet" when this tap
+       used up (or overran) the firebreaks without containing the fire;
+       a win plays the fire running instead (see win()) */
+    if (outcome === 'won') return;
+    if (outcome === 'wrong' || (marks.value[i] === 1 && placedCount.value > game.value.N)) play('wrong');
+    else play(['clear', 'place', 'dot'][marks.value[i]]);
 }
 
 /* Roving tabindex for the board: exactly one cell is a tab stop at a time,
@@ -605,6 +613,7 @@ function undo() {
         restores: entry.map(([i, prev, prevHintSafe]) => [i, prev, prevHintSafe]),
     });
     persistProgress();
+    play('clear');
 }
 
 function reset() {
@@ -623,21 +632,28 @@ function reset() {
     if (entry.length) {
         undoStack.push(entry);
         moveLog.push({ t: Date.now() - startAt, type: 'reset', cleared: entry });
+        play('clear');
     }
     persistProgress();
 }
 
+/* Returns 'won' when this board is now solved, 'wrong' when the last
+   firebreak just went down without containing the fire, else null. */
 function maybeFinish(justCompleted) {
     const g = game.value;
-    if (placedCount.value !== g.N) return;
+    if (placedCount.value !== g.N) return null;
     const breaks = new Uint8Array(marks.value.length);
     for (let i = 0; i < marks.value.length; i++) breaks[i] = marks.value[i] === 1 ? 1 : 0;
     const d = validate(g.n, g.adj, g.spark, g.clueIdx, g.clueVal, g.N, breaks);
     if (d) {
         win(d);
-    } else if (justCompleted) {
-        showStatus(t('play.msg.fullWrong', { count: g.N }));
+        return 'won';
     }
+    if (justCompleted) {
+        showStatus(t('play.msg.fullWrong', { count: g.N }));
+        return 'wrong';
+    }
+    return null;
 }
 
 function win(times) {
@@ -648,6 +664,7 @@ function win(times) {
     clearWrongCells();
     stopClock();
     boardDone.value = true;
+    play('burn'); /* the fire runs through the board, then the chord when the result shows */
     burnTimes.value = Array.from(times); /* the solved fire, for the burn curve and the minute numbers */
     let maxT = 0;
     for (let i = 0; i < times.length; i++) if (times[i] > maxT) maxT = times[i];
@@ -672,6 +689,7 @@ function win(times) {
         finalTimeText.value = fmtClock(Date.now() - startAt);
         justSolved.value = true;
         bannerVisible.value = true;
+        play('solved');
     }, total);
 
     const shaded = [];
@@ -1142,9 +1160,11 @@ async function requestHint() {
             undoStack.push([[cell, prev, prevHintSafe]]);
             moveLog.push({ t: Date.now() - startAt, type: 'hint', cell, prev, value: 1, prevHintSafe });
             persistProgress();
-            maybeFinish(prev !== 1);
+            const outcome = maybeFinish(prev !== 1);
+            if (outcome !== 'won') play(outcome === 'wrong' ? 'wrong' : 'hint');
         } else if (data.status === 'contradiction') {
             for (const cell of data.wrong ?? []) wrongCells.value[cell] = true;
+            play('wrong');
         }
     } catch (e) {
         if (token === genToken && version === marksVersion) showStatus(t('common.networkError'));
@@ -1323,10 +1343,11 @@ if (isDaily.value) {
                     </svg>
                 </Link>
                 <span class="bf-play-mode bf-mono-label">{{ modeLabel }}</span>
-                <span class="flex items-center gap-1">
+                <span class="bf-play-head-end">
                     <span v-if="game && game.timed" class="bf-play-clock" role="timer" :aria-label="t('play.clockLabel')">{{
                         boardDone ? finalTimeText : clockText
                     }}</span>
+                    <SoundToggle />
                     <ThemeToggle />
                 </span>
             </header>

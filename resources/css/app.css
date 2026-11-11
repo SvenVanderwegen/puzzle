@@ -1291,8 +1291,14 @@
         gap: 8px;
         min-height: 56px;
     }
-    .bf-play-head .bf-icon-btn {
+    .bf-play-head > .bf-icon-btn {
         margin-left: -10px;
+    }
+    /* sound and light/dark switches: tap areas side by side, glyph flush right */
+    .bf-play-head-end {
+        display: flex;
+        align-items: center;
+        margin-right: -10px;
     }
     .bf-play-mode {
         overflow: hidden;

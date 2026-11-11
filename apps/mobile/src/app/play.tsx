@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Board } from '@/components/Board';
 import { feel, tick } from '@/components/haptics';
+import { playSound, preloadSounds } from '@/components/sounds';
 import { Legend, Pips } from '@/components/Meters';
 import { CAMPAIGN, QUICK_SIZES, type BoardSize } from '@/config';
 import { countBreaks, lastMinute, message, wrongClues } from '@/engine/game';
@@ -78,6 +79,8 @@ export default function Play() {
     };
   }, [route, params.kind, params.n, params.size]);
 
+  useEffect(preloadSounds, []);
+
   // Pause the clock while the app is in the background.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => (state === 'active' ? resumeClock() : pauseClock()));
@@ -135,11 +138,21 @@ export default function Play() {
   // Room for three lines at the player's text size, so the board never jumps.
   const messageHeight = Math.ceil(3 * 22 * Math.min(PixelRatio.getFontScale(), 2));
 
+  // The burn replay shows one minute every 130 ms (see `reveal` above).
+  const burnMs = (last + 1) * 130;
+
   const confirmReset = () => {
     tick();
     Alert.alert(t('play.resetConfirm'), undefined, [
       { text: t('play.cancel'), style: 'cancel' },
-      { text: t('play.resetYes'), style: 'destructive', onPress: resetFire },
+      {
+        text: t('play.resetYes'),
+        style: 'destructive',
+        onPress: () => {
+          playSound('clear');
+          resetFire();
+        },
+      },
     ]);
   };
 
@@ -184,7 +197,7 @@ export default function Play() {
           times={session.solved ? p.times : undefined}
           reveal={reveal}
           lastMinute={last}
-          onTap={session.solved ? undefined : (cell) => feel(tapCell(cell))}
+          onTap={session.solved ? undefined : (cell) => feel(tapCell(cell), { burnMs })}
         />
 
         <Legend last={last} />
@@ -207,10 +220,11 @@ export default function Play() {
               disabled={!session.undo.length}
               onPress={() => {
                 tick();
+                playSound('clear');
                 undoMove();
               }}
             />
-            <ToolButton icon="lightbulb" label={t('play.hint')} onPress={() => feel(applyHint())} />
+            <ToolButton icon="lightbulb" label={t('play.hint')} onPress={() => feel(applyHint(), { burnMs, hint: true })} />
             <ToolButton icon="arrow.counterclockwise" label={t('play.reset')} disabled={!session.undo.length} onPress={confirmReset} />
           </>
         )}

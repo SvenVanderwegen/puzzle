@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import SiteBar from '@/Components/SiteBar.vue';
 import { t } from '@/lib/i18n';
 import { setTheme, themeChoice } from '@/lib/theme';
+import { setSound, soundOn } from '@/lib/sound';
 
 const themes = ['system', 'light', 'dark'];
 const themeLabel = { system: 'themeSystem', light: 'themeLight', dark: 'themeDark' };
@@ -63,6 +64,15 @@ function submitPassword() {
                 >
                     {{ t('account.settingsPage.' + themeLabel[c]) }}
                 </button>
+            </div>
+        </section>
+
+        <section class="bf-settings-panel" aria-labelledby="sound-title">
+            <h2 id="sound-title" class="bf-settings-title">{{ t('sound.title') }}</h2>
+            <p class="bf-row-sub -mt-3">{{ t('sound.help') }}</p>
+            <div class="bf-segmented" role="group" :aria-label="t('sound.title')">
+                <button type="button" :aria-pressed="soundOn ? 'true' : 'false'" @click="setSound(true)">{{ t('sound.choiceOn') }}</button>
+                <button type="button" :aria-pressed="soundOn ? 'false' : 'true'" @click="setSound(false)">{{ t('sound.choiceOff') }}</button>
             </div>
         </section>
 

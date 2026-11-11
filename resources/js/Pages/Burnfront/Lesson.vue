@@ -9,6 +9,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { t } from '@/lib/i18n';
 import { heatCell, INK } from '@/lib/heat';
 import { completeOnboarding } from '@/lib/burnfront-onboarding';
+import { play } from '@/lib/sound';
 import {
     LESSON,
     advance,
@@ -70,7 +71,11 @@ const minutesShown = computed(() => {
 
 function onTap(i) {
     const next = tapResult(state.value, i);
-    if (next) setState(next);
+    if (!next) return;
+    if (next.full) play('wrong');
+    else if (next.phase === 5) play('solved');
+    else play(next.marks[i] === 1 ? 'place' : 'clear');
+    setState(next);
 }
 
 function onAdvance() {
