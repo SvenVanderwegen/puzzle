@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View, type PressableProps, type StyleProp,
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import type { ReactNode } from 'react';
 
-import { brandFont, usePalette } from '@/theme';
+import { brandFont, heat, usePalette } from '@/theme';
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const pal = usePalette();
@@ -53,12 +53,31 @@ export function Body({ children, muted }: { children: ReactNode; muted?: boolean
   return <Text style={[styles.body, { color: muted ? pal.muted : pal.ink }]}>{children}</Text>;
 }
 
+/**
+ * An SF Symbol on a square tile in one step of the heat ramp (0..1), the
+ * same shape as a board cell. Always placed next to a text label, so it is
+ * hidden from VoiceOver.
+ */
+export function IconTile({ name, step, size = 44 }: { name: SFSymbol; step: number; size?: number }) {
+  const pal = usePalette();
+  const c = heat(step, 1, pal.dark);
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.tile, { width: size, height: size, backgroundColor: c.bg }]}>
+      <SymbolView name={name} size={Math.round(size * 0.5)} tintColor={c.fg} weight="semibold" />
+    </View>
+  );
+}
+
 export function Chevron() {
   const pal = usePalette();
   return <SymbolView name="chevron.right" size={14} tintColor={pal.muted} weight="semibold" />;
 }
 
 const styles = StyleSheet.create({
+  tile: { borderRadius: 10, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
   card: { borderRadius: 24, padding: 14, gap: 12, borderCurve: 'continuous' },
   button: {
     minHeight: 50,

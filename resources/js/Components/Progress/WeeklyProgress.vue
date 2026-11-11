@@ -5,6 +5,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { t } from '@/lib/i18n';
 import { resolveProgress } from '@/lib/progress';
+import HomeIcon from '@/Components/HomeIcon.vue';
 
 const props = defineProps({
     progress: { type: Object, default: null }, // server progress, null for a guest
@@ -32,7 +33,8 @@ const levelPct = computed(() => {
 <template>
     <section v-if="p" class="bf-card bf-weekly grid grid-cols-2 gap-4">
         <div class="bf-weekly-goal flex flex-col gap-1.5" :aria-label="t('progress.weekAria', { done, goal })">
-            <span class="text-sm">
+            <span class="flex items-center gap-1.5 text-sm">
+                <HomeIcon name="week" :tile="false" />
                 <b class="font-semibold">{{ t('progress.weekTitle') }}</b>
                 &middot;
                 {{ done >= goal ? t('progress.weekDone') : t('progress.weekCount', { done, goal }) }}
@@ -48,7 +50,8 @@ const levelPct = computed(() => {
             </span>
         </div>
         <div class="bf-weekly-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { level: p.level, toGo: p.toGo })">
-            <span class="text-sm">
+            <span class="flex items-center gap-1.5 text-sm">
+                <HomeIcon name="level" :tile="false" />
                 <b class="font-semibold">{{ t('progress.levelTitle', { level: p.level }) }}</b>
                 &middot;
                 {{ t('progress.levelToGo', { toGo: p.toGo }) }}

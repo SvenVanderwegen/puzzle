@@ -16,6 +16,7 @@ import { heatCell } from '@/lib/heat';
 import { t } from '@/lib/i18n';
 import SiteBar from '@/Components/SiteBar.vue';
 import MiniBoard from '@/Components/MiniBoard.vue';
+import HomeIcon from '@/Components/HomeIcon.vue';
 import FirstRunBriefing from '@/Components/FirstRunBriefing.vue';
 import { hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
 import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
@@ -144,6 +145,10 @@ const quick = computed(
         ],
 );
 
+/* Icon tiles take a heat step in page order: yellow near the top, violet
+   at the bottom, like a fire burning down the page. */
+const ICON_STEP = { campaign: 0.14, quick: 0.3, practice: 0.5, learn: 0.64, history: 0.8, games: 0.94 };
+
 const rules = [
     { key: 'one', ...heatCell(0, 1) },
     { key: 'two', ...heatCell(0.28, 1) },
@@ -186,6 +191,7 @@ const rules = [
                 </section>
 
                 <Link :href="campaign.mapHref" class="bf-row" :aria-label="t('home.campaign.open')">
+                    <HomeIcon name="campaign" :step="ICON_STEP.campaign" />
                     <span class="flex min-w-0 flex-1 flex-col gap-1">
                         <span class="bf-eyebrow">{{ currentUser ? t('home.campaign.eyebrow', { done: campaign.done, total: campaign.total }) : t('home.campaign.eyebrowGuest') }}</span>
                         <span class="bf-home-section-title">
@@ -254,9 +260,12 @@ const rules = [
 
             <!-- ============ Quick fire: a fresh fire at once ============ -->
             <section class="bf-card flex flex-col gap-2.5" aria-labelledby="quick-title">
-                <div class="flex flex-col">
-                    <h2 id="quick-title" class="bf-home-section-title m-0">{{ t('home.quick.title') }}</h2>
-                    <p class="bf-home-sub m-0">{{ t('home.quick.help') }}</p>
+                <div class="flex items-center gap-3.5">
+                    <HomeIcon name="quick" :step="ICON_STEP.quick" />
+                    <div class="flex min-w-0 flex-col">
+                        <h2 id="quick-title" class="bf-home-section-title m-0">{{ t('home.quick.title') }}</h2>
+                        <p class="bf-home-sub m-0">{{ t('home.quick.help') }}</p>
+                    </div>
                 </div>
                 <div class="bf-quick">
                     <Link v-for="q in quick" :key="q.difficulty ?? q.key" :href="q.href" class="bf-btn bf-btn-soft">
@@ -268,14 +277,16 @@ const rules = [
             <!-- progression: weekly goal and level -->
             <WeeklyProgress :progress="progress" :rules="progressRules" />
 
-            <nav class="bf-home-more" aria-label="More ways to play">
+            <nav class="bf-home-more" :aria-label="t('home.more.label')">
                 <Link href="/endless" class="bf-row">
+                    <HomeIcon name="practice" :step="ICON_STEP.practice" />
                     <span class="flex min-w-0 flex-col">
                         <span class="bf-home-section-title">{{ t('home.more.practice') }}</span>
                         <span class="bf-home-sub">{{ t('home.more.practiceHelp') }}</span>
                     </span>
                 </Link>
                 <Link href="/how-to" class="bf-row">
+                    <HomeIcon name="learn" :step="ICON_STEP.learn" />
                     <span class="flex min-w-0 flex-col">
                         <span class="bf-home-section-title">{{ t('home.more.learn') }}</span>
                         <span class="bf-home-sub">{{ t('home.more.learnHelp') }}</span>
@@ -283,12 +294,14 @@ const rules = [
                 </Link>
                 <template v-if="currentUser">
                     <Link href="/daily/history" class="bf-row">
+                        <HomeIcon name="history" :step="ICON_STEP.history" />
                         <span class="flex min-w-0 flex-col">
                             <span class="bf-home-section-title">{{ t('home.more.history') }}</span>
                             <span class="bf-home-sub">{{ t('home.more.historyHelp') }}</span>
                         </span>
                     </Link>
                     <Link href="/game/history" class="bf-row">
+                        <HomeIcon name="games" :step="ICON_STEP.games" />
                         <span class="flex min-w-0 flex-col">
                             <span class="bf-home-section-title">{{ t('home.more.games') }}</span>
                             <span class="bf-home-sub">{{ t('home.more.gamesHelp') }}</span>

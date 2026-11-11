@@ -9,7 +9,8 @@ import { useTranslation } from 'react-i18next';
 
 import { Board } from '@/components/Board';
 import { HeatBar } from '@/components/Meters';
-import { Body, Button, Card, Eyebrow, FireTitle } from '@/components/ui';
+import { SymbolView } from 'expo-symbols';
+import { Body, Button, Card, Eyebrow, FireTitle, IconTile } from '@/components/ui';
 import { playCampaign, playDaily, playQuick } from '@/components/nav';
 import { shareResult } from '@/components/share';
 import { useNow } from '@/components/useNow';
@@ -23,6 +24,9 @@ import { useSettings } from '@/state/settings';
 import { heat, usePalette } from '@/theme';
 
 const HOME_SIZES: BoardSize[] = [5, 6, 8];
+
+/** Icon tiles take a heat step in page order, yellow near the top (same as the website). */
+const ICON_STEP = { campaign: 0.14, quick: 0.3 };
 
 export default function Today() {
   const { t } = useTranslation();
@@ -94,9 +98,12 @@ export default function Today() {
       {!result && <CampaignRow />}
 
       <Card>
-        <View>
-          <Text style={[styles.cardTitle, { color: pal.ink }]}>{t('today.quickTitle')}</Text>
-          <Body muted>{t('today.quickBody')}</Body>
+        <View style={styles.titleRow}>
+          <IconTile name="bolt.fill" step={ICON_STEP.quick} />
+          <View style={styles.heroText}>
+            <Text style={[styles.cardTitle, { color: pal.ink }]}>{t('today.quickTitle')}</Text>
+            <Body muted>{t('today.quickBody')}</Body>
+          </View>
         </View>
         <View style={styles.sizes}>
           {HOME_SIZES.map((size) => (
@@ -179,6 +186,7 @@ function CampaignRow() {
       accessibilityRole="button"
       onPress={() => (n ? playCampaign(n) : router.navigate('/campaign'))}
       style={({ pressed }) => [styles.campaignRow, { backgroundColor: pal.surface, opacity: pressed ? 0.8 : 1 }]}>
+      <IconTile name="flag.fill" step={ICON_STEP.campaign} />
       <View style={styles.heroText}>
         <Eyebrow>{t('today.campaignRow', { done, total: CAMPAIGN_SIZE })}</Eyebrow>
         <Text style={[styles.cardTitle, { color: pal.ink }]}>
@@ -202,9 +210,12 @@ function Goals() {
   return (
     <Card style={styles.goals}>
       <View style={styles.goal}>
-        <Text style={[styles.goalText, { color: pal.ink }]}>
-          <Text style={styles.bold}>{t('today.week')}</Text> · {t('today.weekCount', week)}
-        </Text>
+        <View style={styles.goalLabel}>
+          <SymbolView name="calendar" size={17} tintColor={pal.ink} />
+          <Text style={[styles.goalText, { color: pal.ink }]}>
+            <Text style={styles.bold}>{t('today.week')}</Text> · {t('today.weekCount', week)}
+          </Text>
+        </View>
         <View style={styles.goalSquares}>
           {Array.from({ length: week.goal }, (_, k) => (
             <View
@@ -220,9 +231,12 @@ function Goals() {
         </View>
       </View>
       <View style={styles.goal}>
-        <Text style={[styles.goalText, { color: pal.ink }]}>
-          <Text style={styles.bold}>{t('today.level', { level: lv.level })}</Text> · {t('today.levelToGo', { count: lv.toGo })}
-        </Text>
+        <View style={styles.goalLabel}>
+          <SymbolView name="chart.bar.fill" size={17} tintColor={pal.ink} />
+          <Text style={[styles.goalText, { color: pal.ink }]}>
+            <Text style={styles.bold}>{t('today.level', { level: lv.level })}</Text> · {t('today.levelToGo', { count: lv.toGo })}
+          </Text>
+        </View>
         <HeatBar fraction={lv.fraction} height={22} />
       </View>
     </Card>
@@ -259,7 +273,9 @@ const styles = StyleSheet.create({
   goArrow: { fontSize: 28, fontWeight: '700', marginTop: -3 },
   goals: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   goal: { flexGrow: 1, flexBasis: 140, gap: 8 },
-  goalText: { fontSize: 15 },
+  goalText: { fontSize: 15, flexShrink: 1 },
+  goalLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   bold: { fontWeight: '600' },
   goalSquares: { flexDirection: 'row', gap: 5 },
   goalSquare: { width: 22, height: 22, borderRadius: 5 },
