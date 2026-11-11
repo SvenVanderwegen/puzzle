@@ -27,7 +27,7 @@
         "toReplays": "Watch your games back",
         "doneOne": "1 fire put out",
         "doneMany": "{count} fires put out",
-        "levelLine": "Level {level} · {toGo} points to level {next}",
+        "levelLine": "{toGo} points to {next}",
         "badges": "Badges",
         "badgeLocked": "not yet",
         "sizes": "Fastest time for each size",
@@ -35,12 +35,30 @@
         "notYet": "Not played yet"
     },
     "badge": {
-        "first_incident": { "label": "First fire", "description": "Put out your first fire." },
-        "clean_reconstruction": { "label": "No help needed", "description": "Solve a daily fire without a hint." },
-        "week_streak": { "label": "One week", "description": "Play the daily fire 7 days in a row." },
-        "month_streak": { "label": "One month", "description": "Play the daily fire 30 days in a row." },
-        "century": { "label": "A hundred fires", "description": "Put out 100 fires in all." },
-        "cold_case": { "label": "No clock", "description": "Put out a fire on the no clock size." }
+        "first_incident": {
+            "label": "First fire",
+            "description": "Put out your first fire."
+        },
+        "clean_reconstruction": {
+            "label": "No help needed",
+            "description": "Solve a daily fire without a hint."
+        },
+        "week_streak": {
+            "label": "One week",
+            "description": "Play the daily fire 7 days in a row."
+        },
+        "month_streak": {
+            "label": "One month",
+            "description": "Play the daily fire 30 days in a row."
+        },
+        "century": {
+            "label": "A hundred fires",
+            "description": "Put out 100 fires in all."
+        },
+        "cold_case": {
+            "label": "No clock",
+            "description": "Put out a fire on the no clock size."
+        }
     },
     "replays": {
         "pageTitle": "Watch your games back · Burnfront",

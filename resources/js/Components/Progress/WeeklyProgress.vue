@@ -1,14 +1,16 @@
 <script setup>
-/* Weekly goal (N squares) and level bar. Every solved fire feeds both,
-   whatever the mode: the level follows from the player's points (see
-   lib/xp.js). Uses the Progressiekaart tokens: the level bar is the shared
-   .bf-progress bar, filled squares take the start of the heat ramp.
+/* Weekly goal (N squares) and rank bar. Every solved fire feeds both,
+   whatever the mode: the rank and grade follow from the player's points
+   (see lib/xp.js and lib/rank.js). Uses the Progressiekaart tokens: the
+   rank bar is the shared .bf-progress bar, filled squares take the start
+   of the heat ramp.
 
    only="week" shows just the weekly goal, for the result screen, where the
-   points card right above already shows the level. */
+   points card right above already shows the rank. */
 import { computed, onMounted, ref } from 'vue';
 import { t } from '@/lib/i18n';
 import { resolveProgress } from '@/lib/progress';
+import { nextRankTitle, rankTitle } from '@/lib/rank';
 import HomeIcon from '@/Components/HomeIcon.vue';
 
 const props = defineProps({
@@ -57,11 +59,11 @@ const levelPct = computed(() => {
                 ></span>
             </span>
         </div>
-        <div v-if="only !== 'week'" class="bf-weekly-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { level: p.level, toGo: p.toGo })">
+        <div v-if="only !== 'week'" class="bf-weekly-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { rank: rankTitle(p.level, rules?.xp), toGo: p.toGo, next: nextRankTitle(p.level, rules?.xp) })">
             <span class="flex flex-wrap items-center gap-x-1.5 text-sm">
                 <span class="flex items-center gap-1.5 whitespace-nowrap">
                     <HomeIcon name="level" :tile="false" />
-                    <b class="font-semibold">{{ t('progress.levelTitle', { level: p.level }) }}</b>
+                    <b class="font-semibold">{{ rankTitle(p.level, rules?.xp) }}</b>
                 </span>
                 <span class="whitespace-nowrap">{{ t('progress.levelToGo', { toGo: p.toGo }) }}</span>
             </span>

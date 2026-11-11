@@ -2590,21 +2590,58 @@
         letter-spacing: -0.03em;
         color: var(--bf-ink);
     }
-    .bf-camp-rank-head {
+    .bf-camp-num.is-small {
+        font-size: 19px;
+    }
+    .bf-camp-num.is-tiny {
+        font-size: 14px;
+        letter-spacing: -0.02em;
+    }
+    .bf-camp-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+    }
+    .bf-camp-foot .bf-camp-icon {
+        align-self: auto;
+        flex-shrink: 0;
+        width: 18px;
+        height: 18px;
+    }
+    .bf-camp-size {
+        font-size: 15px;
+        font-weight: 600;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .bf-camp-ranks {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .bf-camp-ranks li {
         display: flex;
         align-items: center;
         gap: 12px;
+        padding: 9px 0;
+        border-top: 1px solid var(--bf-line);
+        font-size: 16px;
+        color: var(--bf-ink-2);
     }
-    .bf-camp-part.is-now {
-        box-shadow: inset 0 0 0 2px var(--bf-ink);
+    .bf-camp-ranks b {
+        font-weight: 700;
+        color: var(--bf-ink);
     }
-    .bf-camp-tile.is-wide {
-        min-height: 60px;
-        flex-direction: row;
-        align-items: center;
+    .bf-camp-ranks li.is-later b {
+        font-weight: 600;
+        color: var(--bf-ink-2);
     }
-    .bf-camp-tile.is-wide .bf-camp-tag {
-        gap: 6px;
+    .bf-camp-ranks li.is-now .bf-camp-part-status {
+        font-weight: 600;
+        color: var(--bf-ink);
     }
     .bf-camp-how {
         display: flex;

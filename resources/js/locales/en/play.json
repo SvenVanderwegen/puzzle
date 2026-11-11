@@ -66,6 +66,7 @@
         "breaks": "Firebreaks",
         "personalBest": "Your best time for this size.",
         "next": "Next fire",
+        "nextLevel": "Next level",
         "nextCampaign": "Campaign, level {level}",
         "campaign": "Campaign",
         "backToHistory": "Back to past days",

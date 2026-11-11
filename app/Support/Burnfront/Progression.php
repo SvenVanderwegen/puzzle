@@ -4,9 +4,14 @@ namespace App\Support\Burnfront;
 
 /**
  * One points ladder for the whole game. Every solved fire, in every mode,
- * gives points; points raise the player's level; every few levels the
- * player moves up to a new rank. Levels never run out, so there is always
- * a next step to play for.
+ * gives points, and points move the player up the ranks. Each rank has a
+ * few grades ("Firefighter 1", "Firefighter 2", ...), and the last rank's
+ * grades never run out, so there is always a next step to play for.
+ *
+ * A word on names: in this class "level" is a step on the points ladder.
+ * The player sees it as a rank and a grade (standing()['grade']), never as
+ * a "level": that word belongs to the campaign, where a level is one fire
+ * (CampaignService). Points and campaign levels are separate counters.
  *
  * This class is pure maths over the numbers in config/burnfront.php ('xp').
  * Reading and writing a player's points lives in PlayerProgress. The same
@@ -91,9 +96,10 @@ final class Progression
     }
 
     /**
-     * Where a points total stands: level, how far into it, and the rank.
+     * Where a points total stands: the step on the ladder, how far into it,
+     * and the rank and grade that step is shown as.
      *
-     * @return array{xp: int, level: int, intoLevel: int, levelSize: int, toGo: int, rank: int, rankKey: string, nextRankLevel: int|null}
+     * @return array{xp: int, level: int, intoLevel: int, levelSize: int, toGo: int, rank: int, rankKey: string, grade: int, nextRankLevel: int|null}
      */
     public static function standing(int $xp): array
     {
@@ -118,6 +124,8 @@ final class Progression
             'toGo' => $size - $remaining,
             'rank' => $rank,
             'rankKey' => $rules['ranks'][$rank],
+            // 1 for the first step inside the rank, 2 for the next, ...
+            'grade' => $level - $rules['rankLevels'][$rank] + 1,
             'nextRankLevel' => $rules['rankLevels'][$rank + 1] ?? null,
         ];
     }

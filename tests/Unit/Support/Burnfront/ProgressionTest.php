@@ -31,8 +31,17 @@ class ProgressionTest extends TestCase
         }
 
         $this->assertSame(
-            ['xp' => 59, 'level' => 1, 'intoLevel' => 59, 'levelSize' => 60, 'toGo' => 1, 'rank' => 0, 'rankKey' => 'trainee', 'nextRankLevel' => 5],
+            ['xp' => 59, 'level' => 1, 'intoLevel' => 59, 'levelSize' => 60, 'toGo' => 1, 'rank' => 0, 'rankKey' => 'trainee', 'grade' => 1, 'nextRankLevel' => 5],
             Progression::standing(59),
+        );
+        // A step on the points ladder is shown as a rank and a grade inside it.
+        $this->assertSame(
+            ['firefighter', 2],
+            [Progression::standing(Progression::xpForLevel(6))['rankKey'], Progression::standing(Progression::xpForLevel(6))['grade']],
+        );
+        $this->assertSame(
+            ['legend', 6],
+            [Progression::standing(Progression::xpForLevel(30))['rankKey'], Progression::standing(Progression::xpForLevel(30))['grade']],
         );
         $this->assertSame(1, Progression::standing(-5)['level']);
     }

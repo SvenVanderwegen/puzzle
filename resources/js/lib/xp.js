@@ -1,4 +1,4 @@
-/* Points, levels and ranks: the client's copy of the maths in
+/* Points and ranks: the client's copy of the maths in
    app/Support/Burnfront/Progression.php. The server is the source of truth
    for a signed-in player; this copy exists so the result screen can count
    the points up step by step, and so a guest (no server record) gets the
@@ -36,7 +36,13 @@ export function rankIndexForLevel(level, rules = DEFAULT_XP_RULES) {
     return index;
 }
 
-/** Same shape as Progression::standing(). `xp` may be a fraction while a bar is filling. */
+/** The rank and the grade inside it ("Firefighter 2") that step `level` of the points ladder is shown as. */
+export function gradeOf(level, rules = DEFAULT_XP_RULES) {
+    const rank = rankIndexForLevel(level, rules);
+    return { rank, rankKey: rules.ranks[rank], grade: level - rules.rankLevels[rank] + 1 };
+}
+
+/** Same shape as Progression::standing(). `level` is a step on the points ladder (shown as rank and grade), not a campaign level. `xp` may be a fraction while a bar is filling. */
 export function standing(xp, rules = DEFAULT_XP_RULES) {
     const total = Math.max(0, Number.isFinite(xp) ? xp : 0);
     let level = 1;
@@ -56,6 +62,7 @@ export function standing(xp, rules = DEFAULT_XP_RULES) {
         toGo: size - remaining,
         rank,
         rankKey: rules.ranks[rank],
+        grade: level - rules.rankLevels[rank] + 1,
         nextRankLevel: rules.rankLevels[rank + 1] ?? null,
     };
 }

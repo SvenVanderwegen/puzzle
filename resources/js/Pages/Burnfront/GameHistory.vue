@@ -7,6 +7,7 @@ import RowArrow from '@/Components/RowArrow.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 import { t } from '@/lib/i18n';
 import { plural, tOr } from '@/lib/plural';
+import { nextRankTitle, rankTitle } from '@/lib/rank';
 
 const props = defineProps({
     tiers: { type: Array, default: () => [] }, // {difficulty, label, timed, solvedCount, bestTimeMs}
@@ -16,10 +17,10 @@ const props = defineProps({
     },
 });
 
-// Where the player stands: points, level and rank (Progression::standing()).
+// Where the player stands: points, rank and grade (Progression::standing()).
 const standing = computed(() => props.career.standing ?? { level: 1, intoLevel: 0, levelSize: 1, toGo: 0, rank: 0, rankKey: 'trainee' });
 const levelPercent = computed(() => Math.min(100, Math.max(0, (standing.value.intoLevel / Math.max(1, standing.value.levelSize)) * 100)));
-const rankName = computed(() => t(`progress.rank.${standing.value.rankKey}`));
+const rankName = computed(() => rankTitle(standing.value.level));
 const tierName = (tier) => tOr(`common.difficulty.${tier.difficulty}`, tier.label);
 </script>
 
@@ -45,7 +46,7 @@ const tierName = (tier) => tOr(`common.difficulty.${tier.difficulty}`, tier.labe
                     </div>
                 </div>
                 <span class="bf-progress" aria-hidden="true"><span :style="{ width: levelPercent + '%' }"></span></span>
-                <span class="bf-row-sub">{{ t('history.games.levelLine', { level: standing.level, toGo: standing.toGo, next: standing.level + 1 }) }}</span>
+                <span class="bf-row-sub">{{ t('history.games.levelLine', { toGo: standing.toGo, next: nextRankTitle(standing.level) }) }}</span>
 
                 <h2 class="bf-row-sub m-0 mt-1">{{ t('history.games.badges') }}</h2>
                 <ul class="bf-badges">

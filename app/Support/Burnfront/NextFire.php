@@ -8,8 +8,8 @@ use App\Models\CampaignProfile;
  * Answers "what should this player play next?", for the home screen's
  * "Up next" card and the result screen's primary "Next fire" button.
  *
- * - A signed-in player: their next campaign fire. The campaign has no end
- *   (levels keep counting), so there always is one.
+ * - A signed-in player: their next campaign level. The campaign has no
+ *   end (every contained fire opens the next level), so there always is one.
  * - Someone already playing quick fires: another one of the same size, so
  *   the button keeps them in the flow they chose.
  * - A guest (the campaign needs an account): a quick fire.
@@ -20,7 +20,7 @@ use App\Models\CampaignProfile;
 final class NextFire
 {
     /**
-     * @return array{kind: 'campaign', href: string, level: int, rank: int, rankKey: string, intoLevel: int, levelSize: int, rows: int, cols: int, breaks: int}|array{kind: 'quick', href: string, difficulty: string, rows: int, cols: int, breaks: int}
+     * @return array{kind: 'campaign', href: string, level: int, rank: int, rankKey: string, grade: int, rows: int, cols: int, breaks: int}|array{kind: 'quick', href: string, difficulty: string, rows: int, cols: int, breaks: int}
      */
     public static function for(?int $userId, ?string $afterMode = null, ?string $afterDifficulty = null): array
     {
@@ -83,16 +83,16 @@ final class NextFire
     private static function campaign(int $xp, int $puzzlesSolved): array
     {
         $standing = Progression::standing($xp);
-        $config = CampaignService::levelConfig(CampaignService::rungFor($standing['level'], $puzzlesSolved));
+        $level = CampaignService::levelFor($puzzlesSolved);
+        $config = CampaignService::boardFor($level);
 
         return [
             'kind' => 'campaign',
             'href' => '/campaign/play',
-            'level' => $standing['level'],
+            'level' => $level,
             'rank' => $standing['rank'],
             'rankKey' => $standing['rankKey'],
-            'intoLevel' => $standing['intoLevel'],
-            'levelSize' => $standing['levelSize'],
+            'grade' => $standing['grade'],
             'rows' => $config['rows'],
             'cols' => $config['cols'],
             'breaks' => $config['breaks'],

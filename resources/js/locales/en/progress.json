@@ -3,9 +3,8 @@
     "weekCount": "{done} of {goal}",
     "weekDone": "Goal reached",
     "weekAria": "{done} of {goal} fires this week",
-    "levelTitle": "Level {level}",
     "levelToGo": "{toGo} points to go",
-    "levelAria": "Level {level}. {toGo} more points to the next level.",
+    "levelAria": "{rank}. {toGo} more points to {next}.",
     "nextFire": "Next fire",
     "nextCampaign": "Campaign, level {level}",
     "nextQuick": "Quick fire {rows} by {cols}",
@@ -46,23 +45,18 @@
             "streak": "{n} days in a row",
             "week": "Weekly goal reached"
         },
-        "toNext": "{toGo} points to level {level}",
-        "levelUp": "Level {level} reached!",
-        "summary": "You got {points} points. You are level {level}, {rank}.",
-        "noPoints": "No points for this fire, because hints placed every firebreak."
+        "toNext": "{toGo} points to {next}",
+        "levelUp": "{rank} reached!",
+        "summary": "You got {points} points. You are {rank}.",
+        "noPoints": "No points for this fire, because hints placed every firebreak.",
+        "soFar": "{xp} points"
     },
     "rankUp": {
         "eyebrow": "New rank",
         "title": "You are now {rank}.",
         "continue": "Continue",
-        "what": {
-            "trainee": "The campaign gives you 5 by 5 fires.",
-            "firefighter": "The campaign now gives you 6 by 6 fires.",
-            "crewLeader": "The campaign now gives you 7 by 7 fires.",
-            "captain": "The campaign now gives you 8 by 8 fires.",
-            "chief": "The campaign now gives you fires with fewer numbers.",
-            "commander": "The campaign now gives you its hardest fires.",
-            "legend": "This is the highest rank. Your level keeps counting."
-        }
-    }
+        "next": "Keep collecting points. The next rank is {rank}.",
+        "last": "This is the highest rank. It keeps counting: Legend 2, Legend 3 and so on."
+    },
+    "rankGrade": "{rank} {grade}"
 }

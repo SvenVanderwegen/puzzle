@@ -36,9 +36,9 @@ const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefe
 
 const diff = ref(props.difficulty);
 
-/* The player's level, for the label above a campaign board. It starts as
+/* The campaign level, for the label above a campaign board. It starts as
    what the page was rendered with and follows each new board the server
-   hands out (the level may have gone up since). */
+   hands out (every contained fire opens the next level). */
 const campaignLevel = ref(props.levelConfig?.level ?? null);
 
 /* Small label at the top of the board: which kind of fire this is. */
@@ -80,7 +80,7 @@ const dailyScorePosted = ref(false);
 const leaderboard = ref([]);
 const hintsUsedThisRun = ref(0);
 const personalBestNote = ref('');
-const campaignResult = ref(null); /* {reward, xpAwarded, level, leveledUp, nextFire, progress}, set on a campaign win */
+const campaignResult = ref(null); /* {reward, xpAwarded, level (the one that just opened), nextFire, progress}, set on a campaign win */
 /* The points this solve gave ({items, total, xpBefore, xpAfter}), for the
    count-up on the result screen: from the server for a signed-in player
    (PlayerProgress::award()), from this device for a guest. rewardFailed is
@@ -474,7 +474,7 @@ const nextAction = computed(() => {
     }
     if (isCampaign.value) {
         const level = campaignResult.value?.level ?? campaignLevel.value;
-        return { run: loadCampaign, label: t('play.solved.next'), detail: level ? t('play.solved.nextCampaign', { level }) : '' };
+        return { run: loadCampaign, label: t('play.solved.nextLevel'), detail: level ? t('play.solved.nextCampaign', { level }) : '' };
     }
     if (props.mode === 'endless') {
         const g = game.value;

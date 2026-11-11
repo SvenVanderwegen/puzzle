@@ -2,8 +2,12 @@
 /* The points a solved fire gave, counted up step by step on the result
    screen: each line of the reward lights up in turn (fire, no hints,
    today's fire, days in a row, weekly goal), the total counts along, and
-   the level bar fills. When the bar is full the level goes up with a small
-   burst; when that level starts a new rank, a "New rank" card opens.
+   the bar towards the next grade fills. When the bar is full the grade
+   goes up ("Firefighter 3") with a small burst; when that starts a new
+   rank, a "New rank" card opens.
+
+   "level" in this file is a step on the points ladder (lib/xp.js), which
+   the player sees as rank and grade. It is not a campaign level.
 
    Nothing here decides anything: the reward ({items, total, xpBefore,
    xpAfter}) comes from the server (PlayerProgress::award()) or, for a
@@ -16,6 +20,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import RankBadge from '@/Components/Progress/RankBadge.vue';
 import { heatColor } from '@/lib/heat';
 import { t } from '@/lib/i18n';
+import { nextRankTitle, rankTitle } from '@/lib/rank';
 import { play } from '@/lib/sound';
 import { isDark } from '@/lib/theme';
 import { DEFAULT_XP_RULES, rankStep, standing } from '@/lib/xp';
@@ -33,7 +38,7 @@ const shownXp = ref(0); /* the points total the bar shows right now (a fraction 
 const counted = ref(0); /* the "+N" counter */
 const revealed = ref(0); /* how many lines are lit */
 const shownRank = ref(0); /* the badge keeps the old rank until the "New rank" card opens */
-const levelNote = ref(null); /* the level just reached, shown for a moment in place of "N points to go" */
+const levelNote = ref(null); /* the step just reached, shown for a moment in place of "N points to go" */
 const bumpKey = ref(0);
 const sparks = ref([]);
 const finished = ref(false);
@@ -261,7 +266,7 @@ onBeforeUnmount(() => {
 
 const summary = computed(() => {
     if (!finished.value || !after.value) return '';
-    return t('progress.reward.summary', { points: props.reward.total, level: after.value.level, rank: rankName(after.value.rank) });
+    return t('progress.reward.summary', { points: props.reward.total, rank: rankTitle(after.value.level, xpRules.value) });
 });
 const rankUpColour = computed(() => heatColor(rankStep(shownRank.value, xpRules.value), isDark.value));
 </script>
@@ -272,8 +277,8 @@ const rankUpColour = computed(() => heatColor(rankStep(shownRank.value, xpRules.
             <div class="bf-xp-head">
                 <RankBadge :rank="shownRank" :rules="xpRules" :size="48" />
                 <div class="bf-xp-who">
-                    <span :key="bumpKey" class="bf-xp-level" :class="{ 'is-bump': bumpKey > 0 }">{{ t('progress.levelTitle', { level: now.level }) }}</span>
-                    <span class="bf-xp-rank">{{ rankName(shownRank) }}</span>
+                    <span :key="bumpKey" class="bf-xp-level" :class="{ 'is-bump': bumpKey > 0 }">{{ rankTitle(now.level, xpRules) }}</span>
+                    <span class="bf-xp-rank">{{ t('progress.reward.soFar', { xp: Math.round(shownXp) }) }}</span>
                 </div>
                 <div class="bf-xp-total" aria-hidden="true">
                     <b>+{{ counted }}</b>
@@ -289,8 +294,8 @@ const rankUpColour = computed(() => heatColor(rankStep(shownRank.value, xpRules.
             </div>
 
             <p class="bf-xp-note" :class="{ 'is-level': levelNote }" aria-hidden="true">
-                <template v-if="levelNote">{{ t('progress.reward.levelUp', { level: levelNote }) }}</template>
-                <template v-else>{{ t('progress.reward.toNext', { toGo: Math.ceil(now.toGo), level: now.level + 1 }) }}</template>
+                <template v-if="levelNote">{{ t('progress.reward.levelUp', { rank: rankTitle(levelNote, xpRules) }) }}</template>
+                <template v-else>{{ t('progress.reward.toNext', { toGo: Math.ceil(now.toGo), next: nextRankTitle(now.level, xpRules) }) }}</template>
             </p>
 
             <ul class="bf-xp-lines" aria-hidden="true">
@@ -325,7 +330,7 @@ const rankUpColour = computed(() => heatColor(rankStep(shownRank.value, xpRules.
                     </div>
                     <h2 id="bf-rankup-title">{{ rankName(shownRank) }}</h2>
                     <p>{{ t('progress.rankUp.title', { rank: rankName(shownRank) }) }}</p>
-                    <p class="bf-rankup-what">{{ t(`progress.rankUp.what.${xpRules.ranks[shownRank]}`) }}</p>
+                    <p class="bf-rankup-what">{{ shownRank >= xpRules.ranks.length - 1 ? t('progress.rankUp.last') : t('progress.rankUp.next', { rank: rankName(shownRank + 1) }) }}</p>
                     <button ref="continueButton" type="button" class="bf-btn bf-btn-primary bf-btn-lg mt-2 w-full" @click="closeRankUp">
                         {{ t('progress.rankUp.continue') }}
                     </button>

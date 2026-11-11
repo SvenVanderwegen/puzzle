@@ -23,10 +23,11 @@ import RankBadge from '@/Components/Progress/RankBadge.vue';
 import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
 import { guestDailyFor } from '@/lib/progress';
 import { upNextText } from '@/lib/next-fire';
+import { nextRankTitle, rankTitle } from '@/lib/rank';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null },
-    campaignStatus: { type: Object, default: null }, // Progression::standing(): points, level and rank; null for a guest
+    campaignStatus: { type: Object, default: null }, // Progression::standing(): points, rank and grade; null for a guest
     upNext: { type: Object, default: null }, // NextFire::for(): what to play after the daily
     quickFires: { type: Array, default: null }, // NextFire::quickFires()
     progress: { type: Object, default: null }, // PlayerProgress::forUser(), null for a guest
@@ -110,12 +111,16 @@ const doneThumb = computed(() => {
 const campaign = computed(() => {
     const c = props.campaignStatus;
     const u = props.upNext?.kind === 'campaign' ? props.upNext : null;
-    const level = c?.level ?? u?.level ?? 1;
-    const rankKey = c?.rankKey ?? u?.rankKey ?? 'trainee';
+    /* Two counters: the campaign level (one fire each, from the next fire)
+       and the step on the points ladder, shown as rank and grade. */
+    const level = u?.level ?? 1;
+    const step = c?.level ?? 1;
+    const xpRules = props.progressRules?.xp;
     return {
         level,
         rank: c?.rank ?? u?.rank ?? 0,
-        rankName: t(`progress.rank.${rankKey}`),
+        rankName: rankTitle(step, xpRules),
+        nextRankName: nextRankTitle(step, xpRules),
         toGo: c?.toGo ?? 0,
         pct: c?.levelSize ? Math.round((c.intoLevel / c.levelSize) * 100) : 0,
         name: t('home.next.name', { level }),
@@ -243,7 +248,7 @@ const rules = [
                             <span class="bf-home-meta">{{ t('home.next.meta', { rows: campaign.rows, cols: campaign.cols, rank: campaign.rankName }) }}</span>
                             <span class="mt-1 flex flex-col gap-1">
                                 <span class="bf-progress" aria-hidden="true"><span :style="{ width: campaign.pct + '%' }"></span></span>
-                                <span class="bf-home-sub">{{ t('home.next.progress', { toGo: campaign.toGo, level: campaign.level + 1 }) }}</span>
+                                <span class="bf-home-sub">{{ t('home.next.progress', { toGo: campaign.toGo, next: campaign.nextRankName }) }}</span>
                             </span>
                         </div>
                     </div>

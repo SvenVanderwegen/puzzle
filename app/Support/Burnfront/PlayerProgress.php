@@ -9,7 +9,7 @@ use App\Models\GamePlay;
 use Illuminate\Support\Carbon;
 
 /**
- * A player's progress: their points (and the level and rank that follow
+ * A player's progress: their points (and the rank and grade that follow
  * from them, see Progression), the weekly goal and the daily streak. Every
  * solved fire feeds all of it, whatever the mode.
  *
@@ -72,7 +72,7 @@ final class PlayerProgress
     }
 
     /**
-     * @return array{weekSolved: int, weekGoal: int, totalSolved: int, xp: int, level: int, intoLevel: int, levelSize: int, toGo: int, rank: int, rankKey: string, nextRankLevel: int|null}
+     * @return array{weekSolved: int, weekGoal: int, totalSolved: int, xp: int, level: int, intoLevel: int, levelSize: int, toGo: int, rank: int, rankKey: string, grade: int, nextRankLevel: int|null}
      */
     public static function forUser(int $userId): array
     {

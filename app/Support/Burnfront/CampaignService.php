@@ -6,12 +6,17 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 
 /**
- * Campaign mode: a fixed 20-rung, 5-chapter difficulty ladder (grid size,
- * firebreak density, and clue sparsity all ramp up within each chapter, not
- * just between chapters). Which rung a player is on follows from their
- * level (rungFor()), and the level follows from their points (see
- * Progression and PlayerProgress) — there is no separately-tracked
- * "unlocked" flag to desync (see CampaignProfile).
+ * Campaign mode: an endless row of numbered levels. Every level is one
+ * freshly generated fire; contain it and the next level opens. A player's
+ * level is simply the campaign fires they have contained plus one
+ * (levelFor()), so there is no separately-tracked "unlocked" flag to
+ * desync (see CampaignProfile), and no last level.
+ *
+ * What kind of board a level gets comes from a 20-rung, 5-chapter
+ * difficulty ladder (grid size, firebreak density, and clue sparsity all
+ * ramp up within each chapter, not just between chapters). rungFor()
+ * spreads the levels over those rungs: a few levels per rung on the way
+ * up, then round and round the hardest rungs for ever.
  *
  * Also owns the signed run token that binds hint()/solve()/score requests to
  * an incident /campaign/puzzle actually generated (mirrors the daily
@@ -22,7 +27,19 @@ use Illuminate\Support\Facades\Crypt;
  */
 final class CampaignService
 {
-    public const TOTAL_LEVELS = 20;
+    public const TOTAL_RUNGS = 20;
+
+    /**
+     * How many levels in a row play on each rung of a chapter, on the way
+     * up: the small boards pass quickly, the big ones stay a while. With
+     * 2, 3, 4, 5 and 5 levels per rung, the way up takes 76 levels.
+     *
+     * @var array<int, int>
+     */
+    private const LEVELS_PER_RUNG = [1 => 2, 2 => 3, 3 => 4, 4 => 5, 5 => 5];
+
+    /** Past the way up, levels walk round this many of the hardest rungs. */
+    private const TOP_RUNGS = 8;
 
     /**
      * How long a run token (and the hint-count/redemption cache entries
@@ -73,6 +90,9 @@ final class CampaignService
     ];
 
     /**
+     * The board for one rung of the ladder (1 to TOTAL_RUNGS), not for a
+     * player's level: see boardFor() for that.
+     *
      * @return array{label:string,rows:int,cols:int,breaks:int,budgetMs:int,minClues:int,timed:bool,chapterKey:int,chapterLabel:string,levelInChapter:int}|null
      */
     public static function levelConfig(int $level): ?array
@@ -111,31 +131,60 @@ final class CampaignService
             $chapters[] = [
                 'key' => $key,
                 'label' => $label,
-                'levels' => range($start, min($start + 3, self::TOTAL_LEVELS)),
+                'levels' => range($start, min($start + 3, self::TOTAL_RUNGS)),
             ];
         }
 
         return $chapters;
     }
 
-    /**
-     * Which rung of the ladder a player at $level plays. Levels 1 to 20 are
-     * the rungs themselves. Levels never stop, so past the top of the
-     * ladder the campaign keeps going by walking round its eight hardest
-     * rungs (8 by 8 boards and the boards with few numbers), one step per
-     * solved fire, so the next fire is never the same kind twice in a row.
-     */
-    public static function rungFor(int $level, int $puzzlesSolved = 0): int
+    /** The level a player is on: one past the campaign fires they have contained. */
+    public static function levelFor(int $puzzlesSolved): int
     {
-        if ($level <= self::TOTAL_LEVELS) {
-            return max(1, $level);
-        }
-
-        return self::TOTAL_LEVELS - 7 + (max(0, $puzzlesSolved) % 8);
+        return max(0, $puzzlesSolved) + 1;
     }
 
     /**
-     * Signs the exact incident /campaign/puzzle just generated (level,
+     * Which rung of the ladder level $level plays on. Levels never stop.
+     * On the way up each rung lasts a few levels (LEVELS_PER_RUNG); after
+     * the last rung the campaign keeps going by walking round its hardest
+     * rungs (8 by 8 boards and the boards with few numbers), one step per
+     * level, so two levels in a row are never the same kind.
+     */
+    public static function rungFor(int $level): int
+    {
+        $level = max(1, $level);
+        $first = 1;
+        for ($rung = 1; $rung <= self::TOTAL_RUNGS; $rung++) {
+            $lasts = self::LEVELS_PER_RUNG[(int) ceil($rung / 4)];
+            if ($level < $first + $lasts) {
+                return $rung;
+            }
+            $first += $lasts;
+        }
+
+        return self::TOTAL_RUNGS - self::TOP_RUNGS + 1 + (($level - $first) % self::TOP_RUNGS);
+    }
+
+    /** The first level that is past the way up (from here the hardest rungs repeat). */
+    public static function firstEndlessLevel(): int
+    {
+        return 4 * array_sum(self::LEVELS_PER_RUNG) + 1;
+    }
+
+    /**
+     * The kind of board level $level gets: levelConfig() of its rung.
+     *
+     * @return array{label:string,rows:int,cols:int,breaks:int,budgetMs:int,minClues:int,timed:bool,chapterKey:int,chapterLabel:string,levelInChapter:int}
+     */
+    public static function boardFor(int $level): array
+    {
+        return self::levelConfig(self::rungFor($level));
+    }
+
+    /**
+     * Signs the exact incident /campaign/puzzle just generated (its rung,
+     * kept under the key 'level',
      * spark, clues, plus an issue time for expiry) so hint()/solve()/
      * submitScore() can later recover that same board without trusting
      * whatever spark/clues a request claims. Crypt::encryptString's random

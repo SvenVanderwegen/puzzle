@@ -9,7 +9,7 @@ class CampaignServiceTest extends TestCase
 {
     public function test_level_config_resolves_every_level_and_rejects_out_of_range(): void
     {
-        for ($level = 1; $level <= CampaignService::TOTAL_LEVELS; $level++) {
+        for ($level = 1; $level <= CampaignService::TOTAL_RUNGS; $level++) {
             $config = CampaignService::levelConfig($level);
             $this->assertNotNull($config, "level {$level} should resolve");
             $this->assertSame(
@@ -19,7 +19,7 @@ class CampaignServiceTest extends TestCase
         }
 
         $this->assertNull(CampaignService::levelConfig(0));
-        $this->assertNull(CampaignService::levelConfig(CampaignService::TOTAL_LEVELS + 1));
+        $this->assertNull(CampaignService::levelConfig(CampaignService::TOTAL_RUNGS + 1));
     }
 
     public function test_level_config_chapters_land_on_the_shipped_endless_tiers(): void
@@ -78,17 +78,46 @@ class CampaignServiceTest extends TestCase
         $this->assertSame([17, 18, 19, 20], $chapters[4]['levels']);
     }
 
-    public function test_the_rung_is_the_level_until_the_ladder_runs_out(): void
+    public function test_a_level_is_one_past_the_fires_contained(): void
     {
-        $this->assertSame(1, CampaignService::rungFor(1));
-        $this->assertSame(20, CampaignService::rungFor(20, 5));
+        $this->assertSame(1, CampaignService::levelFor(0));
+        $this->assertSame(8, CampaignService::levelFor(7));
+        $this->assertSame(1, CampaignService::levelFor(-3));
+    }
 
-        // Past the top: the eight hardest rungs in turn, one step per solve.
-        $seen = [];
-        for ($solved = 0; $solved < 8; $solved++) {
-            $seen[] = CampaignService::rungFor(21, $solved);
+    public function test_levels_climb_the_rungs_a_few_at_a_time(): void
+    {
+        // Two levels per rung on the 5 by 5 boards, three on 6 by 6, ...
+        $this->assertSame([1, 1, 2, 2, 3, 3, 4, 4], array_map(CampaignService::rungFor(...), range(1, 8)));
+        $this->assertSame(5, CampaignService::rungFor(9));
+        $this->assertSame(8, CampaignService::rungFor(20));
+        $this->assertSame(9, CampaignService::rungFor(21));
+        $this->assertSame(13, CampaignService::rungFor(37));
+        $this->assertSame(20, CampaignService::rungFor(76));
+        $this->assertSame(1, CampaignService::rungFor(0));
+
+        // Never a step back on the way up.
+        $prev = 1;
+        for ($level = 1; $level < CampaignService::firstEndlessLevel(); $level++) {
+            $rung = CampaignService::rungFor($level);
+            $this->assertGreaterThanOrEqual($prev, $rung);
+            $this->assertLessThanOrEqual($prev + 1, $rung);
+            $prev = $rung;
         }
-        $this->assertSame(range(13, 20), $seen);
-        $this->assertSame(13, CampaignService::rungFor(99, 16));
+    }
+
+    public function test_levels_never_run_out(): void
+    {
+        $this->assertSame(77, CampaignService::firstEndlessLevel());
+
+        // Past the way up: the eight hardest rungs in turn, one step per level.
+        $this->assertSame(range(13, 20), array_map(CampaignService::rungFor(...), range(77, 84)));
+        $this->assertSame(13, CampaignService::rungFor(85));
+
+        foreach ([100, 1234, 1_000_000] as $level) {
+            $board = CampaignService::boardFor($level);
+            $this->assertGreaterThanOrEqual(7, $board['rows']);
+            $this->assertNotSame(CampaignService::rungFor($level), CampaignService::rungFor($level + 1));
+        }
     }
 }

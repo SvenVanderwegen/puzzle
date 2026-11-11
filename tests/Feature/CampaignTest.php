@@ -36,16 +36,21 @@ class CampaignTest extends TestCase
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Burnfront/CampaignMap')
-            ->where('standing.level', 1)
+            ->where('level', 1)
+            ->has('path', 12)
+            ->where('path.0', ['level' => 1, 'state' => 'current', 'rows' => 5, 'cols' => 5])
+            ->where('path.1.state', 'locked')
+            ->where('path.8', ['level' => 9, 'state' => 'locked', 'rows' => 6, 'cols' => 6])
             ->where('standing.xp', 0)
             ->where('standing.rankKey', 'trainee')
+            ->where('standing.grade', 1)
             ->has('ranks', 7)
             ->where('ranks.0.state', 'now')
-            ->where('ranks.0.levels.0.state', 'current')
-            ->where('ranks.0.levels.1.state', 'locked')
+            ->where('ranks.0.fromXp', 0)
             ->where('ranks.1.state', 'later')
-            ->where('ranks.6.levels', []) // the last rank has no end
+            ->where('ranks.1.fromXp', Progression::xpForLevel(5))
             ->where('next.kind', 'campaign')
+            ->where('next.level', 1)
         );
     }
 
@@ -78,18 +83,32 @@ class CampaignTest extends TestCase
         $this->assertNotSame('', $response->json('token'));
     }
 
-    public function test_puzzle_endpoint_reflects_a_higher_level_once_earned(): void
+    /** The level follows from the campaign fires contained, not from points. */
+    public function test_puzzle_endpoint_gives_the_board_of_the_level_the_player_is_on(): void
     {
         $user = User::factory()->create();
         CampaignProfile::create([
             'user_id' => $user->id,
-            'total_xp' => Progression::xpForLevel(5),
-            'puzzles_solved' => 4,
+            'total_xp' => 0,
+            'puzzles_solved' => 8,
         ]);
 
         $response = $this->actingAs($user)->getJson('/campaign/puzzle');
 
-        $response->assertJson(['rows' => 6, 'cols' => 6, 'breaks' => 6]);
+        $response->assertJson(['level' => 9, 'rows' => 6, 'cols' => 6, 'breaks' => 6]);
+    }
+
+    /** Points from other modes do not move the campaign on. */
+    public function test_points_alone_do_not_open_levels(): void
+    {
+        $user = User::factory()->create();
+        CampaignProfile::create([
+            'user_id' => $user->id,
+            'total_xp' => Progression::xpForLevel(30),
+            'puzzles_solved' => 0,
+        ]);
+
+        $this->actingAs($user)->getJson('/campaign/puzzle')->assertJson(['level' => 1, 'rows' => 5, 'cols' => 5]);
     }
 
     public function test_submit_score_awards_xp_for_a_clean_solve(): void
@@ -107,8 +126,7 @@ class CampaignTest extends TestCase
         // A 5 by 5 fire (20) solved without a hint (10).
         $response->assertJson([
             'xpAwarded' => 30,
-            'level' => 1,
-            'leveledUp' => false,
+            'level' => 2, // containing level 1 opens level 2
             'reward' => [
                 'items' => [['key' => 'fire', 'xp' => 20], ['key' => 'noHints', 'xp' => 10]],
                 'total' => 30,
@@ -253,7 +271,35 @@ class CampaignTest extends TestCase
         $response->assertJson(['xpAwarded' => 30]);
     }
 
-    public function test_leveling_up_crosses_into_the_next_level(): void
+    public function test_every_contained_fire_opens_the_next_level(): void
+    {
+        $user = User::factory()->create();
+
+        foreach ([2, 3, 4] as $opened) {
+            $puzzle = $this->issuePuzzle($user);
+            $this->assertSame($opened - 1, $puzzle['level']);
+
+            $response = $this->actingAs($user)->postJson('/campaign/score', [
+                'token' => $puzzle['token'],
+                'shaded' => $this->solveLevel($puzzle),
+            ]);
+
+            $response->assertJson(['level' => $opened]);
+            $response->assertJsonPath('nextFire.level', $opened);
+        }
+
+        // Levels 1 and 2 are the first kind of board, level 3 the next.
+        $this->actingAs($user)->get('/campaign')->assertInertia(fn (Assert $page) => $page
+            ->where('level', 4)
+            ->where('path.0', ['level' => 1, 'state' => 'done', 'rows' => 5, 'cols' => 5])
+            ->where('path.3.state', 'current')
+            ->where('path.4.state', 'locked')
+            ->has('path', 12)
+        );
+    }
+
+    /** Points fill the bar to the next grade of the rank. */
+    public function test_points_move_the_player_up_a_grade(): void
     {
         $user = User::factory()->create();
         CampaignProfile::create([
@@ -263,19 +309,18 @@ class CampaignTest extends TestCase
         ]);
 
         $puzzle = $this->issuePuzzle($user);
-        $shaded = $this->solveLevel($puzzle);
-
         $response = $this->actingAs($user)->postJson('/campaign/score', [
             'token' => $puzzle['token'],
-            'shaded' => $shaded,
+            'shaded' => $this->solveLevel($puzzle),
         ]);
 
-        $response->assertJson(['level' => 2, 'leveledUp' => true, 'reward' => ['rankUp' => false]]);
-        $response->assertJsonPath('nextFire.level', 2);
+        $response->assertJson(['reward' => ['leveledUp' => true, 'rankUp' => false]]);
+        $response->assertJsonPath('progress.rankKey', 'trainee');
+        $response->assertJsonPath('progress.grade', 2);
     }
 
-    /** Level 5 is where the second rank starts, with its 6 by 6 fires. */
-    public function test_reaching_level_five_moves_up_a_rank(): void
+    /** The fifth step on the points ladder is where the second rank starts. */
+    public function test_enough_points_move_the_player_up_a_rank(): void
     {
         $user = User::factory()->create();
         CampaignProfile::create([
@@ -285,44 +330,51 @@ class CampaignTest extends TestCase
         ]);
 
         $puzzle = $this->issuePuzzle($user);
-        $this->assertSame(4, $puzzle['level']);
+        $this->assertSame(13, $puzzle['level']);
 
         $response = $this->actingAs($user)->postJson('/campaign/score', [
             'token' => $puzzle['token'],
             'shaded' => $this->solveLevel($puzzle),
         ]);
 
-        $response->assertJson(['level' => 5, 'leveledUp' => true, 'reward' => ['rankUp' => true]]);
+        $response->assertJson(['level' => 14, 'reward' => ['leveledUp' => true, 'rankUp' => true]]);
         $response->assertJsonPath('progress.rankKey', 'firefighter');
-        $response->assertJsonPath('nextFire.rows', 6);
+        $response->assertJsonPath('progress.grade', 1);
     }
 
     /**
-     * Levels never stop. Past the 20 rungs of the ladder the campaign keeps
-     * handing out its hardest kinds of board, a different one each fire.
+     * Levels never stop. Past the way up the campaign keeps handing out its
+     * hardest kinds of board, a different one each level, and the page
+     * keeps showing the stretch of levels around the player.
      */
-    public function test_the_campaign_keeps_going_past_the_top_of_the_ladder(): void
+    public function test_the_campaign_has_no_last_level(): void
     {
-        $this->assertSame(20, CampaignService::rungFor(20, 3));
-        $this->assertSame(13, CampaignService::rungFor(21, 0));
-        $this->assertSame(14, CampaignService::rungFor(21, 1));
-        $this->assertSame(20, CampaignService::rungFor(40, 7));
-        $this->assertSame(13, CampaignService::rungFor(40, 8));
-
         $user = User::factory()->create();
         CampaignProfile::create([
             'user_id' => $user->id,
             'total_xp' => Progression::xpForLevel(30),
-            'puzzles_solved' => 0,
+            'puzzles_solved' => 492,
         ]);
 
         $this->actingAs($user)->get('/campaign')->assertInertia(fn (Assert $page) => $page
-            ->where('standing.level', 30)
+            ->where('level', 493)
+            ->has('path', 12)
+            ->where('path.0.level', 490)
+            ->where('path.3.state', 'current')
+            ->where('path.11.level', 501)
             ->where('standing.rankKey', 'legend')
+            ->where('standing.grade', 6)
             ->where('standing.nextRankLevel', null)
             ->where('ranks.6.state', 'now')
-            ->where('next.rows', 8)
+            ->where('next.level', 493)
         );
+
+        $puzzle = $this->issuePuzzle($user);
+        $this->assertSame(493, $puzzle['level']);
+        $this->actingAs($user)->postJson('/campaign/score', [
+            'token' => $puzzle['token'],
+            'shaded' => $this->solveLevel($puzzle),
+        ])->assertJson(['level' => 494]);
     }
 
     public function test_hint_endpoint_accepts_the_campaign_difficulty_via_token(): void

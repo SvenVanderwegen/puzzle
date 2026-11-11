@@ -17,14 +17,12 @@ export function upNextText(next) {
         return {
             eyebrow: t('progress.upNextCampaign'),
             meta: t('progress.fireMeta', { level: next.level, rows: next.rows, cols: next.cols }),
-            progress: t('progress.reward.toNext', { toGo: next.levelSize - next.intoLevel, level: next.level + 1 }),
             action: t('progress.playFire', { level: next.level }),
         };
     }
     return {
         eyebrow: t('progress.upNextQuick'),
         meta: t('progress.quickMeta', { rows: next.rows, cols: next.cols }),
-        progress: null,
         action: t('progress.playQuick', { rows: next.rows, cols: next.cols }),
     };
 }

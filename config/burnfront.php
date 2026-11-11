@@ -11,8 +11,10 @@ return [
     // Every solved fire counts: daily, campaign and quick fire alike.
     'weekly_goal' => (int) env('BURNFRONT_WEEKLY_GOAL', 5),
 
-    // Points ("XP"). Every solved fire gives points, points raise the level,
-    // and every few levels the player moves up a rank. See
+    // Points ("XP"). Every solved fire gives points, and points move the
+    // player up the ranks, a grade at a time ("Firefighter 2"). In these
+    // keys "level" means one step on that points ladder; it has nothing to
+    // do with the campaign's levels, which are one fire each. See
     // App\Support\Burnfront\Progression. All of these are proposals.
     'xp' => [
         // Going from level L to L+1 takes level_base + (L - 1) * level_step
@@ -21,9 +23,9 @@ return [
         'level_step' => 20,
         'level_cap' => 500,
 
-        // The level each rank starts at: Trainee, Firefighter, Crew leader,
-        // Captain, Chief, Commander, Legend. Ranks 1 to 5 line up with the
-        // campaign's five board types (four levels each).
+        // The step each rank starts at: Trainee, Firefighter, Crew leader,
+        // Captain, Chief, Commander, Legend. Four grades per rank; the
+        // last rank's grades never run out.
         'rank_levels' => [1, 5, 9, 13, 17, 21, 25],
 
         // Points for the fire itself: fire_base for a 5 by 5, fire_per_side
