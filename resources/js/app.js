@@ -1,5 +1,9 @@
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
+import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import '@/lib/theme';
 
 createInertiaApp({
     resolve: (name) => {

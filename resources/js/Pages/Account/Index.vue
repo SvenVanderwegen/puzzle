@@ -1,73 +1,52 @@
 <script setup>
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import RowArrow from '@/Components/RowArrow.vue';
 import SiteBar from '@/Components/SiteBar.vue';
+import { t } from '@/lib/i18n';
 
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user ?? null);
+
+const links = [
+    { href: '/account/settings', key: 'settings' },
+    { href: '/game/history', key: 'games' },
+    { href: '/daily/history', key: 'daily' },
+    { href: '/game/replays', key: 'replays' },
+];
 </script>
 
 <template>
-    <Head title="Account — Burnfront" />
+    <Head :title="t('account.pageTitle')" />
 
-    <main class="mx-auto flex max-w-[560px] flex-col gap-7 px-4 pt-3 pb-16 sm:pt-5">
-        <SiteBar :back="{ href: '/', text: 'Menu' }" />
+    <div class="bf-page is-narrow">
+        <SiteBar :back="{ href: '/', text: t('common.home') }" />
 
-        <header class="flex flex-col gap-2">
-            <p class="bf-eyebrow">Line Verification Unit</p>
-            <h1 class="font-staatliches text-[40px] leading-[0.95] font-normal tracking-[.035em] text-stock">
-                ACCOUNT
-            </h1>
-            <p v-if="currentUser" class="text-sm text-ash">
-                Signed in as <span class="text-stock">{{ currentUser.name }}</span>
-            </p>
-        </header>
+        <main>
+            <header class="bf-page-head">
+                <p class="bf-eyebrow">{{ t('account.eyebrow') }}</p>
+                <h1 class="bf-page-title">
+                    {{ currentUser?.name ? t('account.title', { name: currentUser.name }) : t('account.titleNoName') }}
+                </h1>
+                <p v-if="currentUser?.email" class="bf-lede">{{ t('account.signedInAs', { email: currentUser.email }) }}</p>
+            </header>
 
-        <nav class="flex flex-col gap-3" aria-label="Account menu">
-            <Link href="/account/settings" class="bf-row">
-                <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="text-[18px] leading-tight font-semibold text-stock">Account Settings</span>
-                    <span class="text-[13px] text-ash">Update your name, email, or password.</span>
-                </span>
-                <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
-            </Link>
+            <nav class="bf-list" :aria-label="t('account.eyebrow')">
+                <Link v-for="l in links" :key="l.key" :href="l.href" class="bf-row">
+                    <span class="bf-row-text">
+                        <span class="bf-row-title">{{ t(`account.${l.key}`) }}</span>
+                        <span class="bf-row-sub">{{ t(`account.${l.key}Help`) }}</span>
+                    </span>
+                    <RowArrow />
+                </Link>
 
-            <Link href="/game/history" class="bf-row">
-                <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="text-[18px] leading-tight font-semibold text-stock">Game History</span>
-                    <span class="text-[13px] text-ash">A record of every fire you've solved.</span>
-                </span>
-                <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
-            </Link>
-
-            <Link href="/daily/history" class="bf-row">
-                <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="text-[18px] leading-tight font-semibold text-stock">Daily History</span>
-                    <span class="text-[13px] text-ash">Your streak and past daily results.</span>
-                </span>
-                <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
-            </Link>
-
-            <Link href="/game/replays" class="bf-row">
-                <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="text-[18px] leading-tight font-semibold text-stock">Game Replays</span>
-                    <span class="text-[13px] text-ash">Step back through a past incident, move by move.</span>
-                </span>
-                <span class="shrink-0 font-staatliches text-ash-dim" aria-hidden="true">&#9656;</span>
-            </Link>
-
-            <Link
-                href="/logout"
-                method="post"
-                as="button"
-                class="bf-row cursor-pointer border-ember-deep/40 bg-ember/[.05] text-left"
-            >
-                <span class="flex flex-1 flex-col gap-0.5">
-                    <span class="text-[18px] leading-tight font-semibold text-ember">Log Out</span>
-                    <span class="text-[13px] text-ash">Sign out of this device.</span>
-                </span>
-                <span class="shrink-0 font-staatliches text-ember" aria-hidden="true">&#9211;</span>
-            </Link>
-        </nav>
-    </main>
+                <Link href="/logout" method="post" as="button" class="bf-row is-dashed mt-2 w-full cursor-pointer">
+                    <span class="bf-row-text">
+                        <span class="bf-row-title">{{ t('account.signOut') }}</span>
+                        <span class="bf-row-sub">{{ t('account.signOutHelp') }}</span>
+                    </span>
+                </Link>
+            </nav>
+        </main>
+    </div>
 </template>

@@ -1,0 +1,64 @@
+{
+    "back": "Back to your account",
+    "hintsNone": "No hints",
+    "hintsOne": "1 hint",
+    "hintsMany": "{count} hints",
+    "daily": {
+        "pageTitle": "Daily results · Burnfront",
+        "eyebrow": "Daily results",
+        "title": "Every daily fire you played",
+        "streakNow": "Streak now",
+        "streakBest": "Best streak",
+        "daysOne": "day",
+        "daysMany": "days",
+        "last14": "The last 14 days",
+        "dayPlayed": "{date}, played",
+        "dayMissed": "{date}, not played",
+        "unnamed": "Daily fire",
+        "noReplay": "Played before we kept the board, so it cannot be opened again.",
+        "playAgain": "Open {date}",
+        "empty": "Nothing here yet. Play today's fire and it shows up here."
+    },
+    "games": {
+        "pageTitle": "Your past fires · Burnfront",
+        "eyebrow": "Your past fires",
+        "title": "Your best times",
+        "lead": "Your fastest time for each size in practice.",
+        "toReplays": "Watch your games back",
+        "doneOne": "1 fire put out",
+        "doneMany": "{count} fires put out",
+        "toNext": "{count} more to reach {title}",
+        "badges": "Badges",
+        "badgeLocked": "not yet",
+        "sizes": "Fastest time for each size",
+        "solvedCount": "{count} done",
+        "notYet": "Not played yet"
+    },
+    "rank": {
+        "0": "Beginner",
+        "5": "Getting the hang of it",
+        "20": "Steady hand",
+        "50": "Sharp eye",
+        "100": "Fire expert",
+        "250": "Burnfront master"
+    },
+    "badge": {
+        "first_incident": { "label": "First fire", "description": "Put out your first fire." },
+        "clean_reconstruction": { "label": "No help needed", "description": "Solve a daily fire without a hint." },
+        "week_streak": { "label": "One week", "description": "Play the daily fire 7 days in a row." },
+        "month_streak": { "label": "One month", "description": "Play the daily fire 30 days in a row." },
+        "century": { "label": "A hundred fires", "description": "Put out 100 fires in all." },
+        "cold_case": { "label": "No clock", "description": "Put out a fire on the no clock size." }
+    },
+    "replays": {
+        "pageTitle": "Watch your games back · Burnfront",
+        "eyebrow": "Replays",
+        "title": "Watch your games back",
+        "lead": "Open a game to see every move you made, one at a time.",
+        "daily": "Daily fire",
+        "practice": "Practice",
+        "movesOne": "1 move",
+        "movesMany": "{count} moves",
+        "empty": "No games yet. Put out a fire and you can watch it back here."
+    }
+}
