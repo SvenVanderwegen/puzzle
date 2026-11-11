@@ -34,11 +34,9 @@ for the premise and lore.
       `resources/js/lib/burnfront-engine.js` validates a player's marking
       locally (instant feedback, no round trip); puzzle generation itself is
       server-authoritative via `GET /puzzle?difficulty=...`.
-    - `resources/js/Pages/Burnfront/HowTo.vue` (`/how-to`) — the rules and
-      walkthrough, with an embedded animated demo.
-    - `resources/js/Pages/Burnfront/HowItWorksDemo.vue` — the scripted
-      walkthrough animation used on the How To Play page, with no dependency
-      on the real engine.
+    - `resources/js/Pages/Burnfront/HowTo.vue` (`/how-to`) — the rules on
+      one page to read back, with a link to the lesson. Learning by doing is
+      the lesson's job: `resources/js/Pages/Burnfront/Lesson.vue` (`/learn`).
     - `resources/css/app.css` — the Tailwind theme (colors, fonts) and the
       `bf-*` component classes the board/demo/tiles use.
 - `apps/mobile/` — the iPhone app (Expo, React Native). Reuses

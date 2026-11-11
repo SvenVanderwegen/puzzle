@@ -2042,186 +2042,140 @@
         accent-color: var(--bf-ink);
     }
 
-    /* how to play (old manual; the new lesson lives at /learn) */
-    .bf-demo {
+    /* how to play (/how-to): the rules to read back; the lesson lives at /learn */
+    .bf-howto {
         display: flex;
         flex-direction: column;
-        gap: 16px;
-        padding: 18px;
-        border-radius: var(--bf-radius-card);
-        background: var(--bf-surface);
+        gap: 28px;
+        padding-bottom: 48px;
     }
-    .bf-demo-progress {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid var(--bf-line);
-        font-size: 14px;
-        color: var(--bf-muted);
-    }
-    .bf-demo-progress strong {
-        color: var(--bf-ink);
-    }
-    .bf-demo-step-title {
-        font-size: 20px;
-        font-weight: 600;
-        line-height: 1.25;
-    }
-    .bf-stress {
-        font-weight: 600;
-        color: var(--bf-ink);
-    }
-    .bf-demo-grid {
+    .bf-howto-lesson {
         display: grid;
-        flex-shrink: 0;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 4px;
-        width: 100%;
-        max-width: 300px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 18px;
+        padding: 18px;
     }
-    .bf-dcell {
-        position: relative;
+    @media (min-width: 560px) {
+        .bf-howto-lesson {
+            grid-template-columns: 180px minmax(0, 1fr);
+            align-items: center;
+            gap: 24px;
+        }
+    }
+    .bf-howto-picture {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px;
+        width: min(200px, 60vw);
+    }
+    @media (min-width: 560px) {
+        .bf-howto-picture {
+            width: 180px;
+        }
+    }
+    .bf-howto-picture span {
+        aspect-ratio: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        aspect-ratio: 1 / 1;
         border-radius: var(--bf-radius-cell);
-        background: var(--bf-cell);
-        box-shadow: inset 0 0 0 1px var(--bf-cell-line);
         font-family: var(--font-display);
         font-weight: 700;
-        font-size: clamp(16px, 4.6vw, 24px);
-        line-height: 1;
-        transition: background-color 300ms ease-out, opacity 300ms ease-out;
+        font-size: 14px;
     }
-    .bf-dcell.is-spark {
-        background: var(--bf-spark);
-        box-shadow: none;
-        color: var(--bf-spark-ink);
+    .bf-howto-picture .is-clue {
+        font-size: 22px;
     }
-    .bf-dcell.is-clue {
-        background: var(--bf-soft);
-        box-shadow: none;
-    }
-    .bf-dcell.is-break {
+    .bf-howto-picture .is-break {
         background: var(--bf-break);
-        box-shadow: none;
     }
-    .bf-dcell.is-burnt {
-        background: var(--burn-bg, #ff9a1f);
-        box-shadow: none;
-        color: #16181b;
+    .bf-howto-picture svg {
+        width: 22px;
+        height: 22px;
+        fill: var(--bf-spark-ink);
     }
-    .bf-dcell.is-route {
-        z-index: 1;
-        outline: 3px solid var(--bf-ink);
-        outline-offset: -1px;
-    }
-    .bf-dcell.is-blocked {
-        z-index: 1;
-        outline: 3px dashed var(--bf-bad);
-        outline-offset: -1px;
-    }
-    .bf-demo-grid.is-focus .bf-dcell {
-        opacity: 0.3;
-    }
-    .bf-demo-grid.is-focus .bf-dcell.is-route,
-    .bf-demo-grid.is-focus .bf-dcell.is-blocked,
-    .bf-demo-grid.is-focus .bf-dcell.is-spark {
-        opacity: 1;
-    }
-    .bf-dcell.is-x::before {
-        content: '\2715';
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        color: var(--bf-bad);
-    }
-    .bf-dcell.is-ok::after {
-        content: '\2713';
-        position: absolute;
-        top: 2px;
-        right: 4px;
-        font-size: 12px;
-    }
-    .bf-demo-controls {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        align-items: center;
-        gap: 12px;
-        padding-top: 16px;
-        border-top: 1px solid var(--bf-line);
-    }
-    .bf-demo-dots {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-    }
-    .bf-demo-dots button {
-        width: 32px;
-        height: 44px;
-        border: 0;
-        background: transparent;
-        cursor: pointer;
-    }
-    .bf-reference-manual {
-        border-radius: var(--bf-radius-card);
-        background: var(--bf-surface);
-    }
-    .bf-reference-manual summary {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        min-height: 52px;
-        padding: 0 16px;
-        list-style: none;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-    .bf-reference-manual summary::-webkit-details-marker {
-        display: none;
-    }
-    .bf-reference-manual summary span {
-        margin-left: auto;
-        font-size: 14px;
-        font-weight: 400;
-        color: var(--bf-muted);
-    }
-    .bf-reference-manual .bf-rulecols {
-        padding: 16px;
-        border-top: 1px solid var(--bf-line);
-    }
-    .bf-rulecols {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-        gap: 20px;
-    }
-    .bf-rulecol h3 {
-        margin: 0 0 8px;
-        font-size: 15px;
-        font-weight: 600;
-        color: var(--bf-muted);
-    }
-    .bf-rulecol ol,
-    .bf-rulecol ul {
+    .bf-howto-lesson-copy {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        padding-left: 20px;
-        font-size: 16px;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    .bf-howto-lesson-copy h2,
+    .bf-howto-block h2 {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        color: var(--bf-ink);
+    }
+    .bf-howto-lesson-copy p {
+        margin: 0;
+        font-size: 17px;
+        line-height: 1.5;
         color: var(--bf-ink-2);
     }
-    .bf-rulecol li strong {
-        font-weight: 600;
+    .bf-howto-block {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .bf-howto-steps,
+    .bf-howto-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .bf-howto-steps {
+        counter-reset: bf-howto;
+    }
+    .bf-howto-steps li,
+    .bf-howto-list li {
+        position: relative;
+        padding-left: 40px;
+        font-size: 18px;
+        line-height: 1.45;
         color: var(--bf-ink);
+        text-wrap: pretty;
+    }
+    .bf-howto-steps li {
+        counter-increment: bf-howto;
+        min-height: 28px;
+    }
+    .bf-howto-steps li::before {
+        content: counter(bf-howto);
+        position: absolute;
+        top: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: var(--bf-radius-cell);
+        background: var(--bf-surface);
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--bf-ink);
+    }
+    .bf-howto-list li::before {
+        content: '';
+        position: absolute;
+        top: 0.55em;
+        left: 10px;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--bf-line-strong);
+    }
+    .bf-howto-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
     }
 
     /* first visit card (kept for FirstRunBriefing until the new welcome lands) */
