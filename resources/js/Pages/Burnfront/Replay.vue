@@ -1,9 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { buildAdj, cellName, COLS, fmtClock, validate } from '@/lib/burnfront-engine';
+import { buildAdj, cellName, fmtClock, validate } from '@/lib/burnfront-engine';
 import SiteBar from '@/Components/SiteBar.vue';
 import FlameGlyph from '@/Components/FlameGlyph.vue';
+import { heatCell } from '@/lib/heat';
+import { t } from '@/lib/i18n';
+import { plural, tOr } from '@/lib/plural';
+import { isDark } from '@/lib/theme';
 
 const props = defineProps({
     play: { type: Object, required: true }, // {id, mode, difficulty, difficultyLabel, date, rows, cols, breaks, spark, clues, shadedCells, moves, timeMs, hintsUsed, moveCount, playedAt}
@@ -72,24 +76,21 @@ function cellNameOf(i) {
 }
 
 function describeMove(move) {
-    if (!move || typeof move !== 'object') return 'Unrecorded action';
+    if (!move || typeof move !== 'object') return t('replay.move.unknown');
+    const where = inRange(move.cell) ? cellNameOf(move.cell) : '?';
     switch (move.type) {
         case 'mark':
-            if (move.value === 1) return `Firebreak dug at ${inRange(move.cell) ? cellNameOf(move.cell) : '?'}`;
-            if (move.value === 2) return `Marked ${inRange(move.cell) ? cellNameOf(move.cell) : '?'} clear`;
-            return `Cleared ${inRange(move.cell) ? cellNameOf(move.cell) : '?'}`;
+            if (move.value === 1) return t('replay.move.break', { where });
+            if (move.value === 2) return t('replay.move.dot', { where });
+            return t('replay.move.clear', { where });
         case 'hint':
-            return `Hint: forced firebreak at ${inRange(move.cell) ? cellNameOf(move.cell) : '?'}`;
-        case 'undo': {
-            const count = Array.isArray(move.restores) ? move.restores.length : 0;
-            return `Undo (${count} cell${count === 1 ? '' : 's'})`;
-        }
-        case 'reset': {
-            const count = Array.isArray(move.cleared) ? move.cleared.length : 0;
-            return `Reset (${count} cell${count === 1 ? '' : 's'})`;
-        }
+            return t('replay.move.hint', { where });
+        case 'undo':
+            return plural('replay.move.undo', Array.isArray(move.restores) ? move.restores.length : 0);
+        case 'reset':
+            return plural('replay.move.reset', Array.isArray(move.cleared) ? move.cleared.length : 0);
         default:
-            return 'Unrecorded action';
+            return t('replay.move.unknown');
     }
 }
 
@@ -141,19 +142,29 @@ const burnTimes = computed(() => {
     return d ? Array.from(d) : null;
 });
 
-function burnStyle(times) {
-    let maxT = 0;
-    for (const t of times) if (t > maxT) maxT = t;
-    return times.map((t) => {
-        if (t < 0) return null;
-        const warm = maxT ? t / maxT : 0;
-        const mix = (a, c, f) => Math.round(a + (c - a) * f);
-        const f = 0.25 + 0.6 * warm;
-        return { '--burn-bg': `rgb(${mix(255, 255, f)},${mix(216, 138, f)},${mix(107, 61, f)})` };
-    });
+// Colour = time, same heat scale as the board: the star and the numbers are
+// always coloured, every other square once the replay reaches the solved board.
+const lastMinute = computed(() => {
+    let m = Math.max(1, ...clueVal);
+    for (const v of burnTimes.value ?? []) if (v > m) m = v;
+    return m;
+});
+
+function minuteOf(i) {
+    if (i === props.play.spark) return 0;
+    if (clueMap.has(i)) return clueMap.get(i);
+    const tm = burnTimes.value?.[i];
+    return tm != null && tm >= 0 ? tm : null;
 }
 
-const cellStyles = computed(() => (burnTimes.value ? burnStyle(burnTimes.value) : null));
+const cellStyles = computed(() =>
+    Array.from({ length: n }, (_, i) => {
+        const m = minuteOf(i);
+        if (m === null) return null;
+        const c = heatCell(m, lastMinute.value, isDark.value);
+        return { '--heat-bg': c.bg, '--heat-fg': c.fg };
+    })
+);
 
 function cellClasses(i) {
     const isBreak = board.value.marks[i] === 1;
@@ -165,25 +176,29 @@ function cellClasses(i) {
         'is-break': isBreak,
         'is-dot': board.value.marks[i] === 2,
         'is-hint-safe': isBreak && !!board.value.hintSafe[i],
-        'is-burnt': !!cellStyles.value?.[i],
+        'is-burnt': !!burnTimes.value && (burnTimes.value[i] ?? -1) >= 0 && i !== props.play.spark && !clueMap.has(i),
     };
 }
 
 function cellText(i) {
     if (clueMap.has(i)) return clueMap.get(i);
-    if (cellStyles.value && burnTimes.value && !clueMap.has(i) && i !== props.play.spark) {
-        const t = burnTimes.value[i];
-        return t >= 0 ? String(t) : '';
+    if (burnTimes.value && i !== props.play.spark) {
+        const m = burnTimes.value[i];
+        return m >= 0 ? String(m) : '';
     }
     return '';
 }
 
 function cellLabel(i) {
-    if (i === props.play.spark) return cellNameOf(i) + ', the spark';
-    if (clueMap.has(i)) return cellNameOf(i) + ', clue: burns at minute ' + clueMap.get(i);
+    const where = cellNameOf(i);
+    if (i === props.play.spark) return t('play.cell.spark', { where });
+    if (clueMap.has(i)) return t('play.cell.clue', { where, minute: clueMap.get(i) });
     const m = board.value.marks[i];
-    if (m === 1) return cellNameOf(i) + ', firebreak';
-    return cellNameOf(i) + (m === 2 ? ', marked clear' : ', empty');
+    if (m === 1) return t('play.cell.break', { where });
+    if (m === 2) return t('play.cell.dot', { where });
+    const bt = burnTimes.value?.[i];
+    if (bt != null && bt >= 0) return t('play.cell.burnt', { where, minute: bt });
+    return t('play.cell.empty', { where });
 }
 
 function stopPlaying() {
@@ -273,8 +288,13 @@ onBeforeUnmount(() => {
     stopPlaying();
 });
 
-const title = props.play.mode === 'daily' ? 'Daily Incident' : props.play.difficultyLabel || 'Endless';
-const boardSubline = `${props.play.rows}×${props.play.cols} · ${props.play.breaks} breaks`;
+const title =
+    props.play.mode === 'daily'
+        ? t('replay.daily')
+        : props.play.difficulty
+          ? tOr(`common.difficulty.${props.play.difficulty}`, props.play.difficultyLabel || t('replay.practice'))
+          : t('replay.practice');
+const boardSubline = t('replay.meta', { rows: props.play.rows, cols: props.play.cols, breaks: props.play.breaks });
 const currentMoveTimeText = computed(() => {
     if (!hasMoves || stepIndex.value === 0) return '0:00';
     return fmtClock(moves[stepIndex.value - 1]?.t ?? 0);
@@ -282,135 +302,96 @@ const currentMoveTimeText = computed(() => {
 </script>
 
 <template>
-    <Head title="Case Replay — Burnfront" />
+    <Head :title="t('replay.pageTitle')" />
 
-    <main class="mx-auto flex min-h-dvh max-w-[640px] flex-col gap-2.5 px-4 pt-3 pb-4 sm:pt-5">
-        <SiteBar :back="{ href: '/game/replays', text: 'Replays' }" crumb="Case replay" />
+    <div class="bf-page is-narrow bf-play">
+        <SiteBar :back="{ href: '/game/replays', text: t('replay.back') }" :crumb="t('replay.eyebrow')" />
 
-        <div class="mt-1 flex items-start justify-between gap-3">
-            <div class="min-w-0">
-                <h2 class="truncate font-staatliches text-[28px] leading-none tracking-[.02em] text-stock">{{ title }}</h2>
-                <p class="mt-1 font-mono text-[12px] font-semibold tracking-[.1em] text-ash-dim uppercase">{{ boardSubline }}</p>
-            </div>
-        </div>
+        <main class="flex flex-col gap-3">
+            <header class="flex flex-col gap-1 pt-1">
+                <p class="bf-eyebrow">{{ t('replay.eyebrow') }}</p>
+                <h1 class="bf-page-title text-[30px]">{{ title }}</h1>
+                <p class="bf-row-sub m-0">{{ boardSubline }}</p>
+            </header>
 
-        <div class="mt-2.5 flex gap-2">
-            <div class="bf-chip">
-                <span class="bf-chip-key">Time</span>
-                <span class="bf-chip-value">{{ play.timeMs != null ? fmtClock(play.timeMs) : '—' }}</span>
+            <div class="flex gap-2">
+                <div class="bf-chip">
+                    <span class="bf-chip-key">{{ t('replay.time') }}</span>
+                    <span class="bf-chip-value">{{ play.timeMs != null ? fmtClock(play.timeMs) : '—' }}</span>
+                </div>
+                <div class="bf-chip">
+                    <span class="bf-chip-key">{{ t('replay.hints') }}</span>
+                    <span class="bf-chip-value">{{ play.hintsUsed }}</span>
+                </div>
+                <div class="bf-chip">
+                    <span class="bf-chip-key">{{ t('replay.moves') }}</span>
+                    <span class="bf-chip-value">{{ hasMoves ? `${stepIndex}/${moves.length}` : '—' }}</span>
+                </div>
             </div>
-            <div class="bf-chip">
-                <span class="bf-chip-key">Hints</span>
-                <span class="bf-chip-value">{{ play.hintsUsed }}</span>
-            </div>
-            <div class="bf-chip">
-                <span class="bf-chip-key">Moves</span>
-                <span class="bf-chip-value">{{ hasMoves ? `${stepIndex}/${moves.length}` : '—' }}</span>
-            </div>
-        </div>
 
-        <div class="relative mt-2.5 flex min-h-0 flex-1 items-center justify-center">
-            <div class="bf-plotsheet">
-                <div class="bf-plotsheet-grid">
-                    <div></div>
-                    <div class="bf-rail-cols" :style="{ gridTemplateColumns: `repeat(${play.cols},1fr)` }">
-                        <span v-for="c in play.cols" :key="`col${c}`" class="bf-rail-label">{{ COLS[c - 1] }}</span>
-                    </div>
-                    <div class="bf-rail-rows" :style="{ gridTemplateRows: `repeat(${play.rows},1fr)` }">
-                        <span v-for="r in play.rows" :key="`row${r}`" class="bf-rail-label">{{ r }}</span>
-                    </div>
+            <div class="bf-board-wrap">
+                <div
+                    class="bf-board-grid"
+                    :class="{ 'is-done': isComplete }"
+                    :style="{ '--cols': play.cols, gridTemplateColumns: `repeat(${play.cols}, minmax(0, 1fr))` }"
+                    role="group"
+                    :aria-label="t('replay.gridLabel', { rows: play.rows, cols: play.cols })"
+                >
                     <div
-                        class="bf-board-grid is-done"
-                        :style="{ '--cols': play.cols, gridTemplateColumns: `repeat(${play.cols},1fr)` }"
-                        aria-label="Burnfront grid, read-only replay"
+                        v-for="i in n"
+                        :key="i - 1"
+                        :class="cellClasses(i - 1)"
+                        :style="cellStyles[i - 1] || {}"
+                        role="img"
+                        :aria-label="cellLabel(i - 1)"
                     >
-                        <div
-                            v-for="i in n"
-                            :key="i - 1"
-                            :class="cellClasses(i - 1)"
-                            :style="cellStyles?.[i - 1] || {}"
-                            :aria-label="cellLabel(i - 1)"
-                        >
-                            <span class="bf-cell-minute">
-                                <FlameGlyph v-if="i - 1 === play.spark" glow />
-                                <template v-else>{{ cellText(i - 1) }}</template>
-                            </span>
-                        </div>
+                        <span class="bf-cell-minute">
+                            <FlameGlyph v-if="i - 1 === play.spark" />
+                            <template v-else>{{ cellText(i - 1) }}</template>
+                        </span>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="mt-2.5 flex min-h-9 flex-col gap-1.5">
-            <p v-if="!hasMoves" class="max-w-[60ch] text-[13px] text-ash-dim">
-                No move-by-move detail was recorded for this run — showing the final board only.
+            <p class="bf-message" aria-live="polite">
+                <template v-if="!hasMoves">{{ t('replay.noMoves') }}</template>
+                <template v-else-if="stepIndex === 0">{{ t('replay.atStart') }}</template>
+                <template v-else>{{
+                    t('replay.step', { step: stepIndex, total: moves.length, time: currentMoveTimeText, what: describeMove(moves[stepIndex - 1]) })
+                }}</template>
             </p>
-            <p v-else class="max-w-[60ch] text-[13px] text-ash-dim">
-                <template v-if="stepIndex === 0">Start of run &middot; nothing placed yet.</template>
-                <template v-else>Move {{ stepIndex }} of {{ moves.length }} &middot; {{ currentMoveTimeText }} &middot; {{ describeMove(moves[stepIndex - 1]) }}</template>
-            </p>
-        </div>
 
-        <div v-if="hasMoves" class="mt-1 flex flex-col gap-2.5">
-            <input
-                type="range"
-                class="bf-replay-range w-full"
-                min="0"
-                :max="moves.length"
-                :value="stepIndex"
-                @input="onScrub"
-                aria-label="Scrub through recorded moves"
-            />
-            <div class="flex flex-col gap-2 sm:flex-row">
-                <div class="grid min-w-0 flex-1 grid-cols-[44px_44px_minmax(0,1fr)_44px_44px] gap-2">
-                    <button
-                        type="button"
-                        class="bf-btn px-0"
-                        title="Restart (Home)"
-                        aria-label="Restart replay"
-                        :disabled="atStart"
-                        @click="restart"
-                    >
+            <div v-if="hasMoves" class="flex flex-col gap-2.5">
+                <input
+                    type="range"
+                    class="bf-replay-range w-full"
+                    min="0"
+                    :max="moves.length"
+                    :value="stepIndex"
+                    :aria-label="t('replay.scrub')"
+                    @input="onScrub"
+                />
+                <div class="grid grid-cols-[48px_48px_minmax(0,1fr)_48px_48px] gap-2">
+                    <button type="button" class="bf-btn bf-btn-soft px-0" :title="t('replay.restart')" :aria-label="t('replay.restart')" :disabled="atStart" @click="restart">
                         <span aria-hidden="true">&laquo;</span>
                     </button>
-                    <button
-                        type="button"
-                        class="bf-btn px-0"
-                        title="Step back (Left arrow)"
-                        aria-label="Step back one move"
-                        :disabled="atStart"
-                        @click="stepBack"
-                    >
+                    <button type="button" class="bf-btn bf-btn-soft px-0" :title="t('replay.stepBack')" :aria-label="t('replay.stepBack')" :disabled="atStart" @click="stepBack">
                         <span aria-hidden="true">&lsaquo;</span>
                     </button>
-                    <button type="button" class="bf-btn bf-btn-primary min-w-0 px-2" title="Play/Pause (Space)" @click="togglePlay">
-                        {{ playing ? 'Pause' : atEnd ? 'Replay' : 'Play' }}
+                    <button type="button" class="bf-btn bf-btn-primary min-w-0 px-2" @click="togglePlay">
+                        {{ playing ? t('replay.pause') : atEnd ? t('replay.again') : t('replay.play') }}
                     </button>
-                    <button
-                        type="button"
-                        class="bf-btn px-0"
-                        title="Step forward (Right arrow)"
-                        aria-label="Step forward one move"
-                        :disabled="atEnd"
-                        @click="stepForward"
-                    >
+                    <button type="button" class="bf-btn bf-btn-soft px-0" :title="t('replay.stepForward')" :aria-label="t('replay.stepForward')" :disabled="atEnd" @click="stepForward">
                         <span aria-hidden="true">&rsaquo;</span>
                     </button>
-                    <button
-                        type="button"
-                        class="bf-btn px-0"
-                        title="Jump to end (End)"
-                        aria-label="Jump to final move"
-                        :disabled="atEnd"
-                        @click="jumpToEnd"
-                    >
+                    <button type="button" class="bf-btn bf-btn-soft px-0" :title="t('replay.toEnd')" :aria-label="t('replay.toEnd')" :disabled="atEnd" @click="jumpToEnd">
                         <span aria-hidden="true">&raquo;</span>
                     </button>
                 </div>
-                <button type="button" class="bf-btn shrink-0" :aria-label="`Playback speed ${SPEEDS[speedTier]} times`" @click="cycleSpeed">
-                    Speed {{ SPEEDS[speedTier] }}&times;
+                <button type="button" class="bf-btn bf-btn-soft" :aria-label="t('replay.speedLabel', { n: SPEEDS[speedTier] })" @click="cycleSpeed">
+                    {{ t('replay.speed', { n: SPEEDS[speedTier] }) }}
                 </button>
             </div>
-        </div>
-    </main>
+        </main>
+    </div>
 </template>

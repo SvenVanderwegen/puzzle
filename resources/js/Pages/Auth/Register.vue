@@ -1,6 +1,8 @@
 <script setup>
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import BrandMark from '@/Components/BrandMark.vue';
+import ThemeToggle from '@/Components/ThemeToggle.vue';
+import { t } from '@/lib/i18n';
 
 const form = useForm({
     name: '',
@@ -17,24 +19,27 @@ function submit() {
 </script>
 
 <template>
-    <Head title="Register — Burnfront" />
+    <Head :title="t('auth.register.pageTitle')" />
 
     <main class="bf-auth-shell">
-        <Link href="/" class="bf-auth-brand" aria-label="Back to Burnfront menu">
-            <span class="bf-auth-brand-mark"><BrandMark knockout /></span>
-            <span><strong>Burnfront</strong><small>Incident desk</small></span>
-        </Link>
+        <div class="bf-auth-top">
+            <Link href="/" class="bf-auth-brand" :aria-label="t('auth.backHome')">
+                <span class="bf-auth-brand-mark"><BrandMark /></span>
+                <span><strong>burnfront</strong><small>{{ t('auth.brandSub') }}</small></span>
+            </Link>
+            <ThemeToggle />
+        </div>
 
         <section class="bf-auth-card" aria-labelledby="register-title">
             <header class="bf-auth-header">
-                <p class="bf-eyebrow">Personnel file · New record</p>
-                <h1 id="register-title">Join the unit</h1>
-                <p>Keep your daily reports, campaign rank, streaks, and completed case files together.</p>
+                <p class="bf-eyebrow">{{ t('auth.register.eyebrow') }}</p>
+                <h1 id="register-title">{{ t('auth.register.title') }}</h1>
+                <p>{{ t('auth.register.lead') }}</p>
             </header>
 
             <form class="flex flex-col gap-4" @submit.prevent="submit">
             <label class="flex flex-col gap-1.5">
-                <span class="bf-form-label">Name</span>
+                <span class="bf-form-label">{{ t('auth.name') }}</span>
                 <input
                     v-model="form.name"
                     type="text"
@@ -42,11 +47,11 @@ function submit() {
                     required
                     class="bf-input"
                 />
-                <span v-if="form.errors.name" class="text-xs text-void">{{ form.errors.name }}</span>
+                <span v-if="form.errors.name" class="bf-field-error">{{ form.errors.name }}</span>
             </label>
 
             <label class="flex flex-col gap-1.5">
-                <span class="bf-form-label">Email</span>
+                <span class="bf-form-label">{{ t('auth.email') }}</span>
                 <input
                     v-model="form.email"
                     type="email"
@@ -54,11 +59,11 @@ function submit() {
                     required
                     class="bf-input"
                 />
-                <span v-if="form.errors.email" class="text-xs text-void">{{ form.errors.email }}</span>
+                <span v-if="form.errors.email" class="bf-field-error">{{ form.errors.email }}</span>
             </label>
 
             <label class="flex flex-col gap-1.5">
-                <span class="bf-form-label">Password</span>
+                <span class="bf-form-label">{{ t('auth.password') }}</span>
                 <input
                     v-model="form.password"
                     type="password"
@@ -66,11 +71,11 @@ function submit() {
                     required
                     class="bf-input"
                 />
-                <span v-if="form.errors.password" class="text-xs text-void">{{ form.errors.password }}</span>
+                <span v-if="form.errors.password" class="bf-field-error">{{ form.errors.password }}</span>
             </label>
 
             <label class="flex flex-col gap-1.5">
-                <span class="bf-form-label">Confirm password</span>
+                <span class="bf-form-label">{{ t('auth.confirmPassword') }}</span>
                 <input
                     v-model="form.password_confirmation"
                     type="password"
@@ -80,15 +85,17 @@ function submit() {
                 />
             </label>
 
-            <button type="submit" class="bf-btn bf-btn-primary mt-2 w-full" :disabled="form.processing">Register</button>
+            <button type="submit" class="bf-btn bf-btn-primary bf-btn-lg mt-2 w-full" :disabled="form.processing">{{ t('auth.register.submit') }}</button>
             </form>
 
             <footer class="bf-auth-footer">
-                <span>Already have a personnel file?</span>
-                <Link href="/login">Sign in →</Link>
+                <span>{{ t('auth.register.haveAccount') }}</span>
+                <Link href="/login">{{ t('auth.register.toLogin') }}</Link>
             </footer>
         </section>
 
-        <p class="bf-auth-note"><span aria-hidden="true"></span> Incident record ready</p>
+        <p class="bf-auth-note">
+            {{ t('auth.register.note') }} <Link href="/">{{ t('auth.playAsGuest') }}</Link>
+        </p>
     </main>
 </template>

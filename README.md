@@ -17,9 +17,15 @@ for the premise and lore.
     seam a future scoreboard or daily-puzzle feature would build on.
   - The frontend is Inertia + Vue 3, styled with Tailwind CSS 4:
     - `resources/js/Pages/Burnfront/Start.vue` — the start screen (`/`):
-      tiles for Daily Puzzle, Endless and How To Play. The daily tile is only
-      playable while signed in, and shows the signed-in player's own time
-      once they've solved it.
+      tiles for Daily Puzzle, Endless and How To Play. The daily is playable
+      without an account (an account adds the leaderboard and the streak; a
+      guest run is tracked in the session by `DailyRunStore` and saved to the
+      account on sign-in, unranked). Once today's fire is solved the home
+      leads with "Up next" (`NextFire`), plus one-tap quick fires and the
+      weekly goal / level bar (`PlayerProgress`, tunables in
+      `config/burnfront.php`).
+    - Copy for new UI lives in `resources/js/locales/en/*.json`, read with
+      `t()` from `resources/js/lib/i18n.js`.
     - `resources/js/Pages/Burnfront/EndlessSetup.vue` (`/endless`) — the
       difficulty picker between the start screen and an endless game; a
       `Custom` tier is stubbed in for later.

@@ -1,8 +1,15 @@
 <script setup>
+/* The campaign: 20 fires in five parts, played in order. Finished fires are
+   filled with the heat colour for how far along the campaign they are (colour
+   = progress, the same yellow-to-violet scale as the board); the fire you are
+   on is outlined in ink and is the only one you can open. */
 import { Head, Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import RowArrow from '@/Components/RowArrow.vue';
 import SiteBar from '@/Components/SiteBar.vue';
-import ShieldMarker from '@/Components/ShieldMarker.vue';
-import RubberStamp from '@/Components/RubberStamp.vue';
+import { t } from '@/lib/i18n';
+import { heatCell } from '@/lib/heat';
+import { isDark } from '@/lib/theme';
 
 const props = defineProps({
     progress: { type: Object, required: true }, // {level, chapterKey, chapterLabel, xpIntoLevel, xpToNextLevel, totalXp, maxed}
@@ -10,97 +17,104 @@ const props = defineProps({
     totalLevels: { type: Number, default: 20 },
 });
 
-const xpPct = props.progress.maxed
-    ? 100
-    : Math.min(100, Math.round((props.progress.xpIntoLevel / props.progress.xpToNextLevel) * 100));
+const allLevels = computed(() => props.chapters.flatMap((c) => c.levels));
+const done = computed(() => allLevels.value.filter((l) => l.state === 'reached').length);
+const current = computed(() => allLevels.value.find((l) => l.state === 'current') ?? null);
+const pct = computed(() => Math.round((done.value / Math.max(1, props.totalLevels)) * 100));
 
-const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
-
-/* A district (chapter) reads as ACTIVE the moment it holds the current
-   level, CLEARED once every level in it has been passed, and SEALED
-   otherwise — mirrors the linear level progression the server already
-   enforces (there is always exactly one 'current' level campaign-wide). */
-function districtStatus(chapter) {
-    if (chapter.levels.some((l) => l.state === 'current')) return 'active';
-    if (chapter.levels.every((l) => l.state === 'reached')) return 'cleared';
-    return 'sealed';
+function partStatus(chapter) {
+    if (chapter.levels.some((l) => l.state === 'current')) return 'now';
+    if (chapter.levels.every((l) => l.state === 'reached')) return 'done';
+    return 'later';
 }
 
-const DISTRICT_STAMP = { cleared: 'ember', active: 'flame', sealed: 'steel' };
-const DISTRICT_LABEL = { cleared: 'Cleared', active: 'Active', sealed: 'Sealed' };
-
-function markerState(node) {
-    if (node.state === 'reached') return 'cleared';
-    if (node.state === 'current') return 'current';
-    return 'sealed';
+function chapterTitle(chapter) {
+    const key = `common.chapter.${chapter.key}`;
+    const v = t(key);
+    return v === key ? chapter.label : v;
 }
 
-/* The dashed containment line leading INTO a node: ember once the fire's
-   past that point, ash ahead of it. No line before the very first node in
-   the whole campaign — there's nothing upstream of it to connect from. */
-function lineClass(node) {
-    return node.state === 'locked' ? 'is-ahead' : 'is-cleared';
+function tileStyle(node) {
+    if (node.state !== 'reached') return null;
+    const c = heatCell(node.level - 1, Math.max(1, props.totalLevels - 1), isDark.value);
+    return { background: c.bg, color: c.fg };
+}
+
+function tileLabel(node) {
+    if (node.state === 'reached') return t('campaign.fireDone', { n: node.level });
+    if (node.state === 'current') return t('campaign.fireNow', { n: node.level });
+    return t('campaign.fireLocked', { n: node.level });
 }
 </script>
 
 <template>
-    <Head title="Campaign · Burnfront" />
+    <Head :title="t('campaign.pageTitle')" />
 
-    <main class="mx-auto flex max-w-[720px] flex-col gap-6 px-4 pt-3 pb-16 sm:pt-5">
-        <SiteBar :back="{ href: '/', text: 'Menu' }" />
+    <div class="bf-page is-narrow">
+        <SiteBar :back="{ href: '/', text: t('common.home') }" />
 
-        <header class="flex flex-col gap-2.5">
-            <div class="flex items-end justify-between gap-3">
-                <h1 class="font-staatliches text-[clamp(38px,9vw,52px)] leading-[0.9] font-normal tracking-[.02em] text-stock">
-                    Campaign
-                </h1>
-                <p class="shrink-0 text-right font-mono text-[12px] font-semibold tracking-[.1em] text-ash-dim uppercase">
-                    {{ chapters.length }} districts<br />{{ totalLevels }} incidents
+        <main class="flex flex-col gap-4">
+            <header class="bf-page-head pb-1">
+                <p class="bf-eyebrow">{{ t('campaign.eyebrow') }}</p>
+                <h1 class="bf-page-title">{{ t('campaign.title') }}</h1>
+                <p class="bf-lede">{{ t('campaign.lead') }}</p>
+            </header>
+
+            <section class="bf-card flex flex-col gap-3">
+                <div class="flex items-baseline justify-between gap-3">
+                    <span class="bf-row-title">{{ t('campaign.progress', { done, total: totalLevels }) }}</span>
+                    <span class="bf-mono-label tabular-nums">{{ pct }}%</span>
+                </div>
+                <span class="bf-progress" aria-hidden="true"><span :style="{ width: pct + '%' }"></span></span>
+                <p class="bf-row-sub m-0">
+                    {{
+                        progress.maxed
+                            ? t('campaign.levelMax', { level: progress.level })
+                            : t('campaign.level', {
+                                  level: progress.level,
+                                  xp: progress.xpIntoLevel,
+                                  next: progress.xpToNextLevel,
+                                  nextLevel: progress.level + 1,
+                              })
+                    }}
                 </p>
-            </div>
+                <Link v-if="current" href="/campaign/play" class="bf-btn bf-btn-primary bf-btn-lg mt-1 w-full">
+                    {{ t('campaign.playNext', { n: current.level }) }}
+                </Link>
+                <p v-else-if="done >= totalLevels" class="bf-row-sub m-0">{{ t('campaign.allDone') }}</p>
+            </section>
 
-            <div class="bf-xp-card">
-                <div class="flex items-baseline justify-between font-mono text-[12px] font-semibold tracking-[.08em] text-ash uppercase">
-                    <span>Rank &middot; {{ progress.chapterLabel }}</span>
-                    <span v-if="!progress.maxed" class="font-bold text-ember-hi">{{ progress.xpIntoLevel }}/{{ progress.xpToNextLevel }} XP</span>
-                </div>
-                <div class="bf-xp-track"><div class="bf-xp-fill" :style="{ width: xpPct + '%' }"></div></div>
-                <p v-if="progress.maxed" class="text-[12.5px] text-ember">Every case file in the record is closed.</p>
-            </div>
-        </header>
-
-        <div class="flex flex-col items-center">
-            <template v-for="(chapter, ci) in chapters" :key="chapter.key">
-                <div class="bf-district">
-                    <span class="bf-district-title" :class="districtStatus(chapter) === 'sealed' ? 'text-ash-dim' : 'text-stock'">
-                        {{ ROMAN[ci] ?? chapter.key }} &middot; {{ chapter.label.toUpperCase() }}
-                    </span>
-                    <span class="bf-district-rule"></span>
-                    <RubberStamp :tone="DISTRICT_STAMP[districtStatus(chapter)]" size="sm" :rotate="ci % 2 === 0 ? -3 : 2">
-                        {{ DISTRICT_LABEL[districtStatus(chapter)] }}
-                    </RubberStamp>
-                </div>
-
-                <template v-for="(node, ni) in chapter.levels" :key="node.level">
-                    <div v-if="!(ci === 0 && ni === 0)" class="bf-trail-line" :class="lineClass(node)"></div>
-
-                    <Link
-                        v-if="node.state === 'current'"
-                        href="/campaign/play"
-                        class="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flame"
-                        :aria-label="`${node.label}, current case`"
-                    >
-                        <ShieldMarker state="current" :label="String(node.level).padStart(2, '0')" />
-                    </Link>
-                    <div v-else :aria-label="`${node.label}, ${node.state === 'reached' ? 'closed' : 'locked'}`">
-                        <ShieldMarker :state="markerState(node)" :label="String(node.level).padStart(2, '0')" />
-                    </div>
-
-                    <p v-if="node.state === 'current'" class="mt-1 font-mono text-[12px] font-semibold tracking-[.1em] text-ember-hi uppercase">
-                        You are here &middot; {{ node.label }}
-                    </p>
-                </template>
-            </template>
-        </div>
-    </main>
+            <section v-for="chapter in chapters" :key="chapter.key" class="bf-camp-part" :class="`is-${partStatus(chapter)}`">
+                <header class="bf-camp-part-head">
+                    <h2 class="bf-row-title m-0">{{ chapterTitle(chapter) }}</h2>
+                    <span class="bf-camp-part-status">{{ t(`campaign.part${partStatus(chapter) === 'now' ? 'Now' : partStatus(chapter) === 'done' ? 'Done' : 'Later'}`) }}</span>
+                </header>
+                <ol class="bf-camp-tiles">
+                    <li v-for="node in chapter.levels" :key="node.level">
+                        <Link
+                            v-if="node.state === 'current'"
+                            href="/campaign/play"
+                            class="bf-camp-tile is-current"
+                            :aria-label="tileLabel(node)"
+                        >
+                            <span class="bf-camp-num">{{ node.level }}</span>
+                            <span class="bf-camp-tag">{{ t('campaign.play') }}<RowArrow /></span>
+                        </Link>
+                        <span
+                            v-else
+                            class="bf-camp-tile"
+                            :class="node.state === 'reached' ? 'is-done' : 'is-locked'"
+                            :style="tileStyle(node)"
+                            role="img"
+                            :aria-label="tileLabel(node)"
+                        >
+                            <span class="bf-camp-num">{{ node.level }}</span>
+                            <svg v-if="node.state === 'reached'" class="bf-camp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                            <svg v-else class="bf-camp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                        </span>
+                    </li>
+                </ol>
+            </section>
+        </main>
+    </div>
 </template>

@@ -1,43 +1,46 @@
 {
     "name": "Burnfront",
     "short_name": "Burnfront",
-    "description": "A wildfire incident-reconstruction deduction puzzle. Reconstruct the firebreaks that shaped the fire's path with pure logic.",
+    "description": "Burnfront is a daily logic puzzle. A fire has burned out and you know when it reached a few squares. Work out where the firebreaks stood.",
     "id": "/",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
     "orientation": "portrait",
-    "background_color": "#151210",
-    "theme_color": "#151210",
-    "categories": ["games", "puzzle"],
+    "background_color": "#F1F1EE",
+    "theme_color": "#F1F1EE",
+    "categories": [
+        "games",
+        "puzzle"
+    ],
     "prefer_related_applications": false,
     "icons": [
         {
-            "src": "/icons/icon-192.png?v=2",
+            "src": "/icons/icon-192.png?v=3",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any"
         },
         {
-            "src": "/icons/icon-512.png?v=2",
+            "src": "/icons/icon-512.png?v=3",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any"
         },
         {
-            "src": "/icons/icon-maskable-192.png?v=2",
+            "src": "/icons/icon-maskable-192.png?v=3",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": "/icons/icon-maskable-512.png?v=2",
+            "src": "/icons/icon-maskable-512.png?v=3",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": "/icons/icon-monochrome.svg?v=2",
+            "src": "/icons/icon-monochrome.svg?v=3",
             "sizes": "any",
             "type": "image/svg+xml",
             "purpose": "monochrome"

@@ -1,0 +1,92 @@
+{
+    "boardLabel": "Puzzle",
+    "back": "Back to home",
+    "clockLabel": "Time so far",
+    "gridLabel": "Board, {rows} by {cols}. Use the arrow keys to move.",
+    "mode": {
+        "daily": "Today's fire",
+        "archive": "A past daily fire",
+        "campaign": "Campaign",
+        "campaignLevel": "Campaign · fire {level}",
+        "practice": "Practice · {word}"
+    },
+    "tools": {
+        "otherSize": "Other size",
+        "newFire": "New fire",
+        "campaignMap": "Campaign map"
+    },
+    "supply": "Firebreaks",
+    "supplyCount": "{count} of {total}",
+    "confirmNew": "Start a new fire? Your squares on this board will be lost.",
+    "confirmReveal": "Show the answer? This fire will not count for your time or score.",
+    "cell": {
+        "spark": "{where}, the star. The fire starts here at minute 0.",
+        "clue": "{where}, number {minute}. The fire must arrive at minute {minute}.",
+        "clueLate": "{where}, number {minute}. With your firebreaks the fire cannot arrive on time.",
+        "break": "{where}, firebreak",
+        "breakHint": "{where}, firebreak placed by a hint",
+        "breakWrong": "{where}, firebreak that a hint says is wrong",
+        "dot": "{where}, marked as no firebreak",
+        "empty": "{where}, empty",
+        "burnt": "{where}, burned at minute {minute}"
+    },
+    "msg": {
+        "start": "Tap a square to place a firebreak. Tap again for a dot (no firebreak here), and once more to clear it.",
+        "left": "{count} to go. A number bigger than its distance from the star means something blocks the short way.",
+        "oneLeft": "1 to go. A number bigger than its distance from the star means something blocks the short way.",
+        "late": "A ringed number can no longer burn on time. A firebreak is in its way.",
+        "tooMany": "Too many. You have exactly {count} firebreaks. Tap one to take it away.",
+        "fullWrong": "All {count} are placed, but the fire does not match yet. Look at the ringed numbers.",
+        "hintWrong": "The hint found a firebreak that cannot be right. It has a cross. Take it away.",
+        "archive": "This is a fire you already solved. Every square shows the minute it burned."
+    },
+    "controls": {
+        "undo": "Undo",
+        "hint": "Hint",
+        "reset": "Start over",
+        "undoKey": "Undo (U)",
+        "hintKey": "Hint (H)",
+        "resetKey": "Start over (R)",
+        "reveal": "Show the answer (this fire will not count)"
+    },
+    "keyboard": "Keyboard: arrow keys move, Enter places, Backspace goes back one step. U undo, H hint, R start over, S show the answer.",
+    "keyboardDaily": "Keyboard: arrow keys move, Enter places, Backspace goes back one step. U undo, H hint, R start over.",
+    "solved": {
+        "title": "Contained.",
+        "revealedTitle": "Solved for you.",
+        "revealedNote": "You asked for the answer, so this fire does not count for your time or score.",
+        "curveLabel": "How many squares burned each minute",
+        "time": "Time",
+        "noClock": "No clock",
+        "hintsLabel": "Hints",
+        "none": "None",
+        "noHints": "no hints",
+        "oneHint": "1 hint",
+        "hints": "{count} hints",
+        "breaks": "Firebreaks",
+        "personalBest": "Your best time for this size.",
+        "next": "Next fire",
+        "nextCampaign": "Campaign fire {level}",
+        "campaign": "Campaign",
+        "backToHistory": "Back to past days",
+        "home": "Back to home"
+    },
+    "campaign": {
+        "level": "Campaign fire {level}",
+        "points": "+{points} points",
+        "noPoints": "No points this time, because hints placed every firebreak.",
+        "levelUp": "Fire {level} is open.",
+        "complete": "You finished the whole campaign."
+    },
+    "share": {
+        "what": "What you share: how the fire grew, not where. No spoilers.",
+        "button": "Share result",
+        "copied": "Copied",
+        "copyFailed": "Could not copy",
+        "revealed": "Solved with the answer shown"
+    },
+    "leaderboard": {
+        "title": "Fastest today",
+        "noHints": "no hints"
+    }
+}

@@ -2,7 +2,10 @@
 import { computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { fmtClock } from '@/lib/burnfront-engine';
+import RowArrow from '@/Components/RowArrow.vue';
 import SiteBar from '@/Components/SiteBar.vue';
+import { t } from '@/lib/i18n';
+import { plural, tOr } from '@/lib/plural';
 
 const props = defineProps({
     tiers: { type: Array, default: () => [] }, // {difficulty, label, timed, solvedCount, bestTimeMs}
@@ -15,8 +18,7 @@ const props = defineProps({
     },
 });
 
-// Progress toward the next rank threshold, for the XP bar under the rank
-// card. A null nextThreshold means the rank is maxed out — show it full.
+// Progress toward the next rank. A null nextThreshold means the top rank.
 const rankProgressPercent = computed(() => {
     const { totalSolved, currentThreshold, nextThreshold } = props.career.rank;
     if (nextThreshold == null) return 100;
@@ -24,62 +26,68 @@ const rankProgressPercent = computed(() => {
     if (span <= 0) return 100;
     return Math.min(100, Math.max(0, ((totalSolved - currentThreshold) / span) * 100));
 });
+
+// Rank titles come from the server keyed by threshold; the plain words live in the locale file.
+const rankTitle = (threshold, fallback) => tOr(`history.rank.${threshold}`, fallback);
+const tierName = (tier) => tOr(`common.difficulty.${tier.difficulty}`, tier.label);
 </script>
 
 <template>
-    <Head title="Game History — Burnfront" />
+    <Head :title="t('history.games.pageTitle')" />
 
-    <main class="mx-auto flex max-w-[640px] flex-col gap-7 px-4 pt-3 pb-16 sm:pt-5">
-        <SiteBar :back="{ href: '/account', text: 'Account' }" />
+    <div class="bf-page is-narrow">
+        <SiteBar :back="{ href: '/account', text: t('history.back') }" />
 
-        <header class="flex flex-col gap-2">
-            <p class="bf-eyebrow">Line Verification Unit</p>
-            <h1 class="font-staatliches text-[40px] leading-[0.95] font-normal tracking-[.035em] text-stock">Game History</h1>
-            <p class="max-w-[52ch] text-ash">Every endless tier you&rsquo;ve closed at least once, and your fastest verified board for it.</p>
-            <Link href="/game/replays" class="text-[13px] text-ember hover:text-flame">Review past games &rarr;</Link>
-        </header>
+        <main class="flex flex-col gap-4">
+            <header class="bf-page-head pb-1">
+                <p class="bf-eyebrow">{{ t('history.games.eyebrow') }}</p>
+                <h1 class="bf-page-title">{{ t('history.games.title') }}</h1>
+                <p class="bf-lede">{{ t('history.games.lead') }}</p>
+            </header>
 
-        <section aria-label="Career rank" class="flex flex-col gap-3 rounded-lg border border-rule-2 bg-folder px-5 py-4">
-            <div class="flex flex-col gap-1.5">
-                <span class="bf-tile-title">{{ career.rank.title }}</span>
-                <span class="bf-tile-meta">
-                    {{ career.rank.totalSolved }} incident{{ career.rank.totalSolved === 1 ? '' : 's' }} closed
-                    <template v-if="career.rank.nextTitle">
-                        &middot; {{ career.rank.nextThreshold - career.rank.totalSolved }} to {{ career.rank.nextTitle }}</template
-                    >
-                </span>
-                <div class="bf-xp-track">
-                    <div class="bf-xp-fill" :style="{ width: rankProgressPercent + '%' }"></div>
+            <section class="bf-card flex flex-col gap-3" :aria-label="rankTitle(career.rank.currentThreshold, career.rank.title)">
+                <div class="flex flex-col gap-1">
+                    <span class="bf-row-title text-[20px]">{{ rankTitle(career.rank.currentThreshold, career.rank.title) }}</span>
+                    <span class="bf-row-sub">
+                        {{ plural('history.games.done', career.rank.totalSolved) }}<template v-if="career.rank.nextTitle">
+                            · {{ t('history.games.toNext', { count: career.rank.nextThreshold - career.rank.totalSolved, title: rankTitle(career.rank.nextThreshold, career.rank.nextTitle) }) }}</template
+                        >
+                    </span>
                 </div>
-            </div>
-            <ul class="flex flex-wrap gap-2" aria-label="Badges">
-                <li
-                    v-for="(badge, i) in career.badges"
-                    :key="badge.key"
-                    class="rounded px-2 py-0.5 text-xs font-staatliches uppercase tracking-[.03em]"
-                    :class="badge.earned ? (i % 3 === 1 ? 'border border-steel text-steel' : 'border border-ember text-ember') : 'border border-dashed border-rule-2 text-ash-dim'"
-                    :title="badge.description"
-                >
-                    {{ badge.label }}
-                </li>
-            </ul>
-        </section>
+                <span class="bf-progress" aria-hidden="true"><span :style="{ width: rankProgressPercent + '%' }"></span></span>
 
-        <section aria-label="Endless tier records" class="flex flex-col gap-3">
-            <p class="bf-eyebrow">Fastest verified &middot; by tier</p>
-            <div
-                v-for="tier in tiers"
-                :key="tier.difficulty"
-                class="bf-row items-center justify-between"
-                :class="tier.solvedCount === 0 ? 'border-rule opacity-60' : ''"
-            >
-                <span class="text-[18px] leading-tight font-semibold text-stock">{{ tier.label }}</span>
-                <span v-if="tier.timed && tier.bestTimeMs != null" class="shrink-0 font-mono font-bold text-ember-hi">
-                    {{ fmtClock(tier.bestTimeMs) }}
-                </span>
-                <span v-else-if="tier.solvedCount > 0" class="shrink-0 font-mono text-ash-dim uppercase">{{ tier.solvedCount }} closed</span>
-                <span v-else class="shrink-0 font-mono text-ash-dim uppercase">Not yet attempted</span>
-            </div>
-        </section>
-    </main>
+                <h2 class="bf-row-sub m-0 mt-1">{{ t('history.games.badges') }}</h2>
+                <ul class="bf-badges">
+                    <li
+                        v-for="badge in career.badges"
+                        :key="badge.key"
+                        :class="{ 'is-earned': badge.earned }"
+                        :title="tOr(`history.badge.${badge.key}.description`, badge.description)"
+                    >
+                        <span class="bf-row-title text-[16px]">{{ tOr(`history.badge.${badge.key}.label`, badge.label) }}</span>
+                        <span class="bf-row-sub">
+                            {{ tOr(`history.badge.${badge.key}.description`, badge.description) }}<template v-if="!badge.earned"> ({{ t('history.games.badgeLocked') }})</template>
+                        </span>
+                    </li>
+                </ul>
+            </section>
+
+            <section class="bf-list" :aria-label="t('history.games.sizes')">
+                <h2 class="bf-row-sub m-0 mt-1">{{ t('history.games.sizes') }}</h2>
+                <div v-for="tier in tiers" :key="tier.difficulty" class="bf-row" :class="{ 'is-dashed': tier.solvedCount === 0 }">
+                    <span class="bf-row-text">
+                        <span class="bf-row-title">{{ tierName(tier) }}</span>
+                        <span v-if="tier.solvedCount > 0" class="bf-row-sub">{{ t('history.games.solvedCount', { count: tier.solvedCount }) }}</span>
+                    </span>
+                    <span v-if="tier.timed && tier.bestTimeMs != null" class="bf-history-time">{{ fmtClock(tier.bestTimeMs) }}</span>
+                    <span v-else-if="tier.solvedCount === 0" class="bf-row-sub shrink-0">{{ t('history.games.notYet') }}</span>
+                </div>
+            </section>
+
+            <Link href="/game/replays" class="bf-row">
+                <span class="bf-row-text"><span class="bf-row-title">{{ t('history.games.toReplays') }}</span></span>
+                <RowArrow />
+            </Link>
+        </main>
+    </div>
 </template>

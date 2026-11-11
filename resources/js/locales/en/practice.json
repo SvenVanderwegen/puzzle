@@ -1,0 +1,20 @@
+{
+    "pageTitle": "Practice · Burnfront",
+    "eyebrow": "Practice",
+    "title": "Play as many fires as you like",
+    "lead": "Pick a size. Each tap makes a new fire. Easy is a good place to start.",
+    "meta": "{rows} by {cols} · {breaks} firebreaks",
+    "metaNoClock": "{rows} by {cols} · {breaks} firebreaks · no clock",
+    "best": "Your best time {time}",
+    "solved": "{count} done",
+    "start": "Play {name}",
+    "custom": {
+        "title": "Choose your own size",
+        "help": "Set the number of rows, columns and firebreaks.",
+        "rows": "Rows",
+        "cols": "Columns",
+        "breaks": "Firebreaks",
+        "limits": "{min} to {max} squares a side, up to {maxBreaks} firebreaks on this size.",
+        "start": "Play this size"
+    }
+}

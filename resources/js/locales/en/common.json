@@ -1,0 +1,48 @@
+{
+    "brand": "burnfront",
+    "tagline": "The daily wildfire logic puzzle",
+    "home": "Burnfront, home",
+    "back": "Back",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "createAccount": "Create an account",
+    "accountOf": "Your account, signed in as {name}",
+    "streak": "{count} day streak",
+    "loading": "Making a new fire",
+    "networkError": "Could not reach Burnfront. Check your connection and try again.",
+    "by": "{rows} by {cols}",
+    "minutes": "min",
+    "theme": {
+        "system": "Colours follow your device. Tap for light.",
+        "light": "Light colours. Tap for dark.",
+        "dark": "Dark colours. Tap to follow your device.",
+        "title": "Colours",
+        "systemShort": "Device",
+        "lightShort": "Light",
+        "darkShort": "Dark"
+    },
+    "difficulty": {
+        "lookout": "Easy",
+        "crew": "Medium",
+        "hotshot": "Hard",
+        "division": "Very hard",
+        "coldcase": "No clock",
+        "custom": "Your own size",
+        "daily": "Daily",
+        "campaign": "Campaign"
+    },
+    "chapter": {
+        "1": "Part 1, getting started",
+        "2": "Part 2, steady",
+        "3": "Part 3, tricky",
+        "4": "Part 4, hard",
+        "5": "Part 5, no clock"
+    },
+    "chapterShort": {
+        "1": "Part 1",
+        "2": "Part 2",
+        "3": "Part 3",
+        "4": "Part 4",
+        "5": "Part 5"
+    }
+}
