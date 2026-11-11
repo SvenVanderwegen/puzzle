@@ -45,6 +45,7 @@
         "size": "{rows} by {cols}"
     },
     "more": {
+        "label": "More ways to play",
         "practice": "Practice",
         "practiceHelp": "Pick how hard, or set your own size.",
         "learn": "How to play",

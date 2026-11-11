@@ -1176,6 +1176,36 @@
         font-size: 14px;
         color: var(--bf-muted);
     }
+    /* Home icons (Components/HomeIcon.vue): a cell-shaped tile in one heat
+       step, or a bare ink glyph next to a small label. */
+    .bf-tile {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: var(--bf-radius-btn);
+        background: var(--tile-bg);
+        color: var(--tile-fg);
+    }
+    .dark .bf-tile {
+        background: var(--tile-bg-dark);
+        color: var(--tile-fg-dark);
+    }
+    .bf-tile svg {
+        width: 24px;
+        height: 24px;
+    }
+    .bf-glyph {
+        display: inline-flex;
+        flex-shrink: 0;
+        color: var(--bf-ink);
+    }
+    .bf-glyph svg {
+        width: 18px;
+        height: 18px;
+    }
     .bf-home-more {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
