@@ -1656,20 +1656,20 @@
         gap: 16px;
         margin-top: 8px;
     }
-    .bf-solved-head h1 {
+    .bf-solved-head h2 {
         margin: 0;
         font-family: var(--font-display);
         font-weight: 800;
-        font-size: 44px;
+        font-size: clamp(36px, 11vw, 44px);
         line-height: 0.95;
         letter-spacing: -0.04em;
     }
     .bf-curve {
         display: flex;
-        flex-shrink: 0;
+        flex: 0 1 120px;
         align-items: flex-end;
         gap: 2px;
-        width: 120px;
+        min-width: 64px;
         height: 52px;
         padding-bottom: 4px;
     }
