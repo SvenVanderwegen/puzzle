@@ -41,6 +41,9 @@ for the premise and lore.
       on the real engine.
     - `resources/css/app.css` — the Tailwind theme (colors, fonts) and the
       `bf-*` component classes the board/demo/tiles use.
+- `apps/mobile/` — the iPhone app (Expo, React Native). Reuses
+  `resources/js/lib/burnfront-engine.js` unchanged and works offline; see
+  [`apps/mobile/README.md`](apps/mobile/README.md).
 - `reference/` — the frozen prototype (`firebreak.py` + a self-contained
   `index.html`) that `app/Support/Burnfront/Engine.php` is ported from. Do not
   edit; it's the ground truth other implementations are checked against.
