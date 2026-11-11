@@ -6,7 +6,9 @@ chrome around a board drawn in the Burnfront look ("Progressiekaart").
 - **Native:** tab bar (Today, Campaign, Practice, You) via `expo-router/native-tabs`,
   stack navigation with large titles, the result as a form sheet, system
   switches, a SwiftUI segmented control and time picker (`@expo/ui`), the system
-  share sheet, haptics on every move (`expo-haptics`), SF Symbols, Dynamic Type.
+  share sheet, haptics on every move (`expo-haptics`), soft sound effects
+  (`expo-audio`, they follow the silent switch and mix with the player's own
+  music), SF Symbols, Dynamic Type.
 - **Brand:** the board, numbers and fire names use Bricolage Grotesque and the
   heat ramp (colour = the minute the fire arrived).
 - **Offline:** no account and no server. Every mode works without a connection.
@@ -67,6 +69,9 @@ npm test            # engine tests with node's test runner (no simulator needed)
 - **Words:** every string is in `src/i18n/en.ts`. To add a language, copy it
   (for example to `nl.ts`), translate the values and register it in
   `src/i18n/index.ts`. The phone's language is picked automatically.
+- **Sounds:** `assets/sounds/*.wav` are made by `node scripts/make-sounds.mjs`
+  in the repository root, together with the website's copies. Change a sound
+  there, then run the script again.
 - **Numbers to tune:** board sizes, the campaign ladder, the weekly goal and
   the level step are in `src/config.ts`. The weekly goal (5) and levels (one
   per 5 fires) are a proposal, not confirmed yet.

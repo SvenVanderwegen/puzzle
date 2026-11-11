@@ -8,6 +8,8 @@ export type Settings = {
   /** Off by default: no hurry. The time is still shown on the result. */
   showClock: boolean;
   haptics: boolean;
+  /** Soft sound effects; they follow the silent switch. */
+  sounds: boolean;
   /** Ring a number as soon as it can no longer burn on time. */
   flagLate: boolean;
   appearance: AppearanceChoice;
@@ -20,6 +22,7 @@ export type Settings = {
 export const settingsStore = createStore<Settings>('settings', {
   showClock: false,
   haptics: true,
+  sounds: true,
   flagLate: true,
   appearance: 'auto',
   reminder: false,

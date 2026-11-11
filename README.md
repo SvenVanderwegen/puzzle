@@ -39,6 +39,11 @@ for the premise and lore.
     - `resources/js/Pages/Burnfront/HowItWorksDemo.vue` — the scripted
       walkthrough animation used on the How To Play page, with no dependency
       on the real engine.
+    - `resources/js/lib/sound.js` — the sound effects (on by default, a
+      speaker switch on the board and in account settings). The sounds are
+      WAV files in `resources/sounds/`, made from scratch by
+      `node scripts/make-sounds.mjs` (no recordings, so no licence); the same
+      script writes the app's copies in `apps/mobile/assets/sounds/`.
     - `resources/css/app.css` — the Tailwind theme (colors, fonts) and the
       `bf-*` component classes the board/demo/tiles use.
 - `apps/mobile/` — the iPhone app (Expo, React Native). Reuses
