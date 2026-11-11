@@ -8,6 +8,7 @@ use App\Models\EndlessScore;
 use App\Models\GamePlay;
 use App\Models\User;
 use App\Support\Burnfront\Engine;
+use App\Support\Burnfront\PlayerProgress;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -663,6 +664,7 @@ class BurnfrontTest extends TestCase
         $this->assertNotNull($score);
         $this->assertFalse($score->ranked);
         $this->assertSame(1, GamePlay::where('user_id', $user->id)->where('mode', 'daily')->count());
+        $this->assertSame(60, PlayerProgress::xp($user->id)); // fire 30 + no hints 10 + today 20
 
         $this->getJson('/daily/leaderboard')->assertJsonCount(0, 'entries');
         $this->actingAs($user)->get('/')->assertInertia(fn (Assert $page) => $page
@@ -727,11 +729,88 @@ class BurnfrontTest extends TestCase
         $this->actingAs($user)->get('/')->assertInertia(fn (Assert $page) => $page
             ->where('progress.weekSolved', 1)
             ->where('progress.totalSolved', 1)
+            ->where('progress.xp', 20) // a 5 by 5 fire
             ->where('progress.level', 1)
-            ->where('progress.toGo', 2)
+            ->where('progress.toGo', 40)
+            ->where('progress.rankKey', 'trainee')
+            ->where('campaignStatus.xp', 20)
             ->where('upNext.kind', 'campaign')
             ->where('upNext.level', 1)
         );
+    }
+
+    /**
+     * Every mode gives points. A practice fire gives the plain fire points
+     * for its size (the server does not count hints there).
+     */
+    public function test_a_practice_fire_gives_points_for_its_size(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->puzzles()->generate('crew');
+
+        $response = $this->actingAs($user)->postJson('/endless/score', [
+            'difficulty' => 'crew',
+            'spark' => $puzzle['spark'],
+            'clues' => $puzzle['clues'],
+            'shaded' => $this->solveEndless($puzzle),
+            'relaxed' => true,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('reward.items', [['key' => 'fire', 'xp' => 30]]);
+        $response->assertJsonPath('reward.total', 30);
+        $response->assertJsonPath('reward.xpBefore', 0);
+        $response->assertJsonPath('reward.xpAfter', 30);
+        $this->assertSame(30, PlayerProgress::xp($user->id));
+    }
+
+    /**
+     * Today's fire, solved without a hint: fire + no hints + today's fire.
+     * On the second day in a row the streak adds a little more.
+     */
+    public function test_the_daily_gives_points_with_a_streak_bonus_from_day_two(): void
+    {
+        $user = User::factory()->create();
+        DailyScore::create(['user_id' => $user->id, 'date' => now('UTC')->subDay()->toDateString(), 'time_ms' => 1000, 'hints_used' => 0]);
+
+        $daily = $this->actingAs($user)->getJson('/daily')->json();
+        $response = $this->actingAs($user)->postJson('/daily/score', [
+            'token' => $daily['token'],
+            'shaded' => $this->solveDaily($daily),
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('reward.items', [
+            ['key' => 'fire', 'xp' => 30],
+            ['key' => 'noHints', 'xp' => 10],
+            ['key' => 'daily', 'xp' => 20],
+            ['key' => 'streak', 'xp' => 10, 'n' => 2],
+        ]);
+        $response->assertJsonPath('reward.total', 70);
+        $response->assertJsonPath('reward.leveledUp', true); // level 2 starts at 60 points
+        $response->assertJsonPath('progress.level', 2);
+        $this->assertSame(70, PlayerProgress::xp($user->id));
+    }
+
+    /** The fire that reaches the weekly goal gets the bonus, once. */
+    public function test_reaching_the_weekly_goal_gives_a_bonus_once(): void
+    {
+        config(['burnfront.weekly_goal' => 2]);
+        $user = User::factory()->create();
+
+        $totals = [];
+        for ($i = 0; $i < 3; $i++) {
+            $puzzle = $this->puzzles()->generate('lookout');
+            $totals[] = $this->actingAs($user)->postJson('/endless/score', [
+                'difficulty' => 'lookout',
+                'spark' => $puzzle['spark'],
+                'clues' => $puzzle['clues'],
+                'shaded' => $this->solveEndless($puzzle),
+                'relaxed' => true,
+            ])->assertStatus(200)->json('reward.total');
+        }
+
+        $this->assertSame([20, 70, 20], $totals);
     }
 
     /**
@@ -1517,22 +1596,22 @@ class BurnfrontTest extends TestCase
         $this->get('/game/history')->assertRedirect('/login');
     }
 
-    public function test_game_history_reports_a_trainee_rank_and_no_badges_for_a_fresh_account(): void
+    public function test_game_history_reports_the_first_rank_and_no_badges_for_a_fresh_account(): void
     {
         $user = User::factory()->create();
 
         $response = $this->actingAs($user)->get('/game/history');
 
         $response->assertInertia(fn (Assert $page) => $page
-            ->where('career.rank.title', 'Trainee Analyst')
-            ->where('career.rank.totalSolved', 0)
-            ->where('career.rank.nextTitle', 'Field Analyst')
-            ->where('career.rank.nextThreshold', 5)
+            ->where('career.totalSolved', 0)
+            ->where('career.standing.level', 1)
+            ->where('career.standing.rankKey', 'trainee')
+            ->where('career.standing.nextRankLevel', 5)
             ->where('career.badges.0.earned', false)
         );
     }
 
-    public function test_game_history_career_rank_counts_daily_and_endless_solves_together(): void
+    public function test_game_history_counts_daily_and_endless_solves_together(): void
     {
         $user = User::factory()->create();
         EndlessScore::create(['user_id' => $user->id, 'difficulty' => 'lookout', 'solved_count' => 3, 'best_time_ms' => 3000]);
@@ -1541,8 +1620,7 @@ class BurnfrontTest extends TestCase
         $response = $this->actingAs($user)->get('/game/history');
 
         $response->assertInertia(fn (Assert $page) => $page
-            ->where('career.rank.totalSolved', 4)
-            ->where('career.rank.title', 'Trainee Analyst')
+            ->where('career.totalSolved', 4)
             ->where('career.badges.0.earned', true) // first_incident
             ->where('career.badges.1.earned', true) // clean_reconstruction
         );

@@ -219,6 +219,16 @@ final class DailyRunStore
             'time_ms' => (int) $result['time_ms'],
             'hints_used' => (int) $result['hints_used'],
         ]);
+
+        // The guest already saw these points counted up on their device;
+        // now that there is an account, they are really theirs.
+        PlayerProgress::award($user->id, [
+            'rows' => $incident->rows,
+            'cols' => $incident->cols,
+            'breaks' => $incident->breaks,
+            'daily' => true,
+            'hintsUsed' => (int) $result['hints_used'],
+        ]);
     }
 
     public static function startKey(int $userId, string $date): string

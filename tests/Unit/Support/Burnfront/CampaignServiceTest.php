@@ -9,7 +9,7 @@ class CampaignServiceTest extends TestCase
 {
     public function test_level_config_resolves_every_level_and_rejects_out_of_range(): void
     {
-        for ($level = 1; $level <= CampaignService::TOTAL_LEVELS; $level++) {
+        for ($level = 1; $level <= CampaignService::TOTAL_RUNGS; $level++) {
             $config = CampaignService::levelConfig($level);
             $this->assertNotNull($config, "level {$level} should resolve");
             $this->assertSame(
@@ -19,7 +19,7 @@ class CampaignServiceTest extends TestCase
         }
 
         $this->assertNull(CampaignService::levelConfig(0));
-        $this->assertNull(CampaignService::levelConfig(CampaignService::TOTAL_LEVELS + 1));
+        $this->assertNull(CampaignService::levelConfig(CampaignService::TOTAL_RUNGS + 1));
     }
 
     public function test_level_config_chapters_land_on_the_shipped_endless_tiers(): void
@@ -78,76 +78,46 @@ class CampaignServiceTest extends TestCase
         $this->assertSame([17, 18, 19, 20], $chapters[4]['levels']);
     }
 
-    public function test_xp_to_next_grows_with_level(): void
+    public function test_a_level_is_one_past_the_fires_contained(): void
     {
-        $this->assertGreaterThan(CampaignService::xpToNext(1), CampaignService::xpToNext(10));
-        $this->assertGreaterThan(CampaignService::xpToNext(10), CampaignService::xpToNext(19));
+        $this->assertSame(1, CampaignService::levelFor(0));
+        $this->assertSame(8, CampaignService::levelFor(7));
+        $this->assertSame(1, CampaignService::levelFor(-3));
     }
 
-    public function test_level_for_xp_is_the_inverse_of_cumulative_xp_for_level(): void
+    public function test_levels_climb_the_rungs_a_few_at_a_time(): void
     {
-        for ($level = 1; $level <= CampaignService::TOTAL_LEVELS; $level++) {
-            $threshold = CampaignService::cumulativeXpForLevel($level);
-            $this->assertSame($level, CampaignService::levelForXp($threshold));
+        // Two levels per rung on the 5 by 5 boards, three on 6 by 6, ...
+        $this->assertSame([1, 1, 2, 2, 3, 3, 4, 4], array_map(CampaignService::rungFor(...), range(1, 8)));
+        $this->assertSame(5, CampaignService::rungFor(9));
+        $this->assertSame(8, CampaignService::rungFor(20));
+        $this->assertSame(9, CampaignService::rungFor(21));
+        $this->assertSame(13, CampaignService::rungFor(37));
+        $this->assertSame(20, CampaignService::rungFor(76));
+        $this->assertSame(1, CampaignService::rungFor(0));
+
+        // Never a step back on the way up.
+        $prev = 1;
+        for ($level = 1; $level < CampaignService::firstEndlessLevel(); $level++) {
+            $rung = CampaignService::rungFor($level);
+            $this->assertGreaterThanOrEqual($prev, $rung);
+            $this->assertLessThanOrEqual($prev + 1, $rung);
+            $prev = $rung;
         }
-
-        $this->assertSame(1, CampaignService::levelForXp(0));
-        $this->assertSame(4, CampaignService::levelForXp(CampaignService::cumulativeXpForLevel(5) - 1));
     }
 
-    public function test_level_for_xp_caps_at_total_levels(): void
+    public function test_levels_never_run_out(): void
     {
-        $this->assertSame(CampaignService::TOTAL_LEVELS, CampaignService::levelForXp(PHP_INT_MAX >> 8));
-    }
+        $this->assertSame(77, CampaignService::firstEndlessLevel());
 
-    public function test_xp_awarded_is_full_credit_for_a_clean_solve(): void
-    {
-        $this->assertSame(CampaignService::baseXp(1), CampaignService::xpAwarded(1, 0));
-    }
+        // Past the way up: the eight hardest rungs in turn, one step per level.
+        $this->assertSame(range(13, 20), array_map(CampaignService::rungFor(...), range(77, 84)));
+        $this->assertSame(13, CampaignService::rungFor(85));
 
-    public function test_xp_awarded_shrinks_with_hints_and_hits_zero_at_the_break_count(): void
-    {
-        $breaks = CampaignService::levelConfig(5)['breaks'];
-
-        $clean = CampaignService::xpAwarded(5, 0);
-        $oneHint = CampaignService::xpAwarded(5, 1);
-
-        $this->assertGreaterThan($oneHint, $clean);
-        $this->assertGreaterThan(0, $oneHint);
-        $this->assertSame(0, CampaignService::xpAwarded(5, $breaks));
-        $this->assertSame(0, CampaignService::xpAwarded(5, $breaks + 5));
-    }
-
-    public function test_progress_for_xp_derives_a_consistent_snapshot(): void
-    {
-        $progress = CampaignService::progressForXp(0);
-
-        $this->assertSame(1, $progress['level']);
-        $this->assertSame(0, $progress['xpIntoLevel']);
-        $this->assertSame(CampaignService::xpToNext(1), $progress['xpToNextLevel']);
-        $this->assertFalse($progress['maxed']);
-
-        $maxedProgress = CampaignService::progressForXp(PHP_INT_MAX >> 8);
-        $this->assertSame(CampaignService::TOTAL_LEVELS, $maxedProgress['level']);
-        $this->assertTrue($maxedProgress['maxed']);
-        $this->assertNull($maxedProgress['xpToNextLevel']);
-    }
-
-    /**
-     * Regression test for a reviewer-flagged risk: just reaching level 20
-     * (the XP threshold that makes levelForXp() return TOTAL_LEVELS) must
-     * not be reported as "maxed" — the player hasn't cleared level 20 yet,
-     * only unlocked it. Only earning enough XP to have cleared it (i.e.
-     * enough to have "leveled up" past 20, were there a level 21) counts.
-     */
-    public function test_reaching_level_20_is_not_maxed_until_it_is_cleared(): void
-    {
-        $justReached = CampaignService::progressForXp(CampaignService::cumulativeXpForLevel(CampaignService::TOTAL_LEVELS));
-        $this->assertSame(CampaignService::TOTAL_LEVELS, $justReached['level']);
-        $this->assertFalse($justReached['maxed']);
-        $this->assertNotNull($justReached['xpToNextLevel']);
-
-        $cleared = CampaignService::progressForXp(CampaignService::cumulativeXpForLevel(CampaignService::TOTAL_LEVELS + 1));
-        $this->assertTrue($cleared['maxed']);
+        foreach ([100, 1234, 1_000_000] as $level) {
+            $board = CampaignService::boardFor($level);
+            $this->assertGreaterThanOrEqual(7, $board['rows']);
+            $this->assertNotSame(CampaignService::rungFor($level), CampaignService::rungFor($level + 1));
+        }
     }
 }

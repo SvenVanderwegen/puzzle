@@ -8,11 +8,11 @@ use App\Models\CampaignProfile;
  * Answers "what should this player play next?", for the home screen's
  * "Up next" card and the result screen's primary "Next fire" button.
  *
- * - A signed-in player with campaign fires left: their next campaign fire.
+ * - A signed-in player: their next campaign level. The campaign has no
+ *   end (every contained fire opens the next level), so there always is one.
  * - Someone already playing quick fires: another one of the same size, so
  *   the button keeps them in the flow they chose.
- * - A guest (the campaign needs an account) or a player who finished the
- *   campaign: a quick fire.
+ * - A guest (the campaign needs an account): a quick fire.
  *
  * Returns data, not copy: the client turns it into words through its
  * locale files, so this stays translatable.
@@ -20,7 +20,7 @@ use App\Models\CampaignProfile;
 final class NextFire
 {
     /**
-     * @return array{kind: 'campaign', href: string, level: int, totalLevels: int, solvedLevels: int, rows: int, cols: int, breaks: int, chapterLabel: string}|array{kind: 'quick', href: string, difficulty: string, rows: int, cols: int, breaks: int}
+     * @return array{kind: 'campaign', href: string, level: int, rank: int, rankKey: string, grade: int, rows: int, cols: int, breaks: int}|array{kind: 'quick', href: string, difficulty: string, rows: int, cols: int, breaks: int}
      */
     public static function for(?int $userId, ?string $afterMode = null, ?string $afterDifficulty = null): array
     {
@@ -29,13 +29,9 @@ final class NextFire
         }
 
         if ($userId !== null) {
-            $totalXp = (int) (CampaignProfile::where('user_id', $userId)->value('total_xp') ?? 0);
-            $progress = CampaignService::progressForXp($totalXp);
-            if (! $progress['maxed']) {
-                return self::campaign($progress['level']);
-            }
+            $profile = CampaignProfile::where('user_id', $userId)->first(['total_xp', 'puzzles_solved']);
 
-            return self::quick('division');
+            return self::campaign((int) ($profile->total_xp ?? 0), (int) ($profile->puzzles_solved ?? 0));
         }
 
         return self::quick((string) config('burnfront.guest_next_tier', 'lookout'));
@@ -84,20 +80,22 @@ final class NextFire
         ];
     }
 
-    private static function campaign(int $level): array
+    private static function campaign(int $xp, int $puzzlesSolved): array
     {
-        $config = CampaignService::levelConfig($level);
+        $standing = Progression::standing($xp);
+        $level = CampaignService::levelFor($puzzlesSolved);
+        $config = CampaignService::boardFor($level);
 
         return [
             'kind' => 'campaign',
             'href' => '/campaign/play',
             'level' => $level,
-            'totalLevels' => CampaignService::TOTAL_LEVELS,
-            'solvedLevels' => $level - 1,
+            'rank' => $standing['rank'],
+            'rankKey' => $standing['rankKey'],
+            'grade' => $standing['grade'],
             'rows' => $config['rows'],
             'cols' => $config['cols'],
             'breaks' => $config['breaks'],
-            'chapterLabel' => $config['chapterLabel'],
         ];
     }
 }

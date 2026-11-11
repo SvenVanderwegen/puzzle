@@ -27,28 +27,38 @@
         "toReplays": "Watch your games back",
         "doneOne": "1 fire put out",
         "doneMany": "{count} fires put out",
-        "toNext": "{count} more to reach {title}",
+        "levelLine": "{toGo} points to {next}",
         "badges": "Badges",
         "badgeLocked": "not yet",
         "sizes": "Fastest time for each size",
         "solvedCount": "{count} done",
         "notYet": "Not played yet"
     },
-    "rank": {
-        "0": "Beginner",
-        "5": "Getting the hang of it",
-        "20": "Steady hand",
-        "50": "Sharp eye",
-        "100": "Fire expert",
-        "250": "Burnfront master"
-    },
     "badge": {
-        "first_incident": { "label": "First fire", "description": "Put out your first fire." },
-        "clean_reconstruction": { "label": "No help needed", "description": "Solve a daily fire without a hint." },
-        "week_streak": { "label": "One week", "description": "Play the daily fire 7 days in a row." },
-        "month_streak": { "label": "One month", "description": "Play the daily fire 30 days in a row." },
-        "century": { "label": "A hundred fires", "description": "Put out 100 fires in all." },
-        "cold_case": { "label": "No clock", "description": "Put out a fire on the no clock size." }
+        "first_incident": {
+            "label": "First fire",
+            "description": "Put out your first fire."
+        },
+        "clean_reconstruction": {
+            "label": "No help needed",
+            "description": "Solve a daily fire without a hint."
+        },
+        "week_streak": {
+            "label": "One week",
+            "description": "Play the daily fire 7 days in a row."
+        },
+        "month_streak": {
+            "label": "One month",
+            "description": "Play the daily fire 30 days in a row."
+        },
+        "century": {
+            "label": "A hundred fires",
+            "description": "Put out 100 fires in all."
+        },
+        "cold_case": {
+            "label": "No clock",
+            "description": "Put out a fire on the no clock size."
+        }
     },
     "replays": {
         "pageTitle": "Watch your games back · Burnfront",

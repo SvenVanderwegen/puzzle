@@ -8,6 +8,7 @@ use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\NextFire;
 use App\Support\Burnfront\PlayerProgress;
+use App\Support\Burnfront\Progression;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Http\JsonResponse;
@@ -17,60 +18,93 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Campaign mode: a fixed 20-level, 5-chapter difficulty ladder a signed-in
- * player climbs by earning XP (see CampaignService). Unlike Endless, the
- * level a request is generated/scored against is never a client choice —
- * every method here re-derives it from this account's own CampaignProfile,
- * the same defensive posture BurnfrontController already takes with the
- * daily incident's server-bound start time.
+ * Campaign mode: an endless row of levels, one fire each. The campaign
+ * fires a player has contained decide their level, and the level decides
+ * which kind of fire comes next (CampaignService::boardFor()). Points and
+ * rank are a separate counter, fed by every mode (see Progression). Unlike
+ * Endless, the board a request is generated/scored against is never a
+ * client choice — every method here re-derives it from this account's own
+ * CampaignProfile, the same defensive posture BurnfrontController already
+ * takes with the daily incident's server-bound start time.
  */
 class CampaignController extends Controller
 {
     public function __construct(private readonly PuzzleService $puzzles) {}
 
+    /** How many levels of the row the campaign page shows (three rows of four). */
+    private const PATH_SIZE = 12;
+
+    /** ... of which at most this many are already contained ones. */
+    private const PATH_BEHIND = 3;
+
     /**
-     * The campaign level map: this account's current level/chapter/XP
-     * standing plus every chapter's levels annotated reached/current/locked
-     * for the path UI.
+     * The campaign page: the level this account is on, a stretch of the row
+     * of levels around it (a few done, the current one, the next ones, each
+     * with its board size), and where the account stands in points and
+     * rank. The row has no end; the page just shows the part that matters.
      */
     public function map(Request $request): Response
     {
-        $profile = $this->profile($request->user()->id);
-        $progress = CampaignService::progressForXp($profile->total_xp);
+        $profile = CampaignProfile::where('user_id', $request->user()->id)->first(['total_xp', 'puzzles_solved']);
+        $level = CampaignService::levelFor((int) ($profile->puzzles_solved ?? 0));
+        $standing = Progression::standing((int) ($profile->total_xp ?? 0));
+        $rules = Progression::rules();
 
-        $chapters = collect(CampaignService::chapters())->map(function (array $chapter) use ($progress) {
-            $chapter['levels'] = collect($chapter['levels'])->map(fn (int $level) => [
-                'level' => $level,
-                'label' => CampaignService::levelConfig($level)['label'],
+        $path = [];
+        $from = max(1, $level - self::PATH_BEHIND);
+        for ($n = $from; $n < $from + self::PATH_SIZE; $n++) {
+            $board = CampaignService::boardFor($n);
+            $path[] = [
+                'level' => $n,
                 'state' => match (true) {
-                    $level < $progress['level'] => 'reached',
-                    $level === $progress['level'] => 'current',
+                    $n < $level => 'done',
+                    $n === $level => 'current',
                     default => 'locked',
                 },
-            ])->all();
+                'rows' => $board['rows'],
+                'cols' => $board['cols'],
+            ];
+        }
 
-            return $chapter;
-        })->all();
+        $ranks = [];
+        foreach ($rules['ranks'] as $index => $key) {
+            $ranks[] = [
+                'index' => $index,
+                'key' => $key,
+                'fromXp' => Progression::xpForLevel($rules['rankLevels'][$index]),
+                'state' => match (true) {
+                    $index < $standing['rank'] => 'done',
+                    $index === $standing['rank'] => 'now',
+                    default => 'later',
+                },
+            ];
+        }
 
         return Inertia::render('Burnfront/CampaignMap', [
-            'progress' => $progress,
-            'chapters' => $chapters,
-            'totalLevels' => CampaignService::TOTAL_LEVELS,
+            'level' => $level,
+            'path' => $path,
+            // Where the way up ends: used to colour the levels along the heat ramp.
+            'endlessFrom' => CampaignService::firstEndlessLevel(),
+            'standing' => $standing,
+            'ranks' => $ranks,
+            'next' => NextFire::for($request->user()->id),
+            'rules' => $rules,
         ]);
     }
 
     /**
-     * Renders the board for this account's current level — there is no
-     * ?level= to pick from, since the level is earned, not chosen.
+     * Renders the board for the level this account is on. There is no
+     * ?level= to pick from: a level opens by containing the one before it.
      */
     public function play(Request $request): Response
     {
-        $profile = $this->profile($request->user()->id);
-        $level = CampaignService::levelForXp($profile->total_xp);
+        $level = CampaignService::levelFor($this->profile($request->user()->id)->puzzles_solved);
 
         return Inertia::render('Burnfront/Play', [
             'mode' => 'campaign',
-            'levelConfig' => CampaignService::levelConfig($level),
+            // 'level' is the number the page shows; the rest describes the
+            // kind of board that level gets.
+            'levelConfig' => ['level' => $level, ...CampaignService::boardFor($level)],
             'authenticated' => true,
             'nextFire' => NextFire::for($request->user()->id, 'campaign'),
             'progressRules' => PlayerProgress::rules(),
@@ -78,7 +112,7 @@ class CampaignController extends Controller
     }
 
     /**
-     * Generates a fresh board at this account's current level and signs it
+     * Generates a fresh board for the level this account is on and signs it
      * into a run token (CampaignService::issueToken()) that hint(), solve(),
      * and submitScore() all require — the puzzle spec itself is never
      * client-suppliable from here on, only ever recovered from a token this
@@ -86,30 +120,30 @@ class CampaignController extends Controller
      */
     public function puzzle(Request $request): JsonResponse
     {
-        $profile = $this->profile($request->user()->id);
-        $level = CampaignService::levelForXp($profile->total_xp);
-        $config = CampaignService::levelConfig($level);
+        $level = CampaignService::levelFor($this->profile($request->user()->id)->puzzles_solved);
+        $rung = CampaignService::rungFor($level);
+        $config = CampaignService::levelConfig($rung);
 
         $result = $this->puzzles->generateCampaign($config);
-        $result['token'] = CampaignService::issueToken($level, $result['spark'], $result['clues']);
+        $result['token'] = CampaignService::issueToken($rung, $result['spark'], $result['clues']);
+        $result['level'] = $level;
 
         return response()->json($result);
     }
 
     /**
      * Records a verified board (replayed against the actual engine, same as
-     * BurnfrontController::submitEndlessScore()) as one more solved
-     * incident, converts it to XP (CampaignService::xpAwarded() — reduced
-     * per hint used, zeroed once hints reach the level's firebreak count),
-     * and reports whether that XP crossed into a new level.
+     * BurnfrontController::submitEndlessScore()) as one more contained
+     * fire, which opens the next level, and gives the points for it
+     * (PlayerProgress::award()).
      *
-     * Both the puzzle (level/spark/clues) and the hint count come from the
+     * Both the puzzle (rung/spark/clues) and the hint count come from the
      * signed run token puzzle() issued, never from the request body — a
-     * client can neither claim credit for a level/board it never generated
-     * nor under-report hints it actually used (see CampaignService::
+     * client can neither claim credit for a board it never generated nor
+     * under-report hints it actually used (see CampaignService::
      * decodeRun(), BurnfrontController::incrementCampaignHints()). A token
-     * can also only ever be redeemed for XP once, so replaying the same
-     * solved board can't farm XP repeatedly.
+     * can also only ever be redeemed once, so replaying the same solved
+     * board can't farm points.
      */
     public function submitScore(Request $request): JsonResponse
     {
@@ -118,10 +152,10 @@ class CampaignController extends Controller
         if ($run === null) {
             return response()->json(['message' => 'Invalid or expired token.'], 422);
         }
-        $level = $run['level'];
+        $rung = $run['level'];
         $spark = $run['spark'];
         $clues = $run['clues'];
-        $config = CampaignService::levelConfig($level);
+        $config = CampaignService::levelConfig($rung);
 
         $shaded = Engine::shadedCellsFromRequest($config['rows'] * $config['cols'], $spark, $clues, $request->input('shaded'));
         if ($shaded === null) {
@@ -149,20 +183,19 @@ class CampaignController extends Controller
             return response()->json(['message' => 'This incident has already been scored.'], 409);
         }
 
-        $hintsUsed = Cache::get(CampaignService::hintCacheKey($token), 0);
+        $hintsUsed = (int) Cache::get(CampaignService::hintCacheKey($token), 0);
 
         $profile = $this->profile($request->user()->id);
-        $xpAwarded = CampaignService::xpAwarded($level, $hintsUsed);
-        $profile->total_xp += $xpAwarded;
-        $profile->puzzles_solved += 1;
-        $profile->save();
+        $profile->increment('puzzles_solved');
 
         // One row per solved fire, like daily and endless already log: this
         // is what the weekly goal counts (PlayerProgress::weekSolved()).
         GamePlay::create([
             'user_id' => $profile->user_id,
             'mode' => 'campaign',
-            'difficulty' => 'level-'.$level,
+            // The rung (the kind of board), not the level: this is what the
+            // games list names the fire by.
+            'difficulty' => 'level-'.$rung,
             'date' => null,
             'rows' => $config['rows'],
             'cols' => $config['cols'],
@@ -175,16 +208,18 @@ class CampaignController extends Controller
             'hints_used' => $hintsUsed,
         ]);
 
-        $progress = CampaignService::progressForXp($profile->total_xp);
+        $reward = PlayerProgress::award($profile->user_id, [
+            'rows' => $config['rows'],
+            'cols' => $config['cols'],
+            'breaks' => $config['breaks'],
+            'hintsUsed' => $hintsUsed,
+        ]);
 
         return response()->json([
-            'xpAwarded' => $xpAwarded,
-            'level' => $progress['level'],
-            'leveledUp' => $progress['level'] > $level,
-            'xpIntoLevel' => $progress['xpIntoLevel'],
-            'xpToNextLevel' => $progress['xpToNextLevel'],
-            'chapterLabel' => $progress['chapterLabel'],
-            'campaignComplete' => $progress['maxed'],
+            'reward' => $reward,
+            'xpAwarded' => $reward['total'],
+            // The level that just opened.
+            'level' => CampaignService::levelFor((int) $profile->fresh()->puzzles_solved),
             'nextFire' => NextFire::for($profile->user_id, 'campaign'),
             'progress' => PlayerProgress::forUser($profile->user_id),
         ]);

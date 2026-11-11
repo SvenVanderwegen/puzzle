@@ -7,7 +7,7 @@
         "daily": "Today's fire",
         "archive": "A past daily fire",
         "campaign": "Campaign",
-        "campaignLevel": "Campaign · fire {level}",
+        "campaignLevel": "Campaign · level {level}",
         "practice": "Practice · {word}"
     },
     "tools": {
@@ -66,17 +66,11 @@
         "breaks": "Firebreaks",
         "personalBest": "Your best time for this size.",
         "next": "Next fire",
-        "nextCampaign": "Campaign fire {level}",
+        "nextLevel": "Next level",
+        "nextCampaign": "Campaign, level {level}",
         "campaign": "Campaign",
         "backToHistory": "Back to past days",
         "home": "Back to home"
-    },
-    "campaign": {
-        "level": "Campaign fire {level}",
-        "points": "+{points} points",
-        "noPoints": "No points this time, because hints placed every firebreak.",
-        "levelUp": "Fire {level} is open.",
-        "complete": "You finished the whole campaign."
     },
     "share": {
         "what": "What you share: how the fire grew, not where. No spoilers.",
