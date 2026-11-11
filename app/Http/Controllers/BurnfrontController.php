@@ -9,7 +9,10 @@ use App\Models\EndlessScore;
 use App\Models\GamePlay;
 use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\CareerProgress;
+use App\Support\Burnfront\DailyRunStore;
 use App\Support\Burnfront\Engine;
+use App\Support\Burnfront\NextFire;
+use App\Support\Burnfront\PlayerProgress;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -24,52 +27,85 @@ use Inertia\Response;
 
 class BurnfrontController extends Controller
 {
-    /**
-     * Move logs are unverified client-reported telemetry (see
-     * normalizeMoves()) kept only for review/replay, never for scoring —
-     * these caps keep a pathological client from bloating a GamePlay row,
-     * whether via entry count or a handful of oversized entries.
-     */
-    private const MAX_MOVES = 20000;
-
-    private const MAX_MOVES_BYTES = 262144;
-
     public function __construct(private readonly PuzzleService $puzzles) {}
 
     /**
-     * The start screen: a menu of game modes plus, for a signed-in player,
-     * their standing on today's daily incident. Deliberately reads
-     * DailyScore directly instead of going through daily()/bindDailyStart()
-     * — the start screen must never bind this account's daily start time
-     * just because the player looked at the menu.
+     * The start screen. Besides the mode menu it carries what the home needs
+     * to push past the daily: today's fire (for guests too, since the daily
+     * no longer needs an account), what to play next, the quick fire sizes,
+     * and the weekly goal / level standing.
+     *
+     * Deliberately reads state instead of going through daily() — looking
+     * at the menu must never bind a daily start time. For the same reason
+     * the daily card only gets the board's size, never its clues: a preview
+     * of the clues would let a player study the board before their clock
+     * starts.
      */
     public function start(Request $request): Response
     {
         $user = $request->user();
-        $dailyStatus = null;
+        $date = now('UTC')->toDateString();
         $campaignStatus = null;
+        $progress = null;
+
+        $incident = $this->todaysIncident($date);
+        $dailyStatus = [
+            'date' => $date,
+            'number' => PlayerProgress::dailyNumber($date),
+            'name' => $incident['name'] ?? null,
+            'rows' => $incident['rows'] ?? null,
+            'cols' => $incident['cols'] ?? null,
+            'breaks' => $incident['breaks'] ?? null,
+            'alreadyScored' => false,
+            'scoreTimeMs' => null,
+            'hintsUsed' => null,
+            'ranked' => null,
+            'streak' => null,
+            'solved' => null,
+        ];
 
         if ($user !== null) {
-            $existing = DailyScore::where('user_id', $user->id)
-                ->whereDate('date', now('UTC')->toDateString())
-                ->first();
+            $existing = DailyScore::where('user_id', $user->id)->whereDate('date', $date)->first();
 
-            $dailyStatus = [
-                'alreadyScored' => $existing !== null,
-                'scoreTimeMs' => $existing?->time_ms,
-                'streak' => $this->computeStreaks($user->id),
-            ];
+            $dailyStatus['alreadyScored'] = $existing !== null;
+            $dailyStatus['scoreTimeMs'] = $existing?->time_ms;
+            $dailyStatus['hintsUsed'] = $existing?->hints_used;
+            $dailyStatus['ranked'] = $existing?->ranked;
+            $dailyStatus['streak'] = $this->computeStreaks($user->id);
 
             // Read-only, same as dailyStatus above — viewing the menu must
             // never create a CampaignProfile row; a guest-shaped 0-XP
             // profile is never persisted just because someone looked.
             $totalXp = CampaignProfile::where('user_id', $user->id)->value('total_xp') ?? 0;
             $campaignStatus = CampaignService::progressForXp($totalXp);
+            $progress = PlayerProgress::forUser($user->id);
+        } else {
+            $guest = DailyRunStore::for($request)->guestResult($date);
+            $dailyStatus['alreadyScored'] = $guest !== null;
+            $dailyStatus['scoreTimeMs'] = $guest['time_ms'] ?? null;
+            $dailyStatus['hintsUsed'] = $guest['hints_used'] ?? null;
+            $dailyStatus['ranked'] = $guest === null ? null : false;
+        }
+
+        // Once solved, the board is no secret any more: hand over the
+        // solved map for the "Today's fire is contained" thumbnail.
+        if ($dailyStatus['alreadyScored'] && $incident !== null) {
+            $dailyStatus['solved'] = [
+                'rows' => $incident['rows'],
+                'cols' => $incident['cols'],
+                'spark' => $incident['spark'],
+                'clues' => $incident['clues'],
+                'shaded' => $this->solveDaily($incident),
+            ];
         }
 
         return Inertia::render('Burnfront/Start', [
             'dailyStatus' => $dailyStatus,
             'campaignStatus' => $campaignStatus,
+            'upNext' => NextFire::for($user?->id),
+            'quickFires' => NextFire::quickFires(),
+            'progress' => $progress,
+            'progressRules' => PlayerProgress::rules(),
         ]);
     }
 
@@ -103,6 +139,8 @@ class BurnfrontController extends Controller
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
 
         $authenticated = $request->user() !== null;
+        // Quick fire from the home screen: same tiers, no visible clock.
+        $relaxed = $request->boolean('relaxed');
 
         if ($difficulty === 'custom') {
             $config = $this->resolveCustomConfig($request);
@@ -112,6 +150,9 @@ class BurnfrontController extends Controller
                     'difficulties' => PuzzleService::DIFFICULTIES + ['custom' => $config],
                     'difficulty' => 'custom',
                     'authenticated' => $authenticated,
+                    'relaxed' => $relaxed,
+                    'nextFire' => NextFire::for($request->user()?->id),
+                    'progressRules' => PlayerProgress::rules(),
                 ]);
             }
             $difficulty = PuzzleService::DEFAULT_DIFFICULTY;
@@ -124,18 +165,25 @@ class BurnfrontController extends Controller
             'difficulties' => PuzzleService::DIFFICULTIES,
             'difficulty' => $difficulty,
             'authenticated' => $authenticated,
+            'relaxed' => $relaxed,
+            'nextFire' => NextFire::for($request->user()?->id, 'endless', $difficulty),
+            'progressRules' => PlayerProgress::rules(),
         ]);
     }
 
     /**
-     * Gated behind the `auth` middleware in routes/web.php — the daily
-     * puzzle is only playable while signed in, since a verified time can
-     * only ever be posted for an account.
+     * Open to guests: the daily is the front door of the game, so it must
+     * not start with a sign-in wall. An account only adds the leaderboard
+     * and the streak (see DailyRunStore for how a guest run is tracked and
+     * later saved to an account).
      */
-    public function dailyPlay(): Response
+    public function dailyPlay(Request $request): Response
     {
         return Inertia::render('Burnfront/Play', [
             'mode' => 'daily',
+            'authenticated' => $request->user() !== null,
+            'nextFire' => NextFire::for($request->user()?->id),
+            'progressRules' => PlayerProgress::rules(),
         ]);
     }
 
@@ -179,11 +227,11 @@ class BurnfrontController extends Controller
      * gets the byte-identical board (Engine::generate()'s clue-stripping
      * loop is wall-clock-bounded, not iteration-bounded, so re-running it
      * for the "same" seed isn't guaranteed to converge at the same point —
-     * caching closes that gap). Gated behind the `auth` middleware in
-     * routes/web.php: the daily puzzle is signed-in-only, so this must never
-     * hand the board, clues or token to a guest who could solve it offline
-     * and then race the clock after signing in. This also binds
-     * (idempotently — first call wins) that account's start time for today,
+     * caching closes that gap). Open to guests: a guest's start time is bound
+     * in their session, and when they sign in the earlier of the guest and
+     * account start times wins (DailyRunStore::adoptGuestRun()), so seeing
+     * the board as a guest never buys a fresh clock in the same browser.
+     * This binds (idempotently — first call wins) the player's start time for today,
      * which submitDailyScore() later measures against instead of trusting
      * anything the client reports: refetching /daily can never reset it,
      * so a player can't "restart the clock" right before submitting a
@@ -207,15 +255,23 @@ class BurnfrontController extends Controller
 
         $this->persistDailyIncident($date, $payload);
 
-        $userId = $request->user()->id;
-        $this->bindDailyStart($userId, $date);
+        $store = DailyRunStore::for($request);
+        $store->bindStart($date);
 
-        $existing = DailyScore::where('user_id', $userId)->whereDate('date', $date)->first();
-        $payload['alreadyScored'] = $existing !== null;
-        $payload['scoreTimeMs'] = $existing?->time_ms;
-        if ($existing !== null) {
+        if ($request->user() !== null) {
+            $existing = DailyScore::where('user_id', $request->user()->id)->whereDate('date', $date)->first();
+            $scored = $existing === null ? null : ['time_ms' => $existing->time_ms, 'hints_used' => $existing->hints_used];
+        } else {
+            $scored = $store->guestResult($date);
+        }
+
+        $payload['number'] = PlayerProgress::dailyNumber($date);
+        $payload['guest'] = $request->user() === null;
+        $payload['alreadyScored'] = $scored !== null;
+        $payload['scoreTimeMs'] = $scored['time_ms'] ?? null;
+        if ($scored !== null) {
             $payload['solution'] = $this->solveDaily($payload);
-            $payload['hintsUsed'] = $existing->hints_used;
+            $payload['hintsUsed'] = $scored['hints_used'];
         }
         $payload['token'] = Crypt::encryptString(json_encode(['date' => $date]));
 
@@ -225,8 +281,8 @@ class BurnfrontController extends Controller
     /**
      * Records a server-verified completion time for today's daily incident.
      * Never trusts the client's reported elapsed time or board: elapsed
-     * time is measured from this account's bound start (see daily() /
-     * bindDailyStart()), not from anything the client sends, and the
+     * time is measured from the player's bound start (see daily() /
+     * DailyRunStore::bindStart()), not from anything the client sends, and the
      * submitted cells are replayed against the actual engine before any
      * time is recorded.
      */
@@ -254,15 +310,15 @@ class BurnfrontController extends Controller
             return response()->json(['message' => "Not today's incident."], 422);
         }
 
-        $userId = $request->user()->id;
+        $store = DailyRunStore::for($request);
 
-        if (Cache::has($this->dailyVoidKey($userId, $date))) {
+        if ($store->isVoided($date)) {
             return response()->json(['message' => 'This run was voided after revealing the solution.'], 422);
         }
 
-        $startedAt = Cache::get($this->dailyStartKey($userId, $date));
+        $startedAt = $store->startedAt($date);
         if ($startedAt === null) {
-            return response()->json(['message' => "Load today's incident while signed in before submitting."], 422);
+            return response()->json(['message' => "Load today's incident before submitting."], 422);
         }
 
         $puzzlePayload = Cache::get($this->dailyCacheKey($date));
@@ -300,7 +356,25 @@ class BurnfrontController extends Controller
         }
 
         $timeMs = max(0, now('UTC')->valueOf() - $startedAt * 1000);
-        $hintsUsed = Cache::get($this->dailyHintKey($userId, $date), 0);
+        $hintsUsed = $store->hints($date);
+
+        if ($store->isGuest()) {
+            // Verified, but there's no account to put it on yet: keep it in
+            // the session until they sign in (DailyRunStore::adoptGuestRun()).
+            if ($store->guestResult($date) !== null) {
+                return response()->json(['message' => "Already on today's board."], 409);
+            }
+            $store->saveGuestResult($date, [
+                'time_ms' => $timeMs,
+                'hints_used' => $hintsUsed,
+                'shaded' => array_keys($shaded),
+                'moves' => $this->normalizeMoves($request->input('moves')),
+            ]);
+
+            return response()->json(['time_ms' => $timeMs, 'rank' => null, 'hints_used' => $hintsUsed, 'guest' => true]);
+        }
+
+        $userId = $request->user()->id;
 
         if (DailyScore::where('user_id', $userId)->whereDate('date', $date)->exists()) {
             return response()->json(['message' => "Already on today's board."], 409);
@@ -333,9 +407,14 @@ class BurnfrontController extends Controller
             'hints_used' => $hintsUsed,
         ]);
 
-        $rank = DailyScore::whereDate('date', $date)->where('time_ms', '<', $score->time_ms)->count() + 1;
+        $rank = DailyScore::whereDate('date', $date)->where('ranked', true)->where('time_ms', '<', $score->time_ms)->count() + 1;
 
-        return response()->json(['time_ms' => $score->time_ms, 'rank' => $rank, 'hints_used' => $score->hints_used]);
+        return response()->json([
+            'time_ms' => $score->time_ms,
+            'rank' => $rank,
+            'hints_used' => $score->hints_used,
+            'progress' => PlayerProgress::forUser($userId),
+        ]);
     }
 
     /**
@@ -350,6 +429,7 @@ class BurnfrontController extends Controller
         $date = $request->string('date', now('UTC')->toDateString())->toString();
 
         $scores = DailyScore::whereDate('date', $date)
+            ->where('ranked', true)
             ->orderBy('time_ms')
             ->limit(20)
             ->with('user:id,name')
@@ -480,7 +560,9 @@ class BurnfrontController extends Controller
         if (! array_key_exists($difficulty, PuzzleService::DIFFICULTIES)) {
             return response()->json(['message' => "Unknown difficulty [{$difficulty}]."], 422);
         }
-        $timed = PuzzleService::DIFFICULTIES[$difficulty]['timed'];
+        // A relaxed quick fire has no clock on screen, so there's no time to
+        // keep a best against: it's recorded like an untimed tier.
+        $timed = PuzzleService::DIFFICULTIES[$difficulty]['timed'] && ! $request->boolean('relaxed');
 
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {
@@ -553,6 +635,7 @@ class BurnfrontController extends Controller
             'solved_count' => $record->solved_count,
             'best_time_ms' => $record->best_time_ms,
             'improved' => $improved,
+            'progress' => PlayerProgress::forUser($userId),
         ]);
     }
 
@@ -639,9 +722,11 @@ class BurnfrontController extends Controller
             'id' => $play->id,
             'mode' => $play->mode,
             'difficulty' => $play->difficulty,
-            'difficultyLabel' => $play->mode === 'endless'
-                ? (PuzzleService::DIFFICULTIES[$play->difficulty]['label'] ?? $play->difficulty)
-                : null,
+            'difficultyLabel' => match ($play->mode) {
+                'endless' => PuzzleService::DIFFICULTIES[$play->difficulty]['label'] ?? $play->difficulty,
+                'campaign' => CampaignService::levelConfig((int) substr((string) $play->difficulty, 6))['label'] ?? 'Campaign',
+                default => null,
+            },
             'date' => $play->date?->toDateString(),
             'rows' => $play->rows,
             'cols' => $play->cols,
@@ -703,64 +788,44 @@ class BurnfrontController extends Controller
         );
     }
 
+    /**
+     * Today's fire if it already exists (cached payload or persisted row),
+     * without generating it: the generator can take seconds, too slow for
+     * the home screen. Null until the first /daily request of the day.
+     *
+     * @return array{rows: int, cols: int, breaks: int, spark: int, clues: list<array{0: int, 1: int}>, name: ?string, blurb: ?string}|null
+     */
+    private function todaysIncident(string $date): ?array
+    {
+        $cached = Cache::get($this->dailyCacheKey($date));
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $incident = DailyIncident::whereDate('date', $date)->first();
+        if ($incident === null) {
+            return null;
+        }
+
+        return [
+            'rows' => $incident->rows,
+            'cols' => $incident->cols,
+            'breaks' => $incident->breaks,
+            'spark' => $incident->spark,
+            'clues' => $incident->clues,
+            'name' => $incident->name,
+            'blurb' => $incident->blurb,
+        ];
+    }
+
     private function dailyCacheKey(string $date): string
     {
         return "burnfront:daily:v1:{$date}";
     }
 
     /**
-     * Idempotent: the first call for a given (user, date) wins and every
-     * later call is a no-op, so nothing — including refetching /daily
-     * right before submitting — can push this account's start time later.
-     */
-    private function bindDailyStart(int $userId, string $date): void
-    {
-        Cache::add($this->dailyStartKey($userId, $date), now('UTC')->timestamp, now('UTC')->endOfDay());
-    }
-
-    private function dailyStartKey(int $userId, string $date): string
-    {
-        return "burnfront:daily:start:v1:{$date}:{$userId}";
-    }
-
-    /**
-     * Marks this account's attempt at today's daily incident as voided —
-     * checked by submitDailyScore(), which refuses to record a time once
-     * this is set. Never expires before the incident itself does, so asking
-     * for the solution can't be "waited out" within the same day.
-     */
-    private function voidDailyScore(int $userId, string $date): void
-    {
-        Cache::put($this->dailyVoidKey($userId, $date), true, now('UTC')->endOfDay());
-    }
-
-    private function dailyVoidKey(int $userId, string $date): string
-    {
-        return "burnfront:daily:void:v1:{$date}:{$userId}";
-    }
-
-    /**
-     * Counts forced-firebreak hints this account has drawn from the
-     * incident desk for the given day, for the daily leaderboard's "clean"
-     * (no-hints) badge. Cache::add seeds the counter at 0 the first time
-     * it's touched so increment() always has something to add to,
-     * regardless of cache driver.
-     */
-    private function incrementDailyHints(int $userId, string $date): void
-    {
-        $key = $this->dailyHintKey($userId, $date);
-        Cache::add($key, 0, now('UTC')->endOfDay());
-        Cache::increment($key);
-    }
-
-    private function dailyHintKey(int $userId, string $date): string
-    {
-        return "burnfront:daily:hints:v1:{$date}:{$userId}";
-    }
-
-    /**
      * Whether a client-supplied spark/clues pair actually matches today's
-     * real persisted incident — the gate on incrementDailyHints() above.
+     * real persisted incident — the gate on DailyRunStore::incrementHints().
      * Key order in $clues doesn't necessarily match the incident's stored
      * pair order, so both are normalized (ksort) before comparing.
      */
@@ -885,28 +950,7 @@ class BurnfrontController extends Controller
      */
     private function normalizeMoves(mixed $movesRaw): array
     {
-        if (! is_array($movesRaw)) {
-            return [];
-        }
-
-        $moves = [];
-        $bytes = 0;
-        foreach (array_values($movesRaw) as $move) {
-            if (count($moves) >= self::MAX_MOVES) {
-                break;
-            }
-            $encoded = json_encode($move);
-            if ($encoded === false) {
-                continue;
-            }
-            $bytes += strlen($encoded);
-            if ($bytes > self::MAX_MOVES_BYTES) {
-                break;
-            }
-            $moves[] = $move;
-        }
-
-        return $moves;
+        return GamePlay::normalizeMoves($movesRaw);
     }
 
     /**
@@ -979,23 +1023,17 @@ class BurnfrontController extends Controller
      * individually to blame, so the client can flag them instead of just
      * saying "something's wrong" — see Engine::misplacedShaded().
      *
-     * /hint and /solve sit outside the `auth` middleware group (see
-     * routes/web.php) so guests can use them for practice/custom/endless
-     * boards — but the daily incident is signed-in-only and shared by every
-     * player, so difficulty=daily must reject a guest caller here too.
-     * Without this, a signed-out request (or a second, cookie-less request
-     * from a signed-in player) could pull the day's real spark/clues — a
-     * player only needs a normal /daily response, no secret, since every
-     * account sees the same board — straight through this endpoint,
-     * bypassing incrementDailyHints()/voidDailyScore() entirely and leaving
-     * that account's real, signed-in /daily/score submission untouched.
+     * /hint is open to guests for every mode, the daily included, since the
+     * daily is playable without an account. A guest's daily hints are
+     * charged to their session (DailyRunStore) and follow them onto their
+     * account if they sign in. A hint drawn from a second, cookie-less
+     * session is not charged to anyone's account — that is the same reach a
+     * free second account always had, so it adds no new hole, but it does
+     * mean the "no hints" mark is honour-based against a determined cheat.
      */
     public function hint(Request $request): JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
-        if ($difficulty === 'daily' && $request->user() === null) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
 
         $parsed = $this->parsePuzzleConfig($request);
         if ($parsed instanceof JsonResponse) {
@@ -1064,12 +1102,11 @@ class BurnfrontController extends Controller
             // today's actual persisted incident before charging anything —
             // otherwise a stale, retried, or hand-crafted request tagged
             // difficulty=daily could inflate an honest player's count for a
-            // puzzle that was never their real board. ($request->user() is
-            // already guaranteed non-null here for difficulty === 'daily' —
-            // see the guard at the top of this method — but the check stays
-            // for clarity and in case that guard ever moves.)
-            if ($difficulty === 'daily' && $request->user() !== null && $this->matchesTodaysDailyIncident($spark, $clues)) {
-                $this->incrementDailyHints($request->user()->id, now('UTC')->toDateString());
+            // puzzle that was never their real board. Guests are charged too,
+            // in their session (DailyRunStore), and that count follows them
+            // onto their account if they sign in.
+            if ($difficulty === 'daily' && $this->matchesTodaysDailyIncident($spark, $clues)) {
+                DailyRunStore::for($request)->incrementHints(now('UTC')->toDateString());
             } elseif ($difficulty === 'campaign') {
                 // The token is already proven valid (parsePuzzleConfig() ->
                 // parseCampaignRun() decoded it to get here), so this run
@@ -1094,7 +1131,7 @@ class BurnfrontController extends Controller
      * difficulty/spark/clues combination.
      *
      * For the daily tier specifically, the void is also recorded server-side
-     * (voidDailyScore()) for whichever account is signed in — never trust
+     * (DailyRunStore::void()) for whichever account is signed in — never trust
      * the client to not submit a score after asking for the answer, since
      * nothing stops a request straight to this endpoint followed by a POST
      * to /daily/score with the returned cells. That guarantee depends on
@@ -1110,6 +1147,9 @@ class BurnfrontController extends Controller
     public function solve(Request $request): JsonResponse
     {
         $difficulty = $request->string('difficulty', PuzzleService::DEFAULT_DIFFICULTY)->toString();
+        // Guests can play the daily now, but the daily has no Solve button
+        // (it was removed from the UI), so there is no reason to hand a
+        // guest session the day's solution.
         if ($difficulty === 'daily' && $request->user() === null) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
@@ -1127,8 +1167,8 @@ class BurnfrontController extends Controller
             return response()->json(['message' => 'Could not solve this incident.'], 422);
         }
 
-        if ($difficulty === 'daily' && $request->user() !== null) {
-            $this->voidDailyScore($request->user()->id, now('UTC')->toDateString());
+        if ($difficulty === 'daily') {
+            DailyRunStore::for($request)->void(now('UTC')->toDateString());
         }
 
         $shaded = [];

@@ -18,13 +18,17 @@ import SiteBar from '@/Components/SiteBar.vue';
 import MiniBoard from '@/Components/MiniBoard.vue';
 import FirstRunBriefing from '@/Components/FirstRunBriefing.vue';
 import { hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
+import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
+import { guestDailyFor } from '@/lib/progress';
+import { upNextText } from '@/lib/next-fire';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null },
     campaignStatus: { type: Object, default: null },
-    upNext: { type: Object, default: null },
-    quickFires: { type: Array, default: null },
-    progress: { type: Object, default: null },
+    upNext: { type: Object, default: null }, // NextFire::for(): what to play after the daily
+    quickFires: { type: Array, default: null }, // NextFire::quickFires()
+    progress: { type: Object, default: null }, // PlayerProgress::forUser(), null for a guest
+    progressRules: { type: Object, default: null }, // PlayerProgress::rules()
 });
 
 const page = usePage();
@@ -44,7 +48,14 @@ const SAMPLE_DAILY = {
 const SAMPLE_CAMPAIGN = { rows: 5, cols: 5, spark: 20, clues: [[4, 8], [13, 7], [23, 9]] };
 
 const streak = computed(() => props.dailyStatus?.streak?.current ?? 0);
-const dailyDone = computed(() => Boolean(props.dailyStatus?.alreadyScored));
+/* A guest's daily result lives in their session, which ends after a couple
+   of hours; the device remembers it for the rest of the day. */
+const guestDaily = ref(null);
+onMounted(() => {
+    if (!currentUser.value && props.dailyStatus?.date) guestDaily.value = guestDailyFor(props.dailyStatus.date);
+});
+const dailyDone = computed(() => Boolean(props.dailyStatus?.alreadyScored || guestDaily.value));
+const dailyTimeMs = computed(() => props.dailyStatus?.scoreTimeMs ?? guestDaily.value?.timeMs ?? null);
 
 /* ---- today's fire ---- */
 const daily = computed(() => {
@@ -75,7 +86,7 @@ const doneLine = computed(() => {
     const d = props.dailyStatus;
     if (!d) return '';
     const parts = [];
-    if (d.scoreTimeMs != null) parts.push(fmtClock(d.scoreTimeMs));
+    if (dailyTimeMs.value != null) parts.push(fmtClock(dailyTimeMs.value));
     if (typeof d.hintsUsed === 'number') {
         parts.push(d.hintsUsed === 0 ? t('home.done.noHints') : d.hintsUsed === 1 ? t('home.done.oneHint') : t('home.done.hints', { count: d.hintsUsed }));
     }
@@ -118,6 +129,10 @@ const campaign = computed(() => {
         cols: u?.cols ?? 5,
     };
 });
+
+/* A guest (or a player who finished the campaign) gets a quick fire as
+   "Up next" instead of a sign-in wall. */
+const quickNext = computed(() => (props.upNext?.kind === 'quick' ? { ...props.upNext, text: upNextText(props.upNext) } : null));
 
 /* ---- quick fire ---- */
 const quick = computed(
@@ -209,7 +224,16 @@ const rules = [
                     </Link>
                 </section>
 
-                <section class="bf-home-hero" aria-labelledby="next-title">
+                <section v-if="quickNext" class="bf-home-hero" aria-labelledby="next-title">
+                    <div class="bf-home-hero-copy">
+                        <span class="bf-eyebrow">{{ quickNext.text.eyebrow }}</span>
+                        <h2 id="next-title">{{ t('home.quick.size', { rows: quickNext.rows, cols: quickNext.cols }) }}</h2>
+                        <span class="bf-home-meta">{{ quickNext.text.meta }}</span>
+                    </div>
+                    <Link :href="quickNext.href" class="bf-btn bf-btn-primary">{{ quickNext.text.action }}</Link>
+                </section>
+
+                <section v-else class="bf-home-hero" aria-labelledby="next-title">
                     <div class="bf-home-hero-top">
                         <MiniBoard v-bind="campaign.board" />
                         <div class="bf-home-hero-copy">
@@ -235,13 +259,14 @@ const rules = [
                     <p class="bf-home-sub m-0">{{ t('home.quick.help') }}</p>
                 </div>
                 <div class="bf-quick">
-                    <Link v-for="q in quick" :key="q.key" :href="q.href" class="bf-btn bf-btn-soft">
+                    <Link v-for="q in quick" :key="q.difficulty ?? q.key" :href="q.href" class="bf-btn bf-btn-soft">
                         {{ t('home.quick.size', { rows: q.rows, cols: q.cols }) }}
                     </Link>
                 </div>
             </section>
 
-            <!-- progression: weekly goal and level (Components/WeeklyProgress.vue) -->
+            <!-- progression: weekly goal and level -->
+            <WeeklyProgress :progress="progress" :rules="progressRules" />
 
             <nav class="bf-home-more" aria-label="More ways to play">
                 <Link href="/endless" class="bf-row">

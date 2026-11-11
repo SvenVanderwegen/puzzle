@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CampaignProfile;
+use App\Models\GamePlay;
 use App\Models\User;
 use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\Engine;
@@ -124,6 +125,28 @@ class CampaignTest extends TestCase
 
         $response->assertJson(['xpAwarded' => 0]);
         $this->assertSame(0, CampaignProfile::where('user_id', $user->id)->value('total_xp'));
+    }
+
+    /**
+     * A campaign solve is logged like daily and endless solves, so it
+     * counts for the weekly goal, and the response says what's next.
+     */
+    public function test_submit_score_logs_the_solve_and_reports_progress(): void
+    {
+        $user = User::factory()->create();
+        $puzzle = $this->issuePuzzle($user);
+
+        $response = $this->actingAs($user)->postJson('/campaign/score', [
+            'token' => $puzzle['token'],
+            'shaded' => $this->solveLevel($puzzle),
+            'moves' => [['type' => 'mark', 'cell' => 1]],
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('progress.weekSolved', 1);
+        $response->assertJsonPath('progress.totalSolved', 1);
+        $response->assertJsonPath('nextFire.kind', 'campaign');
+        $this->assertSame(1, GamePlay::where('user_id', $user->id)->where('mode', 'campaign')->count());
     }
 
     public function test_submit_score_rejects_an_incorrect_board(): void

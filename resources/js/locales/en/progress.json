@@ -1,0 +1,38 @@
+{
+    "weekTitle": "This week",
+    "weekCount": "{done} of {goal}",
+    "weekDone": "Goal reached",
+    "weekAria": "{done} of {goal} fires this week",
+    "levelTitle": "Level {level}",
+    "levelToGo": "{toGo} to go",
+    "levelAria": "Level {level}. {toGo} more fires to the next level.",
+    "levelUp": "Level {level}!",
+
+    "nextFire": "Next fire",
+    "nextCampaign": "Campaign {level}",
+    "nextQuick": "Quick fire {rows} by {cols}",
+
+    "upNextCampaign": "Up next · Campaign",
+    "upNextQuick": "Up next · Quick fire",
+    "fireMeta": "Fire {level} · {rows} by {cols}",
+    "quickMeta": "{rows} by {cols} · no clock",
+    "campaignProgress": "{done} of {total} contained",
+    "playFire": "Play fire {level}",
+    "playQuick": "Play a {rows} by {cols} fire",
+
+    "quickTitle": "Quick fire",
+    "quickBody": "A fresh fire every time. No clock. Pick a size.",
+    "quickSize": "{rows} by {cols}",
+
+    "dailyTitle": "Today · No. {number}",
+    "dailyPlay": "Play today's fire",
+    "dailyDone": "Today's fire is contained",
+    "dailyDoneTime": "{time}",
+    "dailyStreak": "{days} day streak",
+    "dailyStreakOne": "1 day streak",
+
+    "guestSave": "Make a free account to keep your streak and join the leaderboard.",
+    "guestSaveAction": "Make a free account",
+    "guestSignIn": "Sign in",
+    "unrankedNote": "Saved to your account. Your streak counts it. Tomorrow, play signed in to join the leaderboard."
+}

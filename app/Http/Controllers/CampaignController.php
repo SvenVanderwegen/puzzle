@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\CampaignProfile;
+use App\Models\GamePlay;
 use App\Support\Burnfront\CampaignService;
 use App\Support\Burnfront\Engine;
+use App\Support\Burnfront\NextFire;
+use App\Support\Burnfront\PlayerProgress;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Http\JsonResponse;
@@ -69,6 +72,8 @@ class CampaignController extends Controller
             'mode' => 'campaign',
             'levelConfig' => CampaignService::levelConfig($level),
             'authenticated' => true,
+            'nextFire' => NextFire::for($request->user()->id, 'campaign'),
+            'progressRules' => PlayerProgress::rules(),
         ]);
     }
 
@@ -152,6 +157,24 @@ class CampaignController extends Controller
         $profile->puzzles_solved += 1;
         $profile->save();
 
+        // One row per solved fire, like daily and endless already log: this
+        // is what the weekly goal counts (PlayerProgress::weekSolved()).
+        GamePlay::create([
+            'user_id' => $profile->user_id,
+            'mode' => 'campaign',
+            'difficulty' => 'level-'.$level,
+            'date' => null,
+            'rows' => $config['rows'],
+            'cols' => $config['cols'],
+            'breaks' => $config['breaks'],
+            'spark' => $spark,
+            'clues' => collect($clues)->map(fn ($minute, $cell) => [$cell, $minute])->values()->all(),
+            'shaded_cells' => array_keys($shaded),
+            'moves' => GamePlay::normalizeMoves($request->input('moves')),
+            'time_ms' => null,
+            'hints_used' => $hintsUsed,
+        ]);
+
         $progress = CampaignService::progressForXp($profile->total_xp);
 
         return response()->json([
@@ -162,6 +185,8 @@ class CampaignController extends Controller
             'xpToNextLevel' => $progress['xpToNextLevel'],
             'chapterLabel' => $progress['chapterLabel'],
             'campaignComplete' => $progress['maxed'],
+            'nextFire' => NextFire::for($profile->user_id, 'campaign'),
+            'progress' => PlayerProgress::forUser($profile->user_id),
         ]);
     }
 

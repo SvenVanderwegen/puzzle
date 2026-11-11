@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Burnfront\DailyRunStore;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,9 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
         $request->session()->regenerate();
+
+        // Today's daily played as a guest moves onto the account.
+        DailyRunStore::adoptGuestRun($request, $request->user());
 
         return redirect('/');
     }
