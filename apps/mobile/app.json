@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Burnfront",
+    "slug": "burnfront",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "burnfront",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.burnfront.app",
+      "supportsTablet": true,
+      "config": { "usesNonExemptEncryption": false }
+    },
+    "android": {
+      "package": "com.burnfront.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#CC2162",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-localization",
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        { "color": "#CC2162" }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F1F1EE",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96,
+          "dark": { "backgroundColor": "#121416" }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
