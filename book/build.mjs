@@ -50,6 +50,12 @@ const answerPageOf = (n) => FIRST_ANSWER_PAGE + Math.floor((n - 1) / ANSWERS_PER
 let pageCount = FIRST_ANSWER_PAGE + answerPages; /* + the closing page */
 if (pageCount % 2) pageCount += 1;
 
+/* What page 2 prints for each volume. A new volume needs its own ISBN from KDP. */
+const EDITIONS = {
+  1: { isbn: '9798141793394', year: 2026, holder: 'Burnfront' },
+};
+const edition = EDITIONS[volume] ?? { isbn: '[ISBN]', year: '[YEAR]', holder: 'Burnfront' };
+
 const WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
 const volumeWord = WORDS[volume - 1] ?? String(volume);
 
@@ -169,8 +175,8 @@ function imprintPage() {
     `<div class="imprint">
       <p><strong>Burnfront, book ${volumeWord}</strong><br>${puzzles.length} wildfire logic puzzles</p>
       <p>Every puzzle in this book has exactly one answer, and it can be found without guessing.</p>
-      <p>Copyright &copy; [YEAR] [PUBLISHER]. All rights reserved. No part of this book may be copied or shared without written permission.</p>
-      <p>ISBN [ISBN]</p>
+      <p>Copyright &copy; ${edition.year} ${edition.holder}. All rights reserved. No part of this book may be copied or shared without written permission.</p>
+      <p>ISBN ${edition.isbn}<br>Independently published</p>
       <p>A new puzzle every day at burnfront.com</p>
     </div>`,
     { bare: true },
