@@ -5,6 +5,7 @@ import HowItWorksDemo from './HowItWorksDemo.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 import FlameGlyph from '@/Components/FlameGlyph.vue';
 import { completeOnboarding, hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
+import { t } from '@/lib/i18n';
 
 const trainingComplete = ref(hasCompletedOnboarding());
 
@@ -29,6 +30,7 @@ function finishTraining() {
                 <p class="max-w-[56ch] text-[14px] leading-[1.5] text-ash">
                     Work through five short steps at your own pace, then reinforce them on the easiest live board.
                 </p>
+                <Link href="/learn" class="bf-btn bf-btn-primary self-start">{{ t('lesson.howtoLink') }}</Link>
             </div>
             <div>
                 <HowItWorksDemo @complete="finishTraining" />

@@ -1,0 +1,66 @@
+{
+    "welcome": {
+        "title": "Where did they stop the fire?",
+        "intro": "A logic puzzle. You look, you think, you tap. No guessing and no hurry.",
+        "pictureLabel": "A small solved puzzle: fire spreads from a yellow spark and goes around two black firebreaks",
+        "start": "Show me how",
+        "skip": "I already know how to play",
+        "note": "Takes 2 minutes. Free, no account needed."
+    },
+    "pageTitle": "Learn to play",
+    "leave": "Leave the lesson",
+    "step": "Step {n} of {total}",
+    "complete": "Lesson complete",
+    "boardLabel": "Lesson board, 4 by 4",
+    "cell": {
+        "spark": "{where}, the spark, where the fire starts",
+        "firebreak": "{where}, firebreak",
+        "clue": "{where}, the fire arrived here at minute {minute}",
+        "burned": "{where}, burned at minute {minute}",
+        "empty": "{where}, empty square"
+    },
+    "phase0": {
+        "title": "Meet the fire",
+        "body": "The yellow square is the spark. That is where the fire starts. Press the button and watch it spread.",
+        "button": "Start the fire"
+    },
+    "phase1": {
+        "title": "One square a minute",
+        "body": "The fire moves up, down, left and right. Never diagonally. Each number is the minute it reached that square.",
+        "button": "Next"
+    },
+    "phase2": {
+        "title": "Now stop it",
+        "body": "A firebreak is a square the fire cannot cross. Dig one right above the spark.",
+        "hint": "Tap the square with the dashed border"
+    },
+    "phase3": {
+        "title": "It goes around",
+        "body": "The fire could not pass, so it took the long way. The square behind the firebreak burned at minute 4 instead of 2.",
+        "button": "Next"
+    },
+    "phase4": {
+        "title": "Your first puzzle",
+        "intro": "You get exactly 2 firebreaks, no more. The 6 burned at minute 6, yet it is only 2 squares from the spark. Something blocked the short way. Tap 2 squares to block it.",
+        "full": "You have used both firebreaks. There are only 2. Tap a black square to take one back, then try another square.",
+        "cutOff": "Now the fire cannot reach every square. Tap that firebreak to remove it.",
+        "tooEarly": "The {clue} now burns at minute {minute}. That is too early. Block the short way.",
+        "tooLate": "The {clue} now burns at minute {minute}. That is too late. Tap a firebreak to remove it and try another square.",
+        "almost": "Almost. Place one more firebreak."
+    },
+    "phase5": {
+        "title": "Contained.",
+        "body": "Both numbers are right and every square burned. That is the whole game. Bigger boards, same rules."
+    },
+    "supply": {
+        "title": "Your firebreaks",
+        "left": "{count} left to place",
+        "oneLeft": "1 left to place",
+        "none": "Both placed"
+    },
+    "done": {
+        "play": "Play your first fire",
+        "again": "Do the lesson again"
+    },
+    "howtoLink": "New here? Take the 2-minute lesson"
+}
