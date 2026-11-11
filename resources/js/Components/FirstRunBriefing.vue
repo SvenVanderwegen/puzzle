@@ -4,7 +4,7 @@
    either choice is remembered on this device (lib/burnfront-onboarding.js),
    so it shows once. No account and no clock: the lesson comes first. */
 import { Link } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { t } from '@/lib/i18n';
 import { heatCell } from '@/lib/heat';
 import { completeOnboarding, hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
@@ -27,19 +27,31 @@ const picture = computed(() => {
     });
 });
 
-function lockScroll(lock) {
+const dialog = ref(null);
+const primary = ref(null);
+
+/* While the welcome covers the home page, the page behind it is scrolled
+   shut and made inert, so Tab and screen readers only reach the two visible
+   choices; focus starts on "Show me how". */
+function isolate(on) {
     if (typeof document === 'undefined') return;
-    document.documentElement.style.overflow = lock ? 'hidden' : '';
+    document.documentElement.style.overflow = on ? 'hidden' : '';
+    for (const el of document.body.children) {
+        if (el === dialog.value) continue;
+        if (on) el.setAttribute('inert', '');
+        else el.removeAttribute('inert');
+    }
+    if (on) nextTick(() => (primary.value?.$el ?? primary.value)?.focus());
 }
 
-watch(visible, (v) => lockScroll(v));
+watch(visible, (v) => nextTick(() => isolate(v)));
 
 onMounted(() => {
     emit('visibility', visible.value);
-    lockScroll(visible.value);
+    nextTick(() => isolate(visible.value));
 });
 
-onBeforeUnmount(() => lockScroll(false));
+onBeforeUnmount(() => isolate(false));
 
 function dismiss() {
     completeOnboarding();
@@ -50,7 +62,7 @@ function dismiss() {
 
 <template>
     <Teleport to="body">
-        <section v-if="visible" class="bf-welcome" aria-labelledby="bf-welcome-title">
+        <section v-if="visible" ref="dialog" class="bf-welcome" role="dialog" aria-modal="true" aria-labelledby="bf-welcome-title">
             <div class="bf-welcome-inner">
                 <header class="bf-welcome-brand">
                     <svg aria-hidden="true" width="30" height="30" viewBox="0 0 60 60">
@@ -84,7 +96,7 @@ function dismiss() {
                 </div>
 
                 <div class="bf-welcome-actions">
-                    <Link href="/learn" class="bf-welcome-primary">
+                    <Link ref="primary" href="/learn" class="bf-welcome-primary">
                         <span>{{ t('lesson.welcome.start') }}</span>
                         <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFE24A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M5 12h14M13 6l6 6-6 6" />
