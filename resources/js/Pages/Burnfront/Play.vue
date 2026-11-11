@@ -991,6 +991,7 @@ async function loadCampaign() {
         burnt.value = new Array(n).fill(false);
         revealedMinute.value = new Array(n).fill('');
         undoStack.length = 0;
+        moveLog.length = 0;
         boardDone.value = false;
         locked.value = false;
         startClock();
@@ -1477,7 +1478,10 @@ if (isDaily.value) {
                 </div>
 
                 <!-- Progression: every solve feeds the weekly goal and level. -->
-                <WeeklyProgress v-if="!voided" class="mt-4" :progress="serverProgress" :rules="progressRules" />
+                <!-- A signed-in player's numbers come only from the server (a score
+                     response); reopening a solved daily has none, so the card
+                     stays hidden rather than showing this device's guest log. -->
+                <WeeklyProgress v-if="!voided && (serverProgress || !authenticated)" class="mt-4" :progress="serverProgress" :rules="progressRules" />
 
                 <p v-if="guestDailySolved" class="bf-help mt-3 text-center">
                     {{ t('progress.guestSave') }}
