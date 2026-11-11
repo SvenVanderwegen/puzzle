@@ -148,7 +148,7 @@ function hasStartedCurrentIncident() {
 }
 
 function confirmIncidentReplacement() {
-    return !hasStartedCurrentIncident() || window.confirm(t('play.confirmNew'));
+    return boardDone.value || !hasStartedCurrentIncident() || window.confirm(t('play.confirmNew'));
 }
 
 function replaceEndlessIncident() {
@@ -439,6 +439,7 @@ const message = computed(() => {
     const g = game.value;
     if (!g) return '';
     if (statusMessage.value) return statusMessage.value;
+    if (boardDone.value) return ''; /* the fire is running through the board; the result follows */
     if (isArchive.value) return t('play.msg.archive');
     if (hasDiscrepancy.value) return t('play.msg.hintWrong');
     const count = placedCount.value;
@@ -663,6 +664,7 @@ function win(times) {
     clearStatus();
     clearWrongCells();
     stopClock();
+    finalTimeText.value = fmtClock(Date.now() - startAt); /* the header clock stops here, not after the burn */
     boardDone.value = true;
     play('burn'); /* the fire runs through the board, then the chord when the result shows */
     burnTimes.value = Array.from(times); /* the solved fire, for the burn curve and the minute numbers */
@@ -686,7 +688,6 @@ function win(times) {
         for (let i = 0; i < cellStyle.value.length; i++) {
             if (cellStyle.value[i]) cellStyle.value[i] = { ...cellStyle.value[i], transitionDelay: '0ms' };
         }
-        finalTimeText.value = fmtClock(Date.now() - startAt);
         justSolved.value = true;
         bannerVisible.value = true;
         play('solved');
@@ -1216,6 +1217,7 @@ async function solvePuzzle() {
         clearProgress(currentProgressKey()); // revealed — nothing left to resume
         marksVersion++;
         stopClock();
+        finalTimeText.value = clockText.value;
         clearStatus();
         undoStack.length = 0;
         moveLog.length = 0;
@@ -1352,24 +1354,16 @@ if (isDaily.value) {
                 </span>
             </header>
 
-            <!-- ============ title: the fire's name, or the result ============ -->
+            <!-- ============ title: the fire's name ============ -->
+            <!-- Everything above the board (title, tools, firebreak supply) and
+                 the legend under it stay put after a solve, so the board never
+                 moves: only the area below the legend turns into the result. -->
             <section v-if="game" class="bf-play-title">
-                <template v-if="!bannerVisible">
-                    <h1>{{ game.name }}</h1>
-                    <p v-if="game.blurb">{{ game.blurb }}</p>
-                </template>
-                <div v-else class="bf-solved-head">
-                    <div class="flex min-w-0 flex-col gap-0.5">
-                        <span class="bf-help">{{ game.name }}</span>
-                        <h1>{{ voided ? t('play.solved.revealedTitle') : t('play.solved.title') }}</h1>
-                    </div>
-                    <div v-if="burnTimes.length" class="bf-curve" role="img" :aria-label="t('play.solved.curveLabel')">
-                        <i v-for="b in curve" :key="b.k" :style="{ height: b.h + 'px', background: b.bg, animationDelay: b.k * 40 + 'ms' }"></i>
-                    </div>
-                </div>
+                <h1>{{ game.name }}</h1>
+                <p v-if="game.blurb">{{ game.blurb }}</p>
             </section>
 
-            <div v-if="game && !isArchive && !boardDone && mode !== 'daily'" class="bf-play-tools">
+            <div v-if="game && !isArchive && mode !== 'daily'" class="bf-play-tools">
                 <template v-if="mode === 'endless'">
                     <Link href="/endless" class="bf-btn bf-btn-soft">{{ t('play.tools.otherSize') }}</Link>
                     <button type="button" class="bf-btn bf-btn-soft" @click="replaceEndlessIncident">{{ t('play.tools.newFire') }}</button>
@@ -1381,7 +1375,7 @@ if (isDaily.value) {
             </div>
 
             <!-- ============ firebreak supply ============ -->
-            <div v-if="game && !boardDone" class="bf-supply" :class="{ 'is-over': overBudget }">
+            <div v-if="game" class="bf-supply" :class="{ 'is-over': overBudget }">
                 <span>{{ t('play.supply') }}</span>
                 <span class="flex items-center gap-2.5">
                     <span class="bf-supply-pips" aria-hidden="true">
@@ -1425,15 +1419,15 @@ if (isDaily.value) {
                 <LoadingVeil :visible="veilVisible" />
             </div>
 
-            <!-- ============ while playing: legend, message, controls ============ -->
-            <template v-if="game && !bannerVisible">
-                <div class="bf-legend" aria-hidden="true">
-                    <span>{{ t('common.minutes') }}</span>
-                    <ol :style="{ gridTemplateColumns: `repeat(${legend.length}, minmax(0, 1fr))` }">
-                        <li v-for="l in legend" :key="l.k"><i :style="{ background: l.bg }"></i><b>{{ l.label }}</b></li>
-                    </ol>
-                </div>
+            <div v-if="game" class="bf-legend" aria-hidden="true">
+                <span>{{ t('common.minutes') }}</span>
+                <ol :style="{ gridTemplateColumns: `repeat(${legend.length}, minmax(0, 1fr))` }">
+                    <li v-for="l in legend" :key="l.k"><i :style="{ background: l.bg }"></i><b>{{ l.label }}</b></li>
+                </ol>
+            </div>
 
+            <!-- ============ while playing: message, controls ============ -->
+            <template v-if="game && !bannerVisible">
                 <p class="bf-message" role="status" aria-live="polite">{{ message }}</p>
 
                 <div v-if="!isArchive" class="mt-auto flex flex-col">
@@ -1457,6 +1451,12 @@ if (isDaily.value) {
 
             <!-- ============ solved ============ -->
             <section v-else-if="game" class="bf-solved" :aria-label="t('play.solved.title')">
+                <div class="bf-solved-head">
+                    <h2>{{ voided ? t('play.solved.revealedTitle') : t('play.solved.title') }}</h2>
+                    <div v-if="burnTimes.length" class="bf-curve" role="img" :aria-label="t('play.solved.curveLabel')">
+                        <i v-for="b in curve" :key="b.k" :style="{ height: b.h + 'px', background: b.bg, animationDelay: b.k * 40 + 'ms' }"></i>
+                    </div>
+                </div>
                 <dl v-if="!voided" class="bf-stats">
                     <div class="bf-stat-tile">
                         <dt class="bf-stat-label">{{ t('play.solved.time') }}</dt>
