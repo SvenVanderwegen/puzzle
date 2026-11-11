@@ -4,10 +4,10 @@
  * Run: node book/build.mjs [volume] [outDir]
  * Needs book/data/volume-<n>.json (see generate.ts) and Playwright with Chromium.
  * Writes:
- *   burnfront-book-<n>-interior.pdf  A5 pages, no bleed, one ink
+ *   burnfront-book-<n>-interior.pdf  5.5 x 8.5 in pages, no bleed, one ink
  *   burnfront-book-<n>-cover.pdf     back + spine + front in one sheet, with bleed
  *
- * KDP paperback numbers used here (5.83 x 8.27 in trim, black ink on white paper):
+ * KDP paperback numbers used here (5.5 x 8.5 in trim, a standard KDP size; black ink on white paper):
  *   interior  page = trim size; inside margin 0.375 in or more up to 150 pages,
  *             outside margins 0.25 in or more
  *   cover     0.125 in bleed on every side; spine = pages x 0.002252 in;
@@ -29,12 +29,17 @@ const book = JSON.parse(readFileSync(join(here, 'data', `volume-${volume}.json`)
 const puzzles = book.puzzles;
 
 /* ---------- print numbers ---------- */
-const TRIM_W = 5.83;
-const TRIM_H = 8.27;
+const TRIM_W = 5.5;
+const TRIM_H = 8.5;
 const BLEED = 0.125;
 const SPINE_PER_PAGE = 0.002252;
-const INSIDE = 0.65;
-const OUTSIDE = 0.5;
+const INSIDE = 0.6;
+const OUTSIDE = 0.45;
+/** Width between the margins, in px at 96 per inch. */
+const CONTENT = Math.floor((TRIM_W - INSIDE - OUTSIDE) * 96);
+/** The mark on the cover: squares of two thirds and one third of the width. */
+const MID = (TRIM_W * 2) / 3;
+const SMALL = TRIM_W / 3;
 const ANSWERS_PER_PAGE = 12;
 
 /* ---------- page plan ---------- */
@@ -255,7 +260,7 @@ function usePage() {
 }
 
 function puzzlePage(p) {
-  const cell = Math.min(84, Math.floor((449 - (p.cols - 1) * 4) / p.cols));
+  const cell = Math.min(84, Math.floor((CONTENT - (p.cols - 1) * 4) / p.cols));
   return page(
     `<header class="phead">
       <span class="num">${p.n}</span>
@@ -264,7 +269,7 @@ function puzzlePage(p) {
     <div class="pboard">${board(p, { cell, gap: 4 })}</div>
     <div class="pfoot">
       <span class="shade">Shade ${p.breaks} firebreaks</span>
-      ${boxes(p.breaks, p.breaks > 11 ? 17 : 20)}
+      ${boxes(p.breaks, p.breaks > 11 ? 14 : 20)}
     </div>`,
     { footer: `Answer on page ${answerPageOf(p.n)}` },
   );
@@ -438,18 +443,18 @@ h1, h2, p, ol, ul { margin: 0; padding: 0; } ol, ul { list-style: none; }
 .spine { position: absolute; left: ${BLEED + TRIM_W}in; top: 0; width: ${spine}in; height: 100%; background: ${coverSet.big}; }
 .spine .label { position: absolute; left: 50%; top: ${BLEED + 0.5}in; transform-origin: 0 0; transform: rotate(90deg) translateY(-50%); white-space: nowrap; color: #FFFFFF; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 11px; line-height: 1; letter-spacing: -0.01em; }
 .spine .label span { margin-left: 14px; font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
-.spine .band { position: absolute; left: 0; bottom: 0; width: 100%; height: ${3.89 + BLEED}in; background: ${coverSet.mid}; }
-.spine .foot { position: absolute; left: 0; bottom: 0; width: 100%; height: ${1.94 + BLEED}in; background: ${coverSet.small}; }
+.spine .band { position: absolute; left: 0; bottom: 0; width: 100%; height: ${MID + BLEED}in; background: ${coverSet.mid}; }
+.spine .foot { position: absolute; left: 0; bottom: 0; width: 100%; height: ${SMALL + BLEED}in; background: ${coverSet.small}; }
 .spine .foot b { position: absolute; left: 0; width: 100%; bottom: ${BLEED + 0.9}in; text-align: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 12px; line-height: 1; }
 .front { position: absolute; left: ${BLEED + TRIM_W + spine}in; top: 0; width: ${TRIM_W + BLEED}in; height: 100%; background: ${coverSet.big}; color: #FFFFFF; overflow: hidden; }
-.front .mid { position: absolute; left: 0; bottom: 0; width: 3.89in; height: ${3.89 + BLEED}in; background: ${coverSet.mid}; }
-.front .small { position: absolute; left: 0; bottom: 0; width: 1.94in; height: ${1.94 + BLEED}in; padding-bottom: ${BLEED}in; background: ${coverSet.small}; color: #16181B; display: flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 132px; line-height: 1; letter-spacing: -0.05em; }
+.front .mid { position: absolute; left: 0; bottom: 0; width: ${MID}in; height: ${MID + BLEED}in; background: ${coverSet.mid}; }
+.front .small { position: absolute; left: 0; bottom: 0; width: ${SMALL}in; height: ${SMALL + BLEED}in; padding-bottom: ${BLEED}in; background: ${coverSet.small}; color: #16181B; display: flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 132px; line-height: 1; letter-spacing: -0.05em; }
 .front .head { position: absolute; left: 0.5in; top: ${BLEED + 0.5}in; display: flex; flex-direction: column; gap: 10px; }
 .front .book { font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; }
 .front h1 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 96px; line-height: 0.95; letter-spacing: -0.045em; }
 .front .sub { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 28px; line-height: 1.15; letter-spacing: -0.015em; }
-.front .pitch { position: absolute; left: 0.42in; bottom: ${BLEED + 2.72}in; width: 290px; color: ${coverSet.midText}; font-size: 19px; font-weight: 500; line-height: 1.4; }
-.front .promise { position: absolute; left: 4.12in; bottom: ${BLEED + 0.42}in; width: 124px; font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 13px; line-height: 1.5; letter-spacing: 0.06em; text-transform: uppercase; }
+.front .pitch { position: absolute; left: 0.42in; top: ${BLEED + TRIM_H - MID + 0.4}in; width: ${MID - 0.84}in; color: ${coverSet.midText}; font-size: 19px; font-weight: 500; line-height: 1.4; }
+.front .promise { position: absolute; left: ${MID + 0.22}in; bottom: ${BLEED + 0.42}in; width: 124px; font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 13px; line-height: 1.5; letter-spacing: 0.06em; text-transform: uppercase; }
 .back h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 36px; line-height: 1; letter-spacing: -0.035em; text-wrap: balance; }
 .back .lead { margin-top: 14px; font-size: 17px; line-height: 1.45; text-wrap: pretty; }
 .back ol { margin-top: 18px; padding-top: 16px; display: flex; flex-direction: column; gap: 10px; border-top: 1.5px solid #16181B; }
@@ -483,7 +488,7 @@ h1, h2, p, ol, ul { margin: 0; padding: 0; } ol, ul { list-style: none; }
     <div>
       <strong>Try this one.</strong>
       <span>${sample.breaks} firebreaks. All you need is a pencil.</span>
-      <ul><li>${puzzles.length} puzzles, easy to hard</li><li>Large, clear print</li><li>Answers at the back</li></ul>
+      <ul><li>${puzzles.length} puzzles, easy to hard</li><li>Clear print</li><li>Answers at the back</li></ul>
     </div>
   </div>
   <div class="bottom">

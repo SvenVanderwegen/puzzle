@@ -21,5 +21,5 @@ The 8x8 boards take a few minutes each.
   The spine width follows the page count. The white box on the back is where KDP prints
   the barcode. Each volume shifts the three squares one step along the heat ramp.
 
-The trim size is A5 (5.83 x 8.27 in), set at the top of `build.mjs` together with the
+The trim size is 5.5 x 8.5 in (a standard KDP size; A5 is not on KDP's list), set at the top of `build.mjs` together with the
 margins. Placeholders still to fill in: `[YEAR]`, `[PUBLISHER]`, `[ISBN]` on page 2.
