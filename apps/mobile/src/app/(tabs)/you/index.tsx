@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Row, Section } from '@/components/Grouped';
 import { Segmented } from '@/components/Segmented';
+import { playSound } from '@/components/sounds';
 import { TimePicker } from '@/components/TimePicker';
 import { Card } from '@/components/ui';
 import { fmtClock } from '@/engine/rules';
@@ -50,8 +51,12 @@ export default function You() {
         {stat(t('you.bestTime'), progress.bestMs == null ? t('you.none') : fmtClock(progress.bestMs))}
       </Card>
 
-      <Section title={t('you.playingHeader')} footer={t('you.showClockFooter')}>
+      <Section title={t('you.playingHeader')} footer={t('you.playingFooter')}>
         <Row label={t('you.showClock')} trailing={toggle(t('you.showClock'), settings.showClock, (v) => updateSettings({ showClock: v }))} />
+        <Row label={t('you.sounds')} trailing={toggle(t('you.sounds'), settings.sounds, (v) => {
+              updateSettings({ sounds: v });
+              if (v) playSound('place');
+            })} />
         <Row label={t('you.haptics')} trailing={toggle(t('you.haptics'), settings.haptics, (v) => updateSettings({ haptics: v }))} />
         <Row label={t('you.flagLate')} trailing={toggle(t('you.flagLate'), settings.flagLate, (v) => updateSettings({ flagLate: v }))} />
       </Section>
