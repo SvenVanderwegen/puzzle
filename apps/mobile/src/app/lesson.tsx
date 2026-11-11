@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Board } from '@/components/Board';
 import { feel, tick } from '@/components/haptics';
+import { preloadSounds } from '@/components/sounds';
 import { playDaily } from '@/components/nav';
 import { Button } from '@/components/ui';
 import { burnTimes, countBreaks, solvedTimes, type Mark } from '@/engine/game';
@@ -50,6 +51,8 @@ export default function Lesson() {
   const times = useMemo(() => burnTimes(LESSON, marks), [marks]);
   const reveal = animAt ? Math.floor((now - animAt) / stepMs) : -1;
 
+  useEffect(preloadSounds, []);
+
   useEffect(() => {
     if (!animAt) return;
     const id = setInterval(() => {
@@ -87,7 +90,7 @@ export default function Lesson() {
     m[i] = m[i] === 1 ? 0 : 1;
     setFull(false);
     const solved = !!solvedTimes(LESSON, m);
-    feel(solved ? 'solved' : m[i] === 1 ? 'placed' : 'cleared');
+    feel(solved ? 'solved' : m[i] === 1 ? 'placed' : 'cleared', { burnMs: (LAST + 1) * 130 });
     play(solved ? 5 : 4, m, true);
   };
 

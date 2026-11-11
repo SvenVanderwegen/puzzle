@@ -1,0 +1,38 @@
+{
+    "pageTitle": "How to play · Burnfront",
+    "eyebrow": "How to play",
+    "title": "Find where the fire was stopped",
+    "lead": "A fire spread across a field. Some squares were firebreaks, so the fire could not cross them. The numbers tell you when the fire arrived. Your job is to find the firebreaks.",
+    "pictureLabel": "A small solved puzzle: the fire starts at a yellow spark and goes around two black firebreaks",
+    "lesson": {
+        "title": "Learn by doing",
+        "body": "The lesson shows you on a small board, one step at a time. It takes 2 minutes and has no clock.",
+        "start": "Start the lesson"
+    },
+    "rules": {
+        "title": "The rules",
+        "spark": "The fire starts at the yellow square, the spark.",
+        "spread": "Every minute it moves one square up, down, left or right. Never diagonally.",
+        "number": "A number is the minute the fire reached that square.",
+        "breaks": "Firebreaks are squares the fire cannot cross. The board tells you how many there are.",
+        "burn": "Every other square must burn. You have solved it when every number is right."
+    },
+    "tap": {
+        "title": "How to tap",
+        "once": "Tap a square once to place a firebreak.",
+        "twice": "Tap it again for a dot. A dot is your own note that says: no firebreak here.",
+        "thrice": "Tap a third time to clear the square.",
+        "check": "When your last firebreak is in place, the game checks the board for you.",
+        "help": "Made a mistake? Press Undo. Stuck? Press Hint."
+    },
+    "tips": {
+        "title": "Tips",
+        "count": "Count the steps from the spark to a number. If the number is bigger, something blocks the short way. Look for the firebreak there.",
+        "neighbours": "Two squares side by side never burn more than 1 minute apart.",
+        "closedIn": "No square may be closed in. If firebreaks wall off a square, the fire cannot reach it, and that is not allowed.",
+        "colours": "The colours show time. Yellow burned first, violet burned last.",
+        "noHurry": "There is no hurry. In Practice you can pick a size with no clock."
+    },
+    "play": "Play your first fire",
+    "practice": "Choose a size in Practice"
+}

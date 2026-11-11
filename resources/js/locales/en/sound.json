@@ -1,0 +1,8 @@
+{
+    "on": "Sound is on. Turn sound off",
+    "off": "Sound is off. Turn sound on",
+    "title": "Sound",
+    "help": "Soft sounds when you place a firebreak and when the fire is contained.",
+    "choiceOn": "On",
+    "choiceOff": "Off"
+}

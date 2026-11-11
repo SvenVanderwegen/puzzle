@@ -82,7 +82,7 @@ const en = {
     lessonDetail: 'Three short steps on a small board',
     rules: 'The rules in short',
     rulesBody:
-      'The fire starts at the yellow square. Each minute it moves one square up, down, left or right. A number is the minute the fire reached that square. Firebreaks are squares the fire cannot cross. Find where the firebreaks are, so every number is right and every other square burns.',
+      'The fire starts at the yellow square, the spark. Every minute it moves one square up, down, left or right, never diagonally. A number is the minute the fire reached that square. Firebreaks are squares the fire cannot cross, and the board tells you how many there are. Find them, so every number is right and every other square burns.',
   },
   you: {
     title: 'You',
@@ -96,7 +96,8 @@ const en = {
     none: '–',
     playingHeader: 'Playing',
     showClock: 'Show the clock',
-    showClockFooter: 'Off means no hurry. Your time is still shown at the end.',
+    playingFooter: 'Without the clock there is no hurry. Your time is still shown at the end. Sounds stay quiet when your iPhone is on silent.',
+    sounds: 'Sounds',
     haptics: 'Vibrate on a tap',
     flagLate: 'Flag numbers that are too late',
     displayHeader: 'Display',
