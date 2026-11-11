@@ -182,6 +182,35 @@ const sounds = {
         bell(b, 0.4, C6, { decay: 0.6, gain: 0.55 });
         return finish(b, 0.4);
     },
+    // One line of points is counted: a very short, light bell tick. The
+    // website plays it a little higher for each next line.
+    points: () => {
+        const b = buffer(0.3);
+        bell(b, 0, G5, { decay: 0.07, length: 0.28 });
+        return finish(b, 0.24);
+    },
+    // A new level: three quick notes going up.
+    level: () => {
+        const b = buffer(1.1);
+        bell(b, 0, E5, { decay: 0.2, gain: 0.85 });
+        bell(b, 0.09, G5, { decay: 0.22, gain: 0.85 });
+        bell(b, 0.18, C6, { decay: 0.45, gain: 0.8 });
+        return finish(b, 0.36);
+    },
+    // A new rank: a short, warm fanfare that climbs and ends on a full chord.
+    rank: () => {
+        const b = buffer(2.4);
+        bell(b, 0, C5, { decay: 0.3, gain: 0.9 });
+        bell(b, 0.13, E5, { decay: 0.3, gain: 0.85 });
+        bell(b, 0.26, G5, { decay: 0.32, gain: 0.85 });
+        bell(b, 0.39, C6, { decay: 0.4, gain: 0.8 });
+        // the chord
+        bell(b, 0.62, C5, { decay: 0.9, gain: 0.7, length: 1.7 });
+        bell(b, 0.62, E5, { decay: 0.9, gain: 0.6, length: 1.7 });
+        bell(b, 0.62, G5, { decay: 0.9, gain: 0.6, length: 1.7 });
+        bell(b, 0.62, C6, { decay: 1.0, gain: 0.5, length: 1.7 });
+        return finish(b, 0.42);
+    },
 };
 
 for (const dir of OUT) mkdirSync(dir, { recursive: true });

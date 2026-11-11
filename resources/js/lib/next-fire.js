@@ -3,7 +3,7 @@
 
 import { t } from './i18n';
 
-/** "Campaign 7" / "Quick fire 5 by 5", the small line under "Next fire". */
+/** "Campaign, level 7" / "Quick fire 5 by 5", the small line under "Next fire". */
 export function nextFireDetail(next) {
     if (!next) return '';
     if (next.kind === 'campaign') return t('progress.nextCampaign', { level: next.level });
@@ -17,7 +17,7 @@ export function upNextText(next) {
         return {
             eyebrow: t('progress.upNextCampaign'),
             meta: t('progress.fireMeta', { level: next.level, rows: next.rows, cols: next.cols }),
-            progress: t('progress.campaignProgress', { done: next.solvedLevels, total: next.totalLevels }),
+            progress: t('progress.reward.toNext', { toGo: next.levelSize - next.intoLevel, level: next.level + 1 }),
             action: t('progress.playFire', { level: next.level }),
         };
     }

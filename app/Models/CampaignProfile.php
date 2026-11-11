@@ -6,11 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One row per user: total XP earned across every campaign attempt and a
- * running solve count. The player's current level is never stored here —
- * it's always derived from total_xp via CampaignService::levelForXp(), the
- * same "derive, don't store redundant state" principle EndlessScore already
- * follows for its running-best record.
+ * One row per user: the player's points (total_xp, earned by every solved
+ * fire in every mode, see PlayerProgress::award()) and how many campaign
+ * fires they have solved. The level and rank are never stored here — they
+ * are always derived from total_xp via Progression::standing().
  */
 class CampaignProfile extends Model
 {

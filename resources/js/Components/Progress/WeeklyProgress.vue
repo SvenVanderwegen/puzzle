@@ -1,7 +1,11 @@
 <script setup>
 /* Weekly goal (N squares) and level bar. Every solved fire feeds both,
-   whatever the mode. Uses the Progressiekaart tokens: the level bar is the
-   shared .bf-progress bar, filled squares take the start of the heat ramp. */
+   whatever the mode: the level follows from the player's points (see
+   lib/xp.js). Uses the Progressiekaart tokens: the level bar is the shared
+   .bf-progress bar, filled squares take the start of the heat ramp.
+
+   only="week" shows just the weekly goal, for the result screen, where the
+   points card right above already shows the level. */
 import { computed, onMounted, ref } from 'vue';
 import { t } from '@/lib/i18n';
 import { resolveProgress } from '@/lib/progress';
@@ -10,6 +14,8 @@ import HomeIcon from '@/Components/HomeIcon.vue';
 const props = defineProps({
     progress: { type: Object, default: null }, // server progress, null for a guest
     rules: { type: Object, default: null },
+    only: { type: String, default: '' }, // '' (both) or 'week'
+    celebrate: { type: Boolean, default: false }, // the newest square pops in (a fire was just solved)
 });
 
 /* A guest's numbers come from localStorage, which only exists in the
@@ -31,32 +37,35 @@ const levelPct = computed(() => {
 </script>
 
 <template>
-    <section v-if="p" class="bf-card bf-weekly grid grid-cols-2 gap-4">
+    <section v-if="p" class="bf-card bf-weekly grid gap-4" :class="only === 'week' ? 'grid-cols-1' : 'grid-cols-2'">
         <div class="bf-weekly-goal flex flex-col gap-1.5" :aria-label="t('progress.weekAria', { done, goal })">
-            <span class="flex items-center gap-1.5 text-sm">
-                <HomeIcon name="week" :tile="false" />
-                <b class="font-semibold">{{ t('progress.weekTitle') }}</b>
-                &middot;
-                {{ done >= goal ? t('progress.weekDone') : t('progress.weekCount', { done, goal }) }}
+            <!-- the two parts wrap as whole pieces on a narrow phone, never word by word -->
+            <span class="flex flex-wrap items-center gap-x-1.5 text-sm">
+                <span class="flex items-center gap-1.5 whitespace-nowrap">
+                    <HomeIcon name="week" :tile="false" />
+                    <b class="font-semibold">{{ t('progress.weekTitle') }}</b>
+                </span>
+                <span class="whitespace-nowrap">{{ done >= goal ? t('progress.weekDone') : t('progress.weekCount', { done, goal }) }}</span>
             </span>
             <span class="flex gap-1.5" aria-hidden="true">
                 <span
                     v-for="(filled, i) in squares"
                     :key="i"
                     class="bf-weekly-square h-[22px] w-[22px] rounded-[3px]"
-                    :class="{ 'is-filled': filled }"
+                    :class="{ 'is-filled': filled, 'is-new': celebrate && filled && i === done - 1 }"
                     :style="filled ? { background: '#ff9a1f' } : { boxShadow: 'inset 0 0 0 1.5px var(--bf-line-strong)' }"
                 ></span>
             </span>
         </div>
-        <div class="bf-weekly-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { level: p.level, toGo: p.toGo })">
-            <span class="flex items-center gap-1.5 text-sm">
-                <HomeIcon name="level" :tile="false" />
-                <b class="font-semibold">{{ t('progress.levelTitle', { level: p.level }) }}</b>
-                &middot;
-                {{ t('progress.levelToGo', { toGo: p.toGo }) }}
+        <div v-if="only !== 'week'" class="bf-weekly-level flex flex-col gap-1.5" :aria-label="t('progress.levelAria', { level: p.level, toGo: p.toGo })">
+            <span class="flex flex-wrap items-center gap-x-1.5 text-sm">
+                <span class="flex items-center gap-1.5 whitespace-nowrap">
+                    <HomeIcon name="level" :tile="false" />
+                    <b class="font-semibold">{{ t('progress.levelTitle', { level: p.level }) }}</b>
+                </span>
+                <span class="whitespace-nowrap">{{ t('progress.levelToGo', { toGo: p.toGo }) }}</span>
             </span>
-            <span class="bf-progress mt-2" aria-hidden="true"><span :style="{ width: levelPct + '%' }"></span></span>
+            <span class="bf-progress mt-auto" aria-hidden="true"><span :style="{ width: levelPct + '%' }"></span></span>
         </div>
     </section>
 </template>

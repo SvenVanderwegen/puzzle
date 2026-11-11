@@ -8,28 +8,10 @@ use Tests\TestCase;
 
 /**
  * Needs the app for config(): the rules come from config/burnfront.php.
- * resources/js/lib/progress.js mirrors levelForSolves() for guests, so a
- * change to the curve here must be made there too.
+ * The points, level and rank maths is covered in ProgressionTest.
  */
 class PlayerProgressTest extends TestCase
 {
-    public function test_level_curve_with_the_default_rules(): void
-    {
-        $this->assertSame(['level' => 1, 'intoLevel' => 0, 'levelSize' => 3, 'toGo' => 3], PlayerProgress::levelForSolves(0));
-        $this->assertSame(['level' => 1, 'intoLevel' => 2, 'levelSize' => 3, 'toGo' => 1], PlayerProgress::levelForSolves(2));
-        $this->assertSame(['level' => 2, 'intoLevel' => 0, 'levelSize' => 4, 'toGo' => 4], PlayerProgress::levelForSolves(3));
-        $this->assertSame(['level' => 3, 'intoLevel' => 0, 'levelSize' => 5, 'toGo' => 5], PlayerProgress::levelForSolves(7));
-        $this->assertSame(['level' => 4, 'intoLevel' => 2, 'levelSize' => 6, 'toGo' => 4], PlayerProgress::levelForSolves(14));
-    }
-
-    public function test_level_curve_follows_config(): void
-    {
-        config(['burnfront.level_base' => 5, 'burnfront.level_step' => 0]);
-
-        $this->assertSame(3, PlayerProgress::levelForSolves(10)['level']);
-        $this->assertSame(5, PlayerProgress::levelForSolves(10)['levelSize']);
-    }
-
     public function test_week_starts_on_monday_utc(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-11-15 23:30:00', 'UTC')); // a Sunday

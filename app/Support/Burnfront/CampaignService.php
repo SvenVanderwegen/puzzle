@@ -6,11 +6,12 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 
 /**
- * Campaign mode: a fixed 20-level, 5-chapter difficulty ladder (grid size,
+ * Campaign mode: a fixed 20-rung, 5-chapter difficulty ladder (grid size,
  * firebreak density, and clue sparsity all ramp up within each chapter, not
- * just between chapters) plus the XP formulas that turn solves into levels.
- * A player's current level is always derived from their total XP — there is
- * no separately-tracked "unlocked" flag to desync (see CampaignProfile).
+ * just between chapters). Which rung a player is on follows from their
+ * level (rungFor()), and the level follows from their points (see
+ * Progression and PlayerProgress) — there is no separately-tracked
+ * "unlocked" flag to desync (see CampaignProfile).
  *
  * Also owns the signed run token that binds hint()/solve()/score requests to
  * an incident /campaign/puzzle actually generated (mirrors the daily
@@ -118,92 +119,19 @@ final class CampaignService
     }
 
     /**
-     * XP needed to go from $level to $level+1 — grows with level, so later
-     * levels take more solves to clear. A tuning starting point, not gospel;
-     * revisit after playtesting the same way PuzzleService's budgetMs was.
+     * Which rung of the ladder a player at $level plays. Levels 1 to 20 are
+     * the rungs themselves. Levels never stop, so past the top of the
+     * ladder the campaign keeps going by walking round its eight hardest
+     * rungs (8 by 8 boards and the boards with few numbers), one step per
+     * solved fire, so the next fire is never the same kind twice in a row.
      */
-    public static function xpToNext(int $level): int
+    public static function rungFor(int $level, int $puzzlesSolved = 0): int
     {
-        return 100 + 40 * ($level - 1);
-    }
-
-    /** Total XP needed to *be at* $level (0 at level 1). */
-    public static function cumulativeXpForLevel(int $level): int
-    {
-        $sum = 0;
-        for ($i = 1; $i < $level; $i++) {
-            $sum += self::xpToNext($i);
+        if ($level <= self::TOTAL_LEVELS) {
+            return max(1, $level);
         }
 
-        return $sum;
-    }
-
-    /** Current level for a given XP total, capped at TOTAL_LEVELS. */
-    public static function levelForXp(int $totalXp): int
-    {
-        $level = 1;
-        while ($level < self::TOTAL_LEVELS && $totalXp >= self::cumulativeXpForLevel($level + 1)) {
-            $level++;
-        }
-
-        return $level;
-    }
-
-    /**
-     * Full-credit (no-hint) XP for a clean solve at $level, set as a
-     * quarter of that level's own threshold so pacing (~4 clean solves per
-     * level-up) stays roughly constant across the whole curve.
-     */
-    public static function baseXp(int $level): int
-    {
-        return (int) ceil(self::xpToNext($level) / 4);
-    }
-
-    /**
-     * Hints deduct a proportional share of the award; hints used >= this
-     * level's firebreak count zeroes it entirely.
-     */
-    public static function xpAwarded(int $level, int $hintsUsed): int
-    {
-        $config = self::levelConfig($level);
-        if ($config === null) {
-            return 0;
-        }
-        $breaks = $config['breaks'];
-        if ($hintsUsed >= $breaks) {
-            return 0;
-        }
-
-        return (int) round(self::baseXp($level) * (1 - $hintsUsed / $breaks));
-    }
-
-    /**
-     * Everything a view needs to render this account's campaign standing,
-     * derived purely from total_xp — no other stored state exists.
-     *
-     * @return array{level:int,chapterKey:int,chapterLabel:string,xpIntoLevel:int,xpToNextLevel:int|null,totalXp:int,maxed:bool}
-     */
-    public static function progressForXp(int $totalXp): array
-    {
-        $level = self::levelForXp($totalXp);
-        $config = self::levelConfig($level);
-        // Reaching level 20 isn't the same as clearing it: levelForXp() caps
-        // display at TOTAL_LEVELS, so "maxed" has to check XP against the
-        // threshold *past* it (xpToNext()/cumulativeXpForLevel() are plain
-        // formulas, not bounded by TOTAL_LEVELS, so this is well-defined)
-        // — otherwise the campaign reports "complete" the instant a player
-        // unlocks the last level, before they've ever played it.
-        $maxed = $totalXp >= self::cumulativeXpForLevel(self::TOTAL_LEVELS + 1);
-
-        return [
-            'level' => $level,
-            'chapterKey' => $config['chapterKey'],
-            'chapterLabel' => $config['chapterLabel'],
-            'xpIntoLevel' => $totalXp - self::cumulativeXpForLevel($level),
-            'xpToNextLevel' => $maxed ? null : self::xpToNext($level),
-            'totalXp' => $totalXp,
-            'maxed' => $maxed,
-        ];
+        return self::TOTAL_LEVELS - 7 + (max(0, $puzzlesSolved) % 8);
     }
 
     /**

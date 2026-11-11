@@ -78,76 +78,17 @@ class CampaignServiceTest extends TestCase
         $this->assertSame([17, 18, 19, 20], $chapters[4]['levels']);
     }
 
-    public function test_xp_to_next_grows_with_level(): void
+    public function test_the_rung_is_the_level_until_the_ladder_runs_out(): void
     {
-        $this->assertGreaterThan(CampaignService::xpToNext(1), CampaignService::xpToNext(10));
-        $this->assertGreaterThan(CampaignService::xpToNext(10), CampaignService::xpToNext(19));
-    }
+        $this->assertSame(1, CampaignService::rungFor(1));
+        $this->assertSame(20, CampaignService::rungFor(20, 5));
 
-    public function test_level_for_xp_is_the_inverse_of_cumulative_xp_for_level(): void
-    {
-        for ($level = 1; $level <= CampaignService::TOTAL_LEVELS; $level++) {
-            $threshold = CampaignService::cumulativeXpForLevel($level);
-            $this->assertSame($level, CampaignService::levelForXp($threshold));
+        // Past the top: the eight hardest rungs in turn, one step per solve.
+        $seen = [];
+        for ($solved = 0; $solved < 8; $solved++) {
+            $seen[] = CampaignService::rungFor(21, $solved);
         }
-
-        $this->assertSame(1, CampaignService::levelForXp(0));
-        $this->assertSame(4, CampaignService::levelForXp(CampaignService::cumulativeXpForLevel(5) - 1));
-    }
-
-    public function test_level_for_xp_caps_at_total_levels(): void
-    {
-        $this->assertSame(CampaignService::TOTAL_LEVELS, CampaignService::levelForXp(PHP_INT_MAX >> 8));
-    }
-
-    public function test_xp_awarded_is_full_credit_for_a_clean_solve(): void
-    {
-        $this->assertSame(CampaignService::baseXp(1), CampaignService::xpAwarded(1, 0));
-    }
-
-    public function test_xp_awarded_shrinks_with_hints_and_hits_zero_at_the_break_count(): void
-    {
-        $breaks = CampaignService::levelConfig(5)['breaks'];
-
-        $clean = CampaignService::xpAwarded(5, 0);
-        $oneHint = CampaignService::xpAwarded(5, 1);
-
-        $this->assertGreaterThan($oneHint, $clean);
-        $this->assertGreaterThan(0, $oneHint);
-        $this->assertSame(0, CampaignService::xpAwarded(5, $breaks));
-        $this->assertSame(0, CampaignService::xpAwarded(5, $breaks + 5));
-    }
-
-    public function test_progress_for_xp_derives_a_consistent_snapshot(): void
-    {
-        $progress = CampaignService::progressForXp(0);
-
-        $this->assertSame(1, $progress['level']);
-        $this->assertSame(0, $progress['xpIntoLevel']);
-        $this->assertSame(CampaignService::xpToNext(1), $progress['xpToNextLevel']);
-        $this->assertFalse($progress['maxed']);
-
-        $maxedProgress = CampaignService::progressForXp(PHP_INT_MAX >> 8);
-        $this->assertSame(CampaignService::TOTAL_LEVELS, $maxedProgress['level']);
-        $this->assertTrue($maxedProgress['maxed']);
-        $this->assertNull($maxedProgress['xpToNextLevel']);
-    }
-
-    /**
-     * Regression test for a reviewer-flagged risk: just reaching level 20
-     * (the XP threshold that makes levelForXp() return TOTAL_LEVELS) must
-     * not be reported as "maxed" — the player hasn't cleared level 20 yet,
-     * only unlocked it. Only earning enough XP to have cleared it (i.e.
-     * enough to have "leveled up" past 20, were there a level 21) counts.
-     */
-    public function test_reaching_level_20_is_not_maxed_until_it_is_cleared(): void
-    {
-        $justReached = CampaignService::progressForXp(CampaignService::cumulativeXpForLevel(CampaignService::TOTAL_LEVELS));
-        $this->assertSame(CampaignService::TOTAL_LEVELS, $justReached['level']);
-        $this->assertFalse($justReached['maxed']);
-        $this->assertNotNull($justReached['xpToNextLevel']);
-
-        $cleared = CampaignService::progressForXp(CampaignService::cumulativeXpForLevel(CampaignService::TOTAL_LEVELS + 1));
-        $this->assertTrue($cleared['maxed']);
+        $this->assertSame(range(13, 20), $seen);
+        $this->assertSame(13, CampaignService::rungFor(99, 16));
     }
 }

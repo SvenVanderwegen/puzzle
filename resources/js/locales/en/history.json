@@ -27,20 +27,12 @@
         "toReplays": "Watch your games back",
         "doneOne": "1 fire put out",
         "doneMany": "{count} fires put out",
-        "toNext": "{count} more to reach {title}",
+        "levelLine": "Level {level} · {toGo} points to level {next}",
         "badges": "Badges",
         "badgeLocked": "not yet",
         "sizes": "Fastest time for each size",
         "solvedCount": "{count} done",
         "notYet": "Not played yet"
-    },
-    "rank": {
-        "0": "Beginner",
-        "5": "Getting the hang of it",
-        "20": "Steady hand",
-        "50": "Sharp eye",
-        "100": "Fire expert",
-        "250": "Burnfront master"
     },
     "badge": {
         "first_incident": { "label": "First fire", "description": "Put out your first fire." },

@@ -19,13 +19,14 @@ import MiniBoard from '@/Components/MiniBoard.vue';
 import HomeIcon from '@/Components/HomeIcon.vue';
 import FirstRunBriefing from '@/Components/FirstRunBriefing.vue';
 import { hasCompletedOnboarding } from '@/lib/burnfront-onboarding';
+import RankBadge from '@/Components/Progress/RankBadge.vue';
 import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
 import { guestDailyFor } from '@/lib/progress';
 import { upNextText } from '@/lib/next-fire';
 
 const props = defineProps({
     dailyStatus: { type: Object, default: null },
-    campaignStatus: { type: Object, default: null },
+    campaignStatus: { type: Object, default: null }, // Progression::standing(): points, level and rank; null for a guest
     upNext: { type: Object, default: null }, // NextFire::for(): what to play after the daily
     quickFires: { type: Array, default: null }, // NextFire::quickFires()
     progress: { type: Object, default: null }, // PlayerProgress::forUser(), null for a guest
@@ -35,8 +36,6 @@ const props = defineProps({
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user ?? null);
 const firstRunVisible = ref(!hasCompletedOnboarding());
-
-const TOTAL_LEVELS = 20;
 
 /* A real, solvable 6 by 6 fire (reference/firebreak.py, seed 2) used as the
    preview when the server does not send today's own board. */
@@ -111,18 +110,15 @@ const doneThumb = computed(() => {
 const campaign = computed(() => {
     const c = props.campaignStatus;
     const u = props.upNext?.kind === 'campaign' ? props.upNext : null;
-    const level = u?.level ?? c?.level ?? 1;
-    const total = u?.totalLevels ?? TOTAL_LEVELS;
-    const maxed = Boolean(c?.maxed);
-    const done = u?.solvedLevels ?? (maxed ? total : Math.max(0, level - 1));
+    const level = c?.level ?? u?.level ?? 1;
+    const rankKey = c?.rankKey ?? u?.rankKey ?? 'trainee';
     return {
         level,
-        total,
-        done,
-        maxed,
-        pct: Math.round((done / total) * 100),
-        part: c?.chapterKey ? t(`common.chapter.${c.chapterKey}`) : t('common.chapter.1'),
-        name: u?.name || t('home.next.name', { level }),
+        rank: c?.rank ?? u?.rank ?? 0,
+        rankName: t(`progress.rank.${rankKey}`),
+        toGo: c?.toGo ?? 0,
+        pct: c?.levelSize ? Math.round((c.intoLevel / c.levelSize) * 100) : 0,
+        name: t('home.next.name', { level }),
         href: u?.href ?? (currentUser.value ? '/campaign/play' : '/login'),
         mapHref: currentUser.value ? '/campaign' : '/login',
         board: u?.clues && u?.spark != null ? { rows: u.rows, cols: u.cols, spark: u.spark, clues: u.clues } : SAMPLE_CAMPAIGN,
@@ -131,8 +127,7 @@ const campaign = computed(() => {
     };
 });
 
-/* A guest (or a player who finished the campaign) gets a quick fire as
-   "Up next" instead of a sign-in wall. */
+/* A guest gets a quick fire as "Up next" instead of a sign-in wall. */
 const quickNext = computed(() => (props.upNext?.kind === 'quick' ? { ...props.upNext, text: upNextText(props.upNext) } : null));
 
 /* ---- quick fire ---- */
@@ -191,13 +186,13 @@ const rules = [
                 </section>
 
                 <Link :href="campaign.mapHref" class="bf-row" :aria-label="t('home.campaign.open')">
-                    <HomeIcon name="campaign" :step="ICON_STEP.campaign" />
+                    <RankBadge v-if="currentUser" :rank="campaign.rank" :rules="progressRules?.xp" />
+                    <HomeIcon v-else name="campaign" :step="ICON_STEP.campaign" />
                     <span class="flex min-w-0 flex-1 flex-col gap-1">
-                        <span class="bf-eyebrow">{{ currentUser ? t('home.campaign.eyebrow', { done: campaign.done, total: campaign.total }) : t('home.campaign.eyebrowGuest') }}</span>
+                        <span class="bf-eyebrow">{{ currentUser ? t('home.campaign.eyebrow', { level: campaign.level }) : t('home.campaign.eyebrowGuest') }}</span>
                         <span class="bf-home-section-title">
                             <template v-if="!currentUser">{{ t('home.campaign.guest') }}</template>
-                            <template v-else-if="campaign.maxed">{{ t('home.campaign.titleDone', { total: campaign.total }) }}</template>
-                            <template v-else>{{ t('home.campaign.title', { level: campaign.level }) }}</template>
+                            <template v-else>{{ t('home.campaign.title', { rank: campaign.rankName }) }}</template>
                         </span>
                         <span v-if="currentUser" class="bf-progress mt-1" aria-hidden="true"><span :style="{ width: campaign.pct + '%' }"></span></span>
                     </span>
@@ -244,17 +239,15 @@ const rules = [
                         <MiniBoard v-bind="campaign.board" />
                         <div class="bf-home-hero-copy">
                             <span class="bf-eyebrow">{{ t('home.next.eyebrow') }}</span>
-                            <h2 id="next-title">{{ campaign.maxed ? t('home.next.allDone', { total: campaign.total }) : campaign.name }}</h2>
-                            <span class="bf-home-meta">{{ t('home.next.meta', { rows: campaign.rows, cols: campaign.cols, level: campaign.level, total: campaign.total }) }}</span>
+                            <h2 id="next-title">{{ campaign.name }}</h2>
+                            <span class="bf-home-meta">{{ t('home.next.meta', { rows: campaign.rows, cols: campaign.cols, rank: campaign.rankName }) }}</span>
                             <span class="mt-1 flex flex-col gap-1">
                                 <span class="bf-progress" aria-hidden="true"><span :style="{ width: campaign.pct + '%' }"></span></span>
-                                <span class="bf-home-sub">{{ t('home.next.progress', { done: campaign.done, total: campaign.total }) }}</span>
+                                <span class="bf-home-sub">{{ t('home.next.progress', { toGo: campaign.toGo, level: campaign.level + 1 }) }}</span>
                             </span>
                         </div>
                     </div>
-                    <Link :href="campaign.href" class="bf-btn bf-btn-primary">
-                        {{ campaign.maxed ? t('home.next.replay') : t('home.next.play', { level: campaign.level }) }}
-                    </Link>
+                    <Link :href="campaign.href" class="bf-btn bf-btn-primary">{{ t('home.next.play') }}</Link>
                 </section>
             </template>
 

@@ -7,6 +7,7 @@ import FlameGlyph from '@/Components/FlameGlyph.vue';
 import SoundToggle from '@/Components/SoundToggle.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import WeeklyProgress from '@/Components/Progress/WeeklyProgress.vue';
+import XpReward from '@/Components/Progress/XpReward.vue';
 import { burnCurve, heatCell, heatColor } from '@/lib/heat';
 import { t } from '@/lib/i18n';
 import { isDark } from '@/lib/theme';
@@ -21,7 +22,7 @@ const props = defineProps({
     difficulty: { type: String, default: '' },
     authenticated: { type: Boolean, default: false },
     archivePuzzle: { type: Object, default: null }, // set for mode 'archive': a past daily incident this account already solved
-    levelConfig: { type: Object, default: null }, // set for mode 'campaign': this account's current level, from CampaignService::levelConfig()
+    levelConfig: { type: Object, default: null }, // set for mode 'campaign': the player's level plus the kind of board it gets (CampaignController::play())
     relaxed: { type: Boolean, default: false }, // quick fire from the home: no visible clock
     nextFire: { type: Object, default: null }, // NextFire::for(): where the result screen's "Next fire" goes
     progressRules: { type: Object, default: null }, // PlayerProgress::rules(), for a guest's local progress
@@ -35,12 +36,10 @@ const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefe
 
 const diff = ref(props.difficulty);
 
-/* Campaign level number (1..20) from the level config the server sends. */
-const campaignLevel = computed(() => {
-    const c = props.levelConfig;
-    if (!c) return null;
-    return c.level ?? (c.chapterKey - 1) * 4 + c.levelInChapter;
-});
+/* The player's level, for the label above a campaign board. It starts as
+   what the page was rendered with and follows each new board the server
+   hands out (the level may have gone up since). */
+const campaignLevel = ref(props.levelConfig?.level ?? null);
 
 /* Small label at the top of the board: which kind of fire this is. */
 const modeLabel = computed(() => {
@@ -81,7 +80,13 @@ const dailyScorePosted = ref(false);
 const leaderboard = ref([]);
 const hintsUsedThisRun = ref(0);
 const personalBestNote = ref('');
-const campaignResult = ref(null); /* {xpAwarded, level, leveledUp, xpIntoLevel, xpToNextLevel, chapterLabel, campaignComplete, nextFire, progress}, set on a campaign win */
+const campaignResult = ref(null); /* {reward, xpAwarded, level, leveledUp, nextFire, progress}, set on a campaign win */
+/* The points this solve gave ({items, total, xpBefore, xpAfter}), for the
+   count-up on the result screen: from the server for a signed-in player
+   (PlayerProgress::award()), from this device for a guest. rewardFailed is
+   set when the server could not be asked, so the card does not wait forever. */
+const reward = ref(null);
+const rewardFailed = ref(false);
 /* Weekly goal / level after this solve, as the server reports it for a
    signed-in player (null for a guest: WeeklyProgress then reads the local
    log that win() just added to). */
@@ -120,21 +125,10 @@ const solveDisabled = computed(() => locked.value || !game.value || hinting.valu
    it (clearWrongCells() runs on every tap/undo/reset/hint). */
 const hasDiscrepancy = computed(() => !boardDone.value && wrongCells.value.some(Boolean));
 
-/* Just-earned XP segment (the flame dashed overlay) on the campaign payoff's
-   rank bar — approximated from xpAwarded since the server only reports the
-   run's *resulting* standing, not the bar's starting position. */
-const xpAfterPct = computed(() => {
-    const r = campaignResult.value;
-    if (!r || !r.xpToNextLevel) return 100;
-    return Math.min(100, Math.round((r.xpIntoLevel / r.xpToNextLevel) * 100));
-});
-const xpBeforePct = computed(() => {
-    const r = campaignResult.value;
-    if (!r || !r.xpToNextLevel) return xpAfterPct.value;
-    const before = r.xpIntoLevel - r.xpAwarded;
-    if (r.leveledUp || before < 0) return 0;
-    return Math.min(100, Math.round((before / r.xpToNextLevel) * 100));
-});
+/* Which fires give points: the daily, the campaign and every named
+   practice size. A board of your own size and a past daily do not. */
+const rewardable = computed(() => isDaily.value || isCampaign.value || (props.mode === 'endless' && diff.value !== 'custom'));
+const showReward = computed(() => !voided.value && rewardable.value && !rewardFailed.value);
 
 function stopClock() {
     if (clockTimer) {
@@ -697,9 +691,17 @@ function win(times) {
     for (let i = 0; i < marks.value.length; i++) if (marks.value[i] === 1) shaded.push(i);
 
     // A guest has no server record: every solve feeds this device's weekly
-    // goal and level instead (lib/progress.js). A signed-in player's solve
+    // goal and points instead (lib/progress.js). A signed-in player's solve
     // is counted by the server when the score below is posted.
-    if (!props.authenticated) recordLocalSolve();
+    if (!props.authenticated) {
+        const earned = recordLocalSolve(
+            rewardable.value
+                ? { rows: g.R, cols: g.C, breaks: g.N, daily: isDaily.value, hintsUsed: isDaily.value ? hintsUsedThisRun.value : null }
+                : null,
+            props.progressRules ?? undefined,
+        );
+        if (rewardable.value) reward.value = earned;
+    }
 
     // Guests can play the daily too: the server verifies their board the
     // same way and keeps the result in their session (DailyRunStore).
@@ -799,18 +801,22 @@ async function submitDailyScore(shaded) {
             const data = await resp.json();
             if (typeof data.hints_used === 'number') hintsUsedThisRun.value = data.hints_used;
             if (data.progress) serverProgress.value = data.progress;
+            if (data.reward) reward.value = data.reward;
             if (data.guest) {
                 guestDailySolved.value = true;
                 rememberGuestDaily(dailyDate.value, { timeMs: data.time_ms, hintsUsed: data.hints_used });
             }
             fetchLeaderboard();
         } else if (resp.status === 409) {
+            if (props.authenticated) rewardFailed.value = true;
             fetchLeaderboard();
         } else {
             dailyScorePosted.value = false;
+            if (props.authenticated) rewardFailed.value = true;
         }
     } catch (e) {
         dailyScorePosted.value = false;
+        if (props.authenticated) rewardFailed.value = true;
     }
 }
 
@@ -845,24 +851,29 @@ async function submitEndlessScore(shaded, timeMs) {
             },
             body: JSON.stringify(body),
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+            rewardFailed.value = true;
+            return;
+        }
         const data = await resp.json();
         if (data.improved) personalBestNote.value = 'New personal best for this tier.';
         if (data.progress) serverProgress.value = data.progress;
+        if (data.reward) reward.value = data.reward;
+        else rewardFailed.value = true;
     } catch (e) {
-        /* personal bests are a nice-to-have; a failed post just skips the record */
+        /* personal bests and points are a nice-to-have; a failed post just skips them */
+        rewardFailed.value = true;
     }
 }
 
-/* Converts a verified solve into XP. Sends only the run token puzzle()
+/* Converts a verified solve into points. Sends only the run token puzzle()
    issued plus the shaded cells — the server recovers level/spark/clues from
    the token and reads this run's actual hint count from its own cache
    (see CampaignController::submitScore()), rather than trusting anything
    this client reports, so hintsUsedThisRun below is purely this run's own
    local display copy, never what the server scores against. Best-effort
-   like submitEndlessScore(): a failed post just means this run's XP/
-   level-up banner is skipped, nothing is lost since the server is the only
-   source of truth for total_xp. */
+   like submitEndlessScore(): a failed post just means this run's points
+   card is skipped. */
 async function submitCampaignScore(shaded) {
     try {
         const resp = await fetch('/campaign/score', {
@@ -878,11 +889,17 @@ async function submitCampaignScore(shaded) {
                 moves: moveLog,
             }),
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+            rewardFailed.value = true;
+            return;
+        }
         campaignResult.value = await resp.json();
         if (campaignResult.value?.progress) serverProgress.value = campaignResult.value.progress;
+        if (campaignResult.value?.reward) reward.value = campaignResult.value.reward;
+        else rewardFailed.value = true;
     } catch (e) {
-        /* XP is a nice-to-have; a failed post just skips this run's banner */
+        /* points are a nice-to-have; a failed post just skips this run's count-up */
+        rewardFailed.value = true;
     }
 }
 
@@ -910,6 +927,8 @@ async function newGame(fresh = true) {
     hintsUsedThisRun.value = 0;
     personalBestNote.value = '';
     serverProgress.value = null;
+    reward.value = null;
+    rewardFailed.value = false;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -974,6 +993,8 @@ async function loadCampaign() {
     hintsUsedThisRun.value = 0;
     campaignResult.value = null;
     serverProgress.value = null;
+    reward.value = null;
+    rewardFailed.value = false;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -985,6 +1006,7 @@ async function loadCampaign() {
         if (!resp.ok) throw new Error('campaign puzzle request failed');
         const p = await resp.json();
         if (token !== genToken) return;
+        if (p.level) campaignLevel.value = p.level;
         const n = p.rows * p.cols;
         game.value = reactive({
             n,
@@ -1033,6 +1055,8 @@ async function loadDaily() {
     hintsUsedThisRun.value = 0;
     personalBestNote.value = '';
     serverProgress.value = null;
+    reward.value = null;
+    rewardFailed.value = false;
     stopClock();
     clearStatus();
     veilVisible.value = true;
@@ -1475,34 +1499,20 @@ if (isDaily.value) {
 
                 <p v-if="personalBestNote" class="bf-help mt-2 font-semibold text-good" role="status">{{ t('play.solved.personalBest') }}</p>
 
-                <div v-if="isCampaign && campaignResult" class="bf-xp-card mt-3">
-                    <div class="flex items-baseline justify-between gap-3">
-                        <span class="font-semibold">{{ t('play.campaign.level', { level: campaignResult.level }) }}</span>
-                        <span class="font-semibold">{{ t('play.campaign.points', { points: campaignResult.xpAwarded }) }}</span>
-                    </div>
-                    <div class="bf-xp-track">
-                        <div class="bf-xp-fill" :style="{ width: xpAfterPct + '%' }"></div>
-                        <div
-                            v-if="xpAfterPct > xpBeforePct"
-                            class="bf-xp-fill-new"
-                            :style="{ left: xpBeforePct + '%', width: xpAfterPct - xpBeforePct + '%' }"
-                        ></div>
-                    </div>
-                    <span v-if="campaignResult.xpAwarded === 0" class="bf-help">{{ t('play.campaign.noPoints') }}</span>
-                    <p v-if="campaignResult.leveledUp" class="bf-levelup m-0">{{ t('play.campaign.levelUp', { level: campaignResult.level }) }}</p>
-                    <p v-if="campaignResult.campaignComplete" class="m-0 font-semibold">{{ t('play.campaign.complete') }}</p>
-                </div>
+                <!-- The points this fire gave, counted up line by line. -->
+                <XpReward v-if="showReward" class="mt-3" :reward="reward" :rules="progressRules?.xp" />
 
                 <div class="mt-4 flex flex-col">
                     <span class="bf-help">{{ t('play.share.what') }}</span>
                     <pre class="bf-share-preview">{{ shareText }}</pre>
                 </div>
 
-                <!-- Progression: every solve feeds the weekly goal and level. -->
+                <!-- Progression: every solve feeds the weekly goal (the points
+                     card above already shows the level). -->
                 <!-- A signed-in player's numbers come only from the server (a score
                      response); reopening a solved daily has none, so the card
                      stays hidden rather than showing this device's guest log. -->
-                <WeeklyProgress v-if="!voided && (serverProgress || !authenticated)" class="mt-4" :progress="serverProgress" :rules="progressRules" />
+                <WeeklyProgress v-if="!voided && (serverProgress || !authenticated)" class="mt-4" only="week" celebrate :progress="serverProgress" :rules="progressRules" />
 
                 <p v-if="guestDailySolved" class="bf-help mt-3 text-center">
                     {{ t('progress.guestSave') }}

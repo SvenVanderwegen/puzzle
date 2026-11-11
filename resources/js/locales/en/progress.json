@@ -4,35 +4,65 @@
     "weekDone": "Goal reached",
     "weekAria": "{done} of {goal} fires this week",
     "levelTitle": "Level {level}",
-    "levelToGo": "{toGo} to go",
-    "levelAria": "Level {level}. {toGo} more fires to the next level.",
-    "levelUp": "Level {level}!",
-
+    "levelToGo": "{toGo} points to go",
+    "levelAria": "Level {level}. {toGo} more points to the next level.",
     "nextFire": "Next fire",
-    "nextCampaign": "Campaign {level}",
+    "nextCampaign": "Campaign, level {level}",
     "nextQuick": "Quick fire {rows} by {cols}",
-
     "upNextCampaign": "Up next · Campaign",
     "upNextQuick": "Up next · Quick fire",
-    "fireMeta": "Fire {level} · {rows} by {cols}",
+    "fireMeta": "Level {level} · {rows} by {cols}",
     "quickMeta": "{rows} by {cols} · no clock",
-    "campaignProgress": "{done} of {total} contained",
-    "playFire": "Play fire {level}",
+    "playFire": "Play the next fire",
     "playQuick": "Play a {rows} by {cols} fire",
-
     "quickTitle": "Quick fire",
     "quickBody": "A fresh fire every time. No clock. Pick a size.",
     "quickSize": "{rows} by {cols}",
-
     "dailyTitle": "Today · No. {number}",
     "dailyPlay": "Play today's fire",
     "dailyDone": "Today's fire is contained",
     "dailyDoneTime": "{time}",
     "dailyStreak": "{days} day streak",
     "dailyStreakOne": "1 day streak",
-
     "guestSave": "Make a free account to keep your streak and join the leaderboard.",
     "guestSaveAction": "Make a free account",
     "guestSignIn": "Sign in",
-    "unrankedNote": "Saved to your account. Your streak counts it. Tomorrow, play signed in to join the leaderboard."
+    "unrankedNote": "Saved to your account. Your streak counts it. Tomorrow, play signed in to join the leaderboard.",
+    "rank": {
+        "trainee": "Trainee",
+        "firefighter": "Firefighter",
+        "crewLeader": "Crew leader",
+        "captain": "Captain",
+        "chief": "Chief",
+        "commander": "Commander",
+        "legend": "Legend"
+    },
+    "reward": {
+        "points": "points",
+        "line": {
+            "fire": "Fire contained",
+            "noHints": "No hints",
+            "daily": "Today's fire",
+            "streak": "{n} days in a row",
+            "week": "Weekly goal reached"
+        },
+        "toNext": "{toGo} points to level {level}",
+        "levelUp": "Level {level} reached!",
+        "summary": "You got {points} points. You are level {level}, {rank}.",
+        "noPoints": "No points for this fire, because hints placed every firebreak."
+    },
+    "rankUp": {
+        "eyebrow": "New rank",
+        "title": "You are now {rank}.",
+        "continue": "Continue",
+        "what": {
+            "trainee": "The campaign gives you 5 by 5 fires.",
+            "firefighter": "The campaign now gives you 6 by 6 fires.",
+            "crewLeader": "The campaign now gives you 7 by 7 fires.",
+            "captain": "The campaign now gives you 8 by 8 fires.",
+            "chief": "The campaign now gives you fires with fewer numbers.",
+            "commander": "The campaign now gives you its hardest fires.",
+            "legend": "This is the highest rank. Your level keeps counting."
+        }
+    }
 }

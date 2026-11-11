@@ -1,7 +1,9 @@
 /* Sound effects. Short, soft sounds made by scripts/make-sounds.mjs (our own,
    no licence needed): a tap for a firebreak or a dot, a glide for taking one
    back, a chime for a hint, a low "hmm" when something is not right yet, the
-   fire running through the board and a chord when it is contained.
+   fire running through the board and a chord when it is contained. Then the
+   points: a light tick for each line counted, three notes for a new level
+   and a short fanfare for a new rank.
 
    Sound is on unless the player switches it off; the choice is kept per
    browser under SOUND_KEY. Browsers only allow sound after the player has
@@ -99,8 +101,9 @@ if (typeof window !== 'undefined') {
     window.addEventListener('keydown', unlock, { capture: true, passive: true });
 }
 
-/** Plays one sound: place, dot, clear, hint, wrong, burn or solved. */
-export function play(name) {
+/** Plays one sound: place, dot, clear, hint, wrong, burn, solved, points,
+    level or rank. `rate` plays it higher (above 1) or lower (below 1). */
+export function play(name, rate = 1) {
     if (!soundOn.value || typeof document === 'undefined' || document.hidden) return;
     if (!context()) return;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -110,13 +113,14 @@ export function play(name) {
            it is ready, unless that is too late to still belong to the move. */
         const asked = Date.now();
         load()?.then(() => {
-            if (buffers[name] && Date.now() - asked < 400) play(name);
+            if (buffers[name] && Date.now() - asked < 400) play(name, rate);
         });
         return;
     }
     try {
         const source = ctx.createBufferSource();
         source.buffer = buffer;
+        if (rate !== 1) source.playbackRate.value = rate;
         source.connect(output);
         source.start();
     } catch (e) {

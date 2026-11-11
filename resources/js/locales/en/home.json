@@ -24,18 +24,15 @@
     },
     "next": {
         "eyebrow": "Up next · Campaign",
-        "name": "Fire {level}",
-        "meta": "{rows} by {cols} · fire {level} of {total}",
-        "progress": "{done} of {total} done",
-        "play": "Play fire {level}",
-        "allDone": "You finished all {total} fires",
-        "replay": "Play the campaign again"
+        "name": "Level {level}",
+        "meta": "{rows} by {cols} · {rank}",
+        "progress": "{toGo} points to level {level}",
+        "play": "Play the next fire"
     },
     "campaign": {
-        "eyebrow": "Campaign · {done} of {total} done",
-        "title": "Next: fire {level}",
-        "titleDone": "All {total} fires done",
-        "guest": "20 fires that slowly get harder. Sign in to keep your place.",
+        "eyebrow": "Campaign · level {level}",
+        "title": "{rank}",
+        "guest": "Fires that slowly get harder, and ranks to climb. Sign in to keep your place.",
         "open": "Open the campaign",
         "eyebrowGuest": "Campaign"
     },

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CampaignProfile;
 use App\Models\DailyIncident;
 use App\Models\DailyScore;
 use App\Models\EndlessScore;
@@ -13,13 +12,13 @@ use App\Support\Burnfront\DailyRunStore;
 use App\Support\Burnfront\Engine;
 use App\Support\Burnfront\NextFire;
 use App\Support\Burnfront\PlayerProgress;
+use App\Support\Burnfront\Progression;
 use App\Support\Burnfront\Puzzle;
 use App\Support\Burnfront\PuzzleService;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Inertia\Inertia;
@@ -71,14 +70,12 @@ class BurnfrontController extends Controller
             $dailyStatus['scoreTimeMs'] = $existing?->time_ms;
             $dailyStatus['hintsUsed'] = $existing?->hints_used;
             $dailyStatus['ranked'] = $existing?->ranked;
-            $dailyStatus['streak'] = $this->computeStreaks($user->id);
+            $dailyStatus['streak'] = PlayerProgress::streaks($user->id);
 
             // Read-only, same as dailyStatus above — viewing the menu must
-            // never create a CampaignProfile row; a guest-shaped 0-XP
-            // profile is never persisted just because someone looked.
-            $totalXp = CampaignProfile::where('user_id', $user->id)->value('total_xp') ?? 0;
-            $campaignStatus = CampaignService::progressForXp($totalXp);
+            // never create a CampaignProfile row just because someone looked.
             $progress = PlayerProgress::forUser($user->id);
+            $campaignStatus = Progression::standing($progress['xp']);
         } else {
             $guest = DailyRunStore::for($request)->guestResult($date);
             $dailyStatus['alreadyScored'] = $guest !== null;
@@ -409,10 +406,19 @@ class BurnfrontController extends Controller
 
         $rank = DailyScore::whereDate('date', $date)->where('ranked', true)->where('time_ms', '<', $score->time_ms)->count() + 1;
 
+        $reward = PlayerProgress::award($userId, [
+            'rows' => $puzzlePayload['rows'],
+            'cols' => $puzzlePayload['cols'],
+            'breaks' => $puzzlePayload['breaks'],
+            'daily' => true,
+            'hintsUsed' => $hintsUsed,
+        ]);
+
         return response()->json([
             'time_ms' => $score->time_ms,
             'rank' => $rank,
             'hints_used' => $score->hints_used,
+            'reward' => $reward,
             'progress' => PlayerProgress::forUser($userId),
         ]);
     }
@@ -495,7 +501,7 @@ class BurnfrontController extends Controller
 
         return Inertia::render('Burnfront/DailyHistory', [
             'entries' => $entries,
-            'streak' => $this->computeStreaks($userId),
+            'streak' => PlayerProgress::streaks($userId),
         ]);
     }
 
@@ -631,10 +637,20 @@ class BurnfrontController extends Controller
             'hints_used' => 0,
         ]);
 
+        // Hints on a practice board are not counted by the server, so
+        // there is no "no hints" bonus here: just the fire itself.
+        $reward = PlayerProgress::award($userId, [
+            'rows' => $config['rows'],
+            'cols' => $config['cols'],
+            'breaks' => $config['breaks'],
+            'hintsUsed' => null,
+        ]);
+
         return response()->json([
             'solved_count' => $record->solved_count,
             'best_time_ms' => $record->best_time_ms,
             'improved' => $improved,
+            'reward' => $reward,
             'progress' => PlayerProgress::forUser($userId),
         ]);
     }
@@ -739,26 +755,26 @@ class BurnfrontController extends Controller
     }
 
     /**
-     * The career rank + badge row shown at the top of Game History: a thin
-     * read of totals already recorded by DailyScore/EndlessScore (see
-     * CareerProgress), not a new mechanic or a gate on any tier or mode.
+     * The top of Game History: where the player stands (points, level,
+     * rank, see Progression) and a small set of milestone badges read off
+     * totals DailyScore/EndlessScore already record (see CareerProgress).
      *
-     * @return array{rank: array{title: string, totalSolved: int, nextTitle: string|null, nextThreshold: int|null}, badges: list<array{key: string, label: string, description: string, earned: bool}>}
+     * @return array{totalSolved: int, standing: array<string, mixed>, badges: list<array{key: string, label: string, description: string, earned: bool}>}
      */
     private function computeCareer(int $userId): array
     {
-        $totalSolved = (int) EndlessScore::where('user_id', $userId)->sum('solved_count')
-            + DailyScore::where('user_id', $userId)->count();
+        $totalSolved = PlayerProgress::totalSolved($userId);
 
         $facts = [
             'totalSolved' => $totalSolved,
-            'bestStreak' => $this->computeStreaks($userId)['best'],
+            'bestStreak' => PlayerProgress::streaks($userId)['best'],
             'hasCleanDaily' => DailyScore::where('user_id', $userId)->where('hints_used', 0)->exists(),
             'hasColdCase' => EndlessScore::where('user_id', $userId)->where('difficulty', 'coldcase')->exists(),
         ];
 
         return [
-            'rank' => CareerProgress::rank($totalSolved),
+            'totalSolved' => $totalSolved,
+            'standing' => Progression::standing(PlayerProgress::xp($userId)),
             'badges' => CareerProgress::badges($facts),
         ];
     }
@@ -880,48 +896,6 @@ class BurnfrontController extends Controller
         } catch (UniqueConstraintViolationException) {
             // Another request already persisted today's incident first.
         }
-    }
-
-    /**
-     * @return array{current: int, best: int} this account's current daily
-     *                                        streak (consecutive days up
-     *                                        to and including today or
-     *                                        yesterday) and its longest
-     *                                        streak ever.
-     */
-    private function computeStreaks(int $userId): array
-    {
-        $dates = DailyScore::where('user_id', $userId)
-            ->orderBy('date')
-            ->pluck('date')
-            ->map(fn ($date) => $date->toDateString())
-            ->all();
-
-        $bySet = array_flip($dates);
-
-        $best = 0;
-        $run = 0;
-        $prev = null;
-        foreach ($dates as $date) {
-            $run = ($prev !== null && Carbon::parse($prev)->addDay()->toDateString() === $date) ? $run + 1 : 1;
-            $best = max($best, $run);
-            $prev = $date;
-        }
-
-        $today = now('UTC')->toDateString();
-        $cursor = match (true) {
-            isset($bySet[$today]) => now('UTC'),
-            isset($bySet[now('UTC')->subDay()->toDateString()]) => now('UTC')->subDay(),
-            default => null,
-        };
-
-        $current = 0;
-        while ($cursor !== null && isset($bySet[$cursor->toDateString()])) {
-            $current++;
-            $cursor = $cursor->copy()->subDay();
-        }
-
-        return ['current' => $current, 'best' => $best];
     }
 
     /**

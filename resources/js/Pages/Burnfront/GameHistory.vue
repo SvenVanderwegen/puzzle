@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { fmtClock } from '@/lib/burnfront-engine';
+import RankBadge from '@/Components/Progress/RankBadge.vue';
 import RowArrow from '@/Components/RowArrow.vue';
 import SiteBar from '@/Components/SiteBar.vue';
 import { t } from '@/lib/i18n';
@@ -11,24 +12,14 @@ const props = defineProps({
     tiers: { type: Array, default: () => [] }, // {difficulty, label, timed, solvedCount, bestTimeMs}
     career: {
         type: Object,
-        default: () => ({
-            rank: { title: '', totalSolved: 0, currentThreshold: 0, nextTitle: null, nextThreshold: null },
-            badges: [],
-        }),
+        default: () => ({ totalSolved: 0, standing: null, badges: [] }),
     },
 });
 
-// Progress toward the next rank. A null nextThreshold means the top rank.
-const rankProgressPercent = computed(() => {
-    const { totalSolved, currentThreshold, nextThreshold } = props.career.rank;
-    if (nextThreshold == null) return 100;
-    const span = nextThreshold - currentThreshold;
-    if (span <= 0) return 100;
-    return Math.min(100, Math.max(0, ((totalSolved - currentThreshold) / span) * 100));
-});
-
-// Rank titles come from the server keyed by threshold; the plain words live in the locale file.
-const rankTitle = (threshold, fallback) => tOr(`history.rank.${threshold}`, fallback);
+// Where the player stands: points, level and rank (Progression::standing()).
+const standing = computed(() => props.career.standing ?? { level: 1, intoLevel: 0, levelSize: 1, toGo: 0, rank: 0, rankKey: 'trainee' });
+const levelPercent = computed(() => Math.min(100, Math.max(0, (standing.value.intoLevel / Math.max(1, standing.value.levelSize)) * 100)));
+const rankName = computed(() => t(`progress.rank.${standing.value.rankKey}`));
 const tierName = (tier) => tOr(`common.difficulty.${tier.difficulty}`, tier.label);
 </script>
 
@@ -45,16 +36,16 @@ const tierName = (tier) => tOr(`common.difficulty.${tier.difficulty}`, tier.labe
                 <p class="bf-lede">{{ t('history.games.lead') }}</p>
             </header>
 
-            <section class="bf-card flex flex-col gap-3" :aria-label="rankTitle(career.rank.currentThreshold, career.rank.title)">
-                <div class="flex flex-col gap-1">
-                    <span class="bf-row-title text-[20px]">{{ rankTitle(career.rank.currentThreshold, career.rank.title) }}</span>
-                    <span class="bf-row-sub">
-                        {{ plural('history.games.done', career.rank.totalSolved) }}<template v-if="career.rank.nextTitle">
-                            · {{ t('history.games.toNext', { count: career.rank.nextThreshold - career.rank.totalSolved, title: rankTitle(career.rank.nextThreshold, career.rank.nextTitle) }) }}</template
-                        >
-                    </span>
+            <section class="bf-card flex flex-col gap-3" :aria-label="rankName">
+                <div class="flex items-center gap-3">
+                    <RankBadge :rank="standing.rank" :size="48" />
+                    <div class="flex min-w-0 flex-col gap-1">
+                        <span class="bf-row-title text-[20px]">{{ rankName }}</span>
+                        <span class="bf-row-sub">{{ plural('history.games.done', career.totalSolved) }}</span>
+                    </div>
                 </div>
-                <span class="bf-progress" aria-hidden="true"><span :style="{ width: rankProgressPercent + '%' }"></span></span>
+                <span class="bf-progress" aria-hidden="true"><span :style="{ width: levelPercent + '%' }"></span></span>
+                <span class="bf-row-sub">{{ t('history.games.levelLine', { level: standing.level, toGo: standing.toGo, next: standing.level + 1 }) }}</span>
 
                 <h2 class="bf-row-sub m-0 mt-1">{{ t('history.games.badges') }}</h2>
                 <ul class="bf-badges">

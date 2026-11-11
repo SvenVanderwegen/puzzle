@@ -1,20 +1,22 @@
-/* Weekly goal and player level, fed by every solved fire.
+/* Weekly goal, points and level, fed by every solved fire.
 
    A signed-in player's numbers come from the server (PlayerProgress::forUser).
-   A guest has no server record, so their solves are logged here in
-   localStorage and the same rules are applied. The rules themselves always
-   come from the server (props.progressRules, from config/burnfront.php), so
-   the curve is defined in one place; levelForSolves() below mirrors
-   PlayerProgress::levelForSolves() and must stay in step with it.
+   A guest has no server record, so their solves and points are logged here
+   in localStorage and the same rules are applied (lib/xp.js mirrors the
+   server's maths). The rules themselves always come from the server
+   (props.progressRules, from config/burnfront.php), so they are defined in
+   one place.
 
    Storage can be missing or throw (private mode, blocked site data): every
    read and write is guarded and a guest then simply starts at level 1. */
+
+import { DEFAULT_XP_RULES, reward, standing } from './xp';
 
 const LOG_KEY = 'burnfront.solves.v1';
 const GUEST_DAILY_KEY = 'burnfront.guestDaily.v1';
 const RECENT_DAYS = 14;
 
-export const DEFAULT_RULES = { weekGoal: 5, levelBase: 3, levelStep: 1 };
+export const DEFAULT_RULES = { weekGoal: 5, xp: DEFAULT_XP_RULES };
 
 function readJson(key) {
     try {
@@ -41,37 +43,41 @@ export function weekStart(now = new Date()) {
     return d;
 }
 
-/** Same curve as PlayerProgress::levelForSolves(). */
-export function levelForSolves(totalSolved, rules = DEFAULT_RULES) {
-    const base = Math.max(1, rules.levelBase ?? DEFAULT_RULES.levelBase);
-    const step = Math.max(0, rules.levelStep ?? DEFAULT_RULES.levelStep);
-    let level = 1;
-    let remaining = Math.max(0, totalSolved | 0);
-    let size = base;
-    while (remaining >= size) {
-        remaining -= size;
-        level++;
-        size = base + (level - 1) * step;
-    }
-    return { level, intoLevel: remaining, levelSize: size, toGo: size - remaining };
-}
-
 function readLog() {
     const log = readJson(LOG_KEY);
-    if (!log || typeof log !== 'object') return { total: 0, recent: [] };
+    if (!log || typeof log !== 'object') return { total: 0, recent: [], xp: 0 };
     return {
         total: Number.isFinite(log.total) ? log.total : 0,
         recent: Array.isArray(log.recent) ? log.recent.filter(Number.isFinite) : [],
+        /* A log from before points existed: count its fires as plain small fires. */
+        xp: Number.isFinite(log.xp) ? Math.max(0, log.xp) : (Number.isFinite(log.total) ? log.total : 0) * DEFAULT_XP_RULES.fireBase,
     };
 }
 
-/** Logs one solved fire on this device. Call it once per verified solve. */
-export function recordLocalSolve(now = Date.now()) {
+/**
+ * Logs one solved fire on this device and gives the points for it. Call it
+ * once per verified solve. `facts` is {rows, cols, breaks, daily, hintsUsed}
+ * (hintsUsed null where hints are not counted), or null for a fire that
+ * counts for the week but gives no points. Returns the same reward the
+ * server sends a signed-in player: {items, total, xpBefore, xpAfter}.
+ */
+export function recordLocalSolve(facts, rules = DEFAULT_RULES, now = Date.now()) {
+    const xpRules = rules?.xp ?? DEFAULT_XP_RULES;
+    const goal = rules?.weekGoal ?? DEFAULT_RULES.weekGoal;
     const log = readLog();
     const cutoff = now - RECENT_DAYS * 86400000;
     log.total += 1;
     log.recent = [...log.recent.filter((at) => at >= cutoff), now];
+
+    const since = weekStart(new Date(now)).getTime();
+    const weekSolved = log.recent.filter((at) => at >= since).length;
+    const earned = facts ? reward({ ...facts, weekReached: weekSolved === goal }, xpRules) : { items: [], total: 0 };
+
+    const xpBefore = log.xp;
+    log.xp = xpBefore + earned.total;
     writeJson(LOG_KEY, log);
+
+    return { ...earned, xpBefore, xpAfter: log.xp };
 }
 
 /** This device's progress, in the same shape the server sends. */
@@ -80,9 +86,9 @@ export function localProgress(rules = DEFAULT_RULES, now = new Date()) {
     const since = weekStart(now).getTime();
     return {
         weekSolved: log.recent.filter((at) => at >= since).length,
-        weekGoal: rules.weekGoal ?? DEFAULT_RULES.weekGoal,
+        weekGoal: rules?.weekGoal ?? DEFAULT_RULES.weekGoal,
         totalSolved: log.total,
-        ...levelForSolves(log.total, rules),
+        ...standing(log.xp, rules?.xp ?? DEFAULT_XP_RULES),
     };
 }
 
